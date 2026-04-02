@@ -26,7 +26,7 @@ DEFAULT_LLM_MODEL = {
 }
 EMBEDDING_MODELS = {
     "openai": "text-embedding-3-small",
-    "google": "models/text-embedding-004",
+    "google": "gemini-embedding-001",
 }
 
 # RAG settings
