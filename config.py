@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 # Paths
 PROJECT_ROOT = Path(__file__).parent
 KNOWLEDGE_BASE_DIR = PROJECT_ROOT / "knowledge_base"
-CHROMA_DIR = PROJECT_ROOT / "chroma_db"
+CHROMA_ROOT_DIR = PROJECT_ROOT / "chroma_db"
 MEMORY_DIR = PROJECT_ROOT / "memory"
 
 # Environment
@@ -24,7 +24,10 @@ DEFAULT_LLM_MODEL = {
     "openai": "gpt-4o-mini",
     "google": "gemini-2.5-flash",
 }
-EMBEDDING_MODEL = "text-embedding-3-small"
+EMBEDDING_MODELS = {
+    "openai": "text-embedding-3-small",
+    "google": "models/text-embedding-004",
+}
 
 # RAG settings
 RAG_CHUNK_SIZE = 800

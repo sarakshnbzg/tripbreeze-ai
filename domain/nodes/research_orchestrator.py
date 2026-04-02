@@ -155,7 +155,7 @@ def research_orchestrator(state: dict) -> dict:
             effective_query,
         )
         collected["rag_used"] = True
-        chunks = retrieve(effective_query)
+        chunks = retrieve(effective_query, provider=state.get("llm_provider"))
         return json.dumps({"query": effective_query, "chunks": chunks})
 
     final_result: dict[str, Any] = {}

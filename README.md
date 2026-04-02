@@ -66,6 +66,15 @@ Run this once on first setup, and again after editing files in `knowledge_base/`
 python scripts/rebuild_rag.py
 ```
 
+If you want retrieval to work with both supported providers, rebuild a provider-specific index for each one:
+
+```bash
+python scripts/rebuild_rag.py openai
+python scripts/rebuild_rag.py google
+```
+
+TripBreeze stores these separately under `chroma_db/openai` and `chroma_db/google`, and automatically uses the matching index for the provider selected in the app.
+
 ### Run
 
 ```bash

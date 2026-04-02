@@ -11,8 +11,10 @@ from infrastructure.rag.vectorstore import _build_vectorstore
 
 def main() -> None:
     """Force a rebuild of the persisted RAG vector store."""
-    _build_vectorstore(force_rebuild=True)
-    print("RAG knowledge base rebuilt in chroma_db/")
+    provider = sys.argv[1] if len(sys.argv) > 1 else None
+    _build_vectorstore(provider=provider, force_rebuild=True)
+    suffix = f" for provider `{provider}`" if provider else ""
+    print(f"RAG knowledge base rebuilt in chroma_db/{suffix}")
 
 
 if __name__ == "__main__":

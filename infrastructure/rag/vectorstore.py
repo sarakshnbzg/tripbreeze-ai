@@ -8,19 +8,19 @@ from langchain_community.document_loaders import DirectoryLoader, TextLoader
 from langchain_community.retrievers import BM25Retriever
 from langchain_chroma import Chroma
 from langchain_classic.retrievers import EnsembleRetriever
-from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from config import (
+    CHROMA_ROOT_DIR,
+    DEFAULT_LLM_PROVIDER,
     KNOWLEDGE_BASE_DIR,
-    CHROMA_DIR,
-    EMBEDDING_MODEL,
     RAG_CHUNK_SIZE,
     RAG_CHUNK_OVERLAP,
     RAG_TOP_K,
     RAG_VECTOR_WEIGHT,
     RAG_BM25_WEIGHT,
 )
+from infrastructure.llms.model_factory import create_embeddings, normalise_llm_selection
 from infrastructure.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -55,33 +55,50 @@ def _load_and_split_docs() -> list:
     return _cached_chunks
 
 
-def _build_vectorstore(force_rebuild: bool = False) -> Chroma:
-    """Build or load the ChromaDB vector store from knowledge-base documents."""
-    logger.info("Preparing vectorstore force_rebuild=%s chroma_exists=%s", force_rebuild, CHROMA_DIR.exists())
-    embeddings = OpenAIEmbeddings(model=EMBEDDING_MODEL)
+def _chroma_dir_for_provider(provider: str | None):
+    chosen_provider, _ = normalise_llm_selection(provider, None)
+    return CHROMA_ROOT_DIR / chosen_provider
 
-    if CHROMA_DIR.exists() and not force_rebuild:
-        logger.info("Loading existing Chroma vectorstore from %s", CHROMA_DIR)
-        return Chroma(persist_directory=str(CHROMA_DIR), embedding_function=embeddings)
+
+def _build_vectorstore(
+    provider: str | None = DEFAULT_LLM_PROVIDER,
+    force_rebuild: bool = False,
+) -> Chroma:
+    """Build or load the ChromaDB vector store from knowledge-base documents."""
+    chosen_provider, _ = normalise_llm_selection(provider, None)
+    chroma_dir = _chroma_dir_for_provider(chosen_provider)
+    chroma_exists = chroma_dir.exists() and any(chroma_dir.iterdir())
+    logger.info(
+        "Preparing vectorstore provider=%s force_rebuild=%s chroma_exists=%s",
+        chosen_provider,
+        force_rebuild,
+        chroma_exists,
+    )
+    embeddings = create_embeddings(chosen_provider)
+
+    if chroma_exists and not force_rebuild:
+        logger.info("Loading existing Chroma vectorstore from %s", chroma_dir)
+        return Chroma(persist_directory=str(chroma_dir), embedding_function=embeddings)
 
     chunks = _load_and_split_docs()
+    chroma_dir.parent.mkdir(parents=True, exist_ok=True)
 
     return Chroma.from_documents(
         documents=chunks,
         embedding=embeddings,
-        persist_directory=str(CHROMA_DIR),
+        persist_directory=str(chroma_dir),
     )
 
 
-def retrieve(query: str, k: int = RAG_TOP_K) -> list[str]:
+def retrieve(query: str, k: int = RAG_TOP_K, provider: str | None = DEFAULT_LLM_PROVIDER) -> list[str]:
     """Return the top-k relevant text chunks using hybrid search.
 
     Combines vector similarity (ChromaDB) with keyword matching (BM25)
     using reciprocal rank fusion via EnsembleRetriever.
     """
-    logger.info("Running RAG retrieval query=%s k=%s", query, k)
+    logger.info("Running RAG retrieval query=%s k=%s provider=%s", query, k, provider)
     # Vector retriever
-    vs = _build_vectorstore()
+    vs = _build_vectorstore(provider=provider)
     vector_retriever = vs.as_retriever(search_kwargs={"k": k})
 
     # BM25 keyword retriever

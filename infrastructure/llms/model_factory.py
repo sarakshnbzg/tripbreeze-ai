@@ -1,4 +1,4 @@
-"""Factory helpers for creating chat models from user-selected providers."""
+"""Factory helpers for creating chat and embedding models from user-selected providers."""
 
 from __future__ import annotations
 
@@ -6,10 +6,12 @@ import importlib.util
 from typing import Any
 
 from langchain_openai import ChatOpenAI
+from langchain_openai import OpenAIEmbeddings
 
 from config import (
     DEFAULT_LLM_MODEL,
     DEFAULT_LLM_PROVIDER,
+    EMBEDDING_MODELS,
     GOOGLE_API_KEY,
     OPENAI_API_KEY,
 )
@@ -107,3 +109,35 @@ def create_chat_model(
         raise RuntimeError("OpenAI support requires OPENAI_API_KEY in your environment.")
 
     return ChatOpenAI(model=chosen_model, temperature=temperature, **kwargs)
+
+
+def create_embeddings(provider: str | None = None):
+    """Create embeddings for the selected provider."""
+    chosen_provider, _ = normalise_llm_selection(provider, None)
+    logger.info("Creating embeddings provider=%s", chosen_provider)
+
+    if chosen_provider == "google":
+        try:
+            from langchain_google_genai import GoogleGenerativeAIEmbeddings
+        except ImportError as exc:
+            raise RuntimeError(
+                "Google embeddings require the `langchain-google-genai` package. "
+                "Install it with `pip install langchain-google-genai`."
+            ) from exc
+
+        if not GOOGLE_API_KEY:
+            logger.error("Google embeddings requested but GOOGLE_API_KEY is not configured")
+            raise RuntimeError(
+                "Google embeddings require GOOGLE_API_KEY or GEMINI_API_KEY in your environment."
+            )
+
+        return GoogleGenerativeAIEmbeddings(
+            model=EMBEDDING_MODELS["google"],
+            google_api_key=GOOGLE_API_KEY,
+        )
+
+    if not OPENAI_API_KEY:
+        logger.error("OpenAI embeddings requested but OPENAI_API_KEY is not configured")
+        raise RuntimeError("OpenAI embeddings require OPENAI_API_KEY in your environment.")
+
+    return OpenAIEmbeddings(model=EMBEDDING_MODELS["openai"])
