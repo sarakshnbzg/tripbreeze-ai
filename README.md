@@ -75,22 +75,25 @@ streamlit run app.py
 ## Typical Flow
 
 1. Select an LLM provider and model in the sidebar.
-2. Enter trip details and optional preferences.
-3. Review flight, hotel, destination, and budget results.
-4. Approve to generate the final itinerary.
+2. Fill in the structured trip form for origin, destination, dates, travellers, budget, and similar core fields.
+3. Add optional free-text preferences for extra constraints such as nonstop flights, airline exclusions, hotel star preferences, or max flight price.
+4. Review flight, hotel, destination, and budget results.
+5. Approve to generate the final itinerary.
 
-## Example Prompts
+## Free-Text Preference Examples
+
+Use the form for the main trip details. The optional free-text field is best for extra constraints like these:
 
 ```text
-I want to fly from New York to Paris, June 15 to June 22, budget $3000.
+Nonstop flights only.
 ```
 
 ```text
-Plan a business class trip from London to Tokyo for 2 people, September 1 to September 10, with 4-star hotels.
+Business class, exclude Ryanair, and keep the flight under 10 hours.
 ```
 
 ```text
-Cheapest trip from LAX to Bangkok, December 20 to January 3, max $1500.
+4-star hotels and max flight price of 800 EUR per person.
 ```
 
 ## Project Structure
