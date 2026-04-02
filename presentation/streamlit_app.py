@@ -12,6 +12,8 @@ from config import (
     AIRLINES,
     CITIES,
     COUNTRIES,
+    CURRENCIES,
+    DEFAULT_CURRENCY,
     DESTINATIONS,
     HOTEL_STARS,
     TRAVEL_CLASSES,
@@ -19,6 +21,7 @@ from config import (
 from application.graph import compile_graph
 from domain.nodes.memory_updater import memory_updater
 from domain.nodes.trip_finaliser import trip_finaliser
+from infrastructure.currency_utils import format_currency, normalise_currency
 from infrastructure.logging_utils import get_logger
 from infrastructure.llms.model_factory import (
     get_available_models,
@@ -361,6 +364,9 @@ def _render_review_actions() -> None:
     flights = state.get("flight_options", [])[:5]
     hotels = state.get("hotel_options", [])[:5]
     budget = state.get("budget", {})
+    currency = normalise_currency(
+        budget.get("currency") or state.get("trip_request", {}).get("currency")
+    )
     flights_removed_by_budget = (
         budget.get("flights_before_budget_filter", 0) > 0
         and budget.get("flights_after_budget_filter", 0) == 0
@@ -378,7 +384,7 @@ def _render_review_actions() -> None:
             stops = "Direct" if f["stops"] == 0 else f"{f['stops']} stop(s)"
             flight_labels.append(
                 f"{f.get('airline', '?')} — {f['outbound_summary']} | "
-                f"{f['duration']} | {stops} | €{f['price']:.0f}"
+                f"{f['duration']} | {stops} | {format_currency(f['price'], currency)}"
             )
         selected_flight_idx = st.radio(
             "Choose your flight",
@@ -400,8 +406,8 @@ def _render_review_actions() -> None:
         hotel_labels = []
         for i, h in enumerate(hotels):
             hotel_labels.append(
-                f"{h['name']} — €{h['price_per_night']:.0f}/night | "
-                f"Total: €{h['total_price']:.0f} | ⭐ {h.get('rating', '?')}"
+                f"{h['name']} — {format_currency(h['price_per_night'], currency)}/night | "
+                f"Total: {format_currency(h['total_price'], currency)} | ⭐ {h.get('rating', '?')}"
             )
         selected_hotel_idx = st.radio(
             "Choose your hotel",
@@ -420,7 +426,6 @@ def _render_review_actions() -> None:
     # ── Budget summary ──
     if budget:
         st.subheader("💰 Budget Summary")
-        currency = budget.get("currency", "EUR")
         sel_flight_price = flights[selected_flight_idx]["price"] if selected_flight_idx is not None else 0
         sel_hotel_price = hotels[selected_hotel_idx]["total_price"] if selected_hotel_idx is not None else 0
         daily_expenses = budget.get("estimated_daily_expenses", 0)
@@ -429,10 +434,10 @@ def _render_review_actions() -> None:
         budget_md = (
             "| Category | Amount |\n"
             "|:---|---:|\n"
-            f"| ✈️ Flight | {currency} {sel_flight_price:,.0f} |\n"
-            f"| 🏨 Hotel | {currency} {sel_hotel_price:,.0f} |\n"
-            f"| 🍽️ Daily Expenses (est.) | {currency} {daily_expenses:,.0f} |\n"
-            f"| **🧳 Total** | **{currency} {total:,.0f}** |"
+            f"| ✈️ Flight | {format_currency(sel_flight_price, currency)} |\n"
+            f"| 🏨 Hotel | {format_currency(sel_hotel_price, currency)} |\n"
+            f"| 🍽️ Daily Expenses (est.) | {format_currency(daily_expenses, currency)} |\n"
+            f"| **🧳 Total** | **{format_currency(total, currency)}** |"
         )
         st.markdown(budget_md)
 
@@ -475,6 +480,7 @@ def _render_review_actions() -> None:
 def _build_trip_message(fields: dict) -> str:
     """Compose a natural-language trip request from structured form fields."""
     parts = []
+    currency = normalise_currency(fields.get("currency"))
     if fields.get("origin") and fields.get("destination"):
         parts.append(f"Fly from {fields['origin']} to {fields['destination']}")
     elif fields.get("destination"):
@@ -487,7 +493,7 @@ def _build_trip_message(fields: dict) -> str:
         parts.append(f"for {fields['num_travelers']} travelers")
 
     if fields.get("budget_limit"):
-        parts.append(f"budget €{fields['budget_limit']}")
+        parts.append(f"budget {format_currency(fields['budget_limit'], currency)}")
 
     if fields.get("preferences"):
         parts.append(f"({fields['preferences']})")
@@ -550,14 +556,21 @@ def _render_trip_form() -> None:
                 min_value=date.today(),
             )
 
-        col5, col6 = st.columns(2)
+        col5, col6, col7 = st.columns(3)
         with col5:
             num_travelers = st.number_input(
                 "Travelers", min_value=1, max_value=10, value=1,
             )
         with col6:
+            default_currency = normalise_currency(DEFAULT_CURRENCY)
+            currency = st.selectbox(
+                "Currency",
+                options=CURRENCIES,
+                index=CURRENCIES.index(default_currency),
+            )
+        with col7:
             budget_limit = st.number_input(
-                "Budget in EUR (0 = flexible)", min_value=0, max_value=100000, value=0, step=500,
+                f"Budget in {currency} (0 = flexible)", min_value=0, max_value=100000, value=0, step=500,
             )
 
         preferences = st.text_input(
@@ -584,7 +597,7 @@ def _render_trip_form() -> None:
             "return_date": str(return_date),
             "num_travelers": num_travelers,
             "budget_limit": budget_limit,
-            "currency": "EUR",
+            "currency": currency,
             "preferences": preferences,
         }
         user_message = _build_trip_message(fields)

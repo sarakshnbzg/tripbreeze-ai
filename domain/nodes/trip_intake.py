@@ -5,6 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from infrastructure.currency_utils import format_currency
 from infrastructure.llms.model_factory import create_chat_model
 from infrastructure.logging_utils import get_logger
 
@@ -227,7 +228,7 @@ def trip_intake(state: dict) -> dict:
                     f"📍 {trip_data.get('origin', '?')} → {trip_data.get('destination', '?')}\n"
                     f"📅 {trip_data.get('departure_date', '?')} to {trip_data.get('return_date', '?')}\n"
                     f"👥 {trip_data.get('num_travelers', 1)} traveler(s)\n"
-                    f"💰 Budget: {'€' + str(trip_data.get('budget_limit')) if trip_data.get('budget_limit') else 'flexible'}\n\n"
+                    f"💰 Budget: {format_currency(trip_data.get('budget_limit'), trip_data.get('currency')) if trip_data.get('budget_limit') else 'flexible'}\n\n"
                     "Searching for flights, hotels, and destination info..."
                 ),
             }

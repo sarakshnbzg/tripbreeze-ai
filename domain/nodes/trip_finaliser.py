@@ -8,7 +8,7 @@ from infrastructure.logging_utils import get_logger
 logger = get_logger(__name__)
 
 FINALISER_PROMPT = """You are a travel planning assistant. Create a beautiful, well-organized final trip itinerary
-based on the user's selections. Format it nicely with sections and emojis. All prices are in EUR (€).
+based on the user's selections. Format it nicely with sections and emojis. All prices should be shown in {currency}.
 
 Trip Details:
 {trip_request}
@@ -32,7 +32,7 @@ Create a comprehensive but concise trip plan that includes:
 2. Flight details (the user's chosen flight)
 3. Hotel details (the user's chosen hotel)
 4. Destination highlights and tips
-5. Budget breakdown in EUR
+5. Budget breakdown in the trip currency ({currency})
 6. Important visa/entry information
 7. Packing and preparation tips
 
@@ -57,6 +57,7 @@ def trip_finaliser(state: dict) -> dict:
     )
     response = llm.invoke(
         FINALISER_PROMPT.format(
+            currency=state.get("trip_request", {}).get("currency", "EUR"),
             trip_request=json.dumps(state.get("trip_request", {}), indent=2),
             selected_flight=json.dumps(selected_flight, indent=2) or "No flight selected",
             selected_hotel=json.dumps(selected_hotel, indent=2) or "No hotel selected",

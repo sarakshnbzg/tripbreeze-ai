@@ -260,3 +260,12 @@ class TestTripIntakeNode:
         assert messages[0]["role"] == "assistant"
         assert "London" in messages[0]["content"]
         assert "Paris" in messages[0]["content"]
+
+    def test_confirmation_message_uses_trip_currency(self):
+        state = self._base_state()
+        state["structured_fields"]["currency"] = "USD"
+        state["structured_fields"]["budget_limit"] = 1200
+
+        result = trip_intake(state)
+
+        assert "$1,200" in result["messages"][0]["content"]

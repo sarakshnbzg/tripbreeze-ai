@@ -3,24 +3,10 @@
 from datetime import datetime
 
 from config import DEFAULT_DAILY_EXPENSE
+from infrastructure.currency_utils import currency_prefix
 from infrastructure.logging_utils import get_logger
 
 logger = get_logger(__name__)
-
-
-def _currency_prefix(currency: str) -> str:
-    return {
-        "EUR": "EUR ",
-        "USD": "$",
-        "GBP": "GBP ",
-        "CAD": "CAD ",
-        "AUD": "AUD ",
-        "JPY": "JPY ",
-        "CHF": "CHF ",
-        "SGD": "SGD ",
-        "AED": "AED ",
-        "NZD": "NZD ",
-    }.get(currency.upper(), f"{currency.upper()} ")
 
 
 def _trip_days(trip: dict) -> int:
@@ -66,7 +52,7 @@ def budget_aggregator(state: dict) -> dict:
     hotels = state.get("hotel_options", [])
     budget_limit = trip.get("budget_limit", 0)
     currency = trip.get("currency", "EUR")
-    currency_prefix = _currency_prefix(currency)
+    prefix = currency_prefix(currency)
 
     num_days = _trip_days(trip)
     estimated_daily_total = DEFAULT_DAILY_EXPENSE * num_days
@@ -92,12 +78,12 @@ def budget_aggregator(state: dict) -> dict:
     elif budget_limit > 0 and not within_budget:
         over = total - budget_limit
         notes = (
-            f"Estimated total ({currency_prefix}{total:.0f}) exceeds your budget "
-            f"({currency_prefix}{budget_limit:.0f}) by {currency_prefix}{over:.0f}. "
+            f"Estimated total ({prefix}{total:.0f}) exceeds your budget "
+            f"({prefix}{budget_limit:.0f}) by {prefix}{over:.0f}. "
             f"Consider a cheaper flight/hotel or shorter stay."
         )
     elif budget_limit > 0:
-        notes = f"You're within budget with ~{currency_prefix}{budget_limit - total:.0f} to spare."
+        notes = f"You're within budget with ~{prefix}{budget_limit - total:.0f} to spare."
 
     logger.info(
         "Budget aggregated flights_before=%s flights_after=%s hotels_before=%s hotels_after=%s daily_estimate=%s flight_cost=%s hotel_cost=%s total=%s within_budget=%s",
