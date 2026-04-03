@@ -2,7 +2,7 @@
 
 import json
 
-from infrastructure.llms.model_factory import create_chat_model
+from infrastructure.llms.model_factory import create_chat_model, extract_token_usage
 from infrastructure.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -50,9 +50,10 @@ def trip_finaliser(state: dict) -> dict:
         bool(state.get("destination_info")),
         bool(state.get("user_feedback")),
     )
+    model = state.get("llm_model")
     llm = create_chat_model(
         state.get("llm_provider"),
-        state.get("llm_model"),
+        model,
         temperature=0.5,
     )
     response = llm.invoke(
@@ -68,8 +69,11 @@ def trip_finaliser(state: dict) -> dict:
     )
     logger.info("Finaliser completed itinerary generation")
 
+    usage = extract_token_usage(response, model=model, node="trip_finaliser")
+
     return {
         "final_itinerary": response.content,
+        "token_usage": [usage],
         "messages": [{"role": "assistant", "content": response.content}],
         "current_step": "finalised",
     }

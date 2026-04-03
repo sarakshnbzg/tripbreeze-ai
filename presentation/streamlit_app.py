@@ -246,6 +246,34 @@ def _render_model_settings() -> None:
         st.warning(provider_message)
 
 
+def _render_token_usage() -> None:
+    """Display accumulated token usage and estimated cost in the sidebar."""
+    state = st.session_state.graph_state
+    if not state:
+        return
+    usage_list = state.get("token_usage", [])
+    if not usage_list:
+        return
+
+    total_input = sum(u.get("input_tokens", 0) for u in usage_list)
+    total_output = sum(u.get("output_tokens", 0) for u in usage_list)
+    total_cost = sum(u.get("cost", 0) for u in usage_list)
+
+    st.divider()
+    with st.expander(f"Token Usage — ${total_cost:.4f}", expanded=False):
+        st.caption(
+            f"**Tokens:** {total_input:,} in / {total_output:,} out\n\n"
+            f"**Est. cost (USD):** ${total_cost:.4f}"
+        )
+        for entry in usage_list:
+            st.caption(
+                f"{entry.get('node', '?')} ({entry.get('model', '?')}): "
+                f"{entry.get('input_tokens', 0):,} in / "
+                f"{entry.get('output_tokens', 0):,} out — "
+                f"${entry.get('cost', 0):.4f}"
+            )
+
+
 def _render_profile_sidebar() -> None:
     st.divider()
     st.header("Profile Manager")
@@ -570,7 +598,7 @@ def _render_trip_form() -> None:
             )
         with col7:
             budget_limit = st.number_input(
-                f"Budget in {currency} (0 = flexible)", min_value=0, max_value=100000, value=0, step=500,
+                "Budget (0 = flexible)", min_value=0, max_value=100000, value=0, step=500,
             )
 
         preferences = st.text_input(
@@ -629,6 +657,7 @@ def main() -> None:
 
     with st.sidebar:
         _render_model_settings()
+        _render_token_usage()
         _render_profile_sidebar()
 
     _render_main_area()

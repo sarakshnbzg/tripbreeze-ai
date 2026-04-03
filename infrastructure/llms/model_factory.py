@@ -13,6 +13,7 @@ from config import (
     DEFAULT_LLM_PROVIDER,
     EMBEDDING_MODELS,
     GOOGLE_API_KEY,
+    MODEL_COSTS,
     OPENAI_API_KEY,
 )
 from infrastructure.logging_utils import get_logger
@@ -109,6 +110,25 @@ def create_chat_model(
         raise RuntimeError("OpenAI support requires OPENAI_API_KEY in your environment.")
 
     return ChatOpenAI(model=chosen_model, temperature=temperature, **kwargs)
+
+
+def extract_token_usage(response, *, model: str, node: str) -> dict:
+    """Extract token counts and cost from a LangChain AIMessage response."""
+    usage = getattr(response, "usage_metadata", None) or {}
+    input_tokens = usage.get("input_tokens", 0)
+    output_tokens = usage.get("output_tokens", 0)
+    costs = MODEL_COSTS.get(model, {})
+    cost = (
+        input_tokens * costs.get("input", 0)
+        + output_tokens * costs.get("output", 0)
+    )
+    return {
+        "node": node,
+        "model": model,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cost": cost,
+    }
 
 
 def create_embeddings(provider: str | None = None):

@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from domain.agents.flight_agent import search_flights
 from domain.agents.hotel_agent import search_hotels
-from infrastructure.llms.model_factory import create_chat_model
+from infrastructure.llms.model_factory import create_chat_model, extract_token_usage
 from infrastructure.logging_utils import get_logger
 from infrastructure.rag.vectorstore import retrieve
 
@@ -159,10 +159,12 @@ def research_orchestrator(state: dict) -> dict:
         return json.dumps({"query": effective_query, "chunks": chunks})
 
     final_result: dict[str, Any] = {}
+    token_usage: list[dict] = []
 
+    model = state.get("llm_model")
     llm = create_chat_model(
         state.get("llm_provider"),
-        state.get("llm_model"),
+        model,
         temperature=0,
     )
     llm_with_tools = llm.bind_tools(
@@ -192,6 +194,7 @@ def research_orchestrator(state: dict) -> dict:
     for _ in range(6):
         response = llm_with_tools.invoke(messages)
         messages.append(response)
+        token_usage.append(extract_token_usage(response, model=model, node="research_orchestrator"))
 
         if not getattr(response, "tool_calls", None):
             final_response = response.content if isinstance(response.content, str) else ""
@@ -227,6 +230,7 @@ def research_orchestrator(state: dict) -> dict:
         "hotel_options": collected.get("hotel_options") or [],
         "destination_info": collected.get("destination_info") or "",
         "rag_used": bool(collected.get("rag_used")),
+        "token_usage": token_usage,
         "messages": [{"role": "assistant", "content": summary}],
         "current_step": "research_complete",
     }

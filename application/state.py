@@ -48,6 +48,9 @@ class TravelState(TypedDict, total=False):
     # Conversation history (append-only via operator.add)
     messages: Annotated[list[dict], operator.add]
 
+    # Token usage tracking (append-only via operator.add)
+    token_usage: Annotated[list[dict], operator.add]
+
     # Control flow
     current_step: str
     error: str

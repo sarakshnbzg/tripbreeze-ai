@@ -6,7 +6,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from infrastructure.currency_utils import format_currency
-from infrastructure.llms.model_factory import create_chat_model
+from infrastructure.llms.model_factory import create_chat_model, extract_token_usage
 from infrastructure.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -78,10 +78,13 @@ class ExtractPreferences(BaseModel):
     )
 
 
-def _parse_preferences(llm, preferences: str) -> dict[str, Any]:
-    """Use LLM tool calling to extract structured filters from free-text preferences."""
+def _parse_preferences(llm, preferences: str, model: str) -> tuple[dict[str, Any], dict | None]:
+    """Use LLM tool calling to extract structured filters from free-text preferences.
+
+    Returns (parsed_args, token_usage_dict).
+    """
     if not preferences.strip():
-        return {}
+        return {}, None
 
     logger.info("Parsing preferences via LLM: %s", preferences)
     llm_with_tools = llm.bind_tools([ExtractPreferences])
@@ -89,12 +92,14 @@ def _parse_preferences(llm, preferences: str) -> dict[str, Any]:
         f"{PREFERENCES_PROMPT}\n\nSpecial requests: {preferences}"
     )
 
+    usage = extract_token_usage(response, model=model, node="trip_intake")
+
     tool_calls = getattr(response, "tool_calls", []) or []
     if not tool_calls:
         logger.warning("Preferences extraction returned no tool calls")
-        return {}
+        return {}, usage
 
-    return tool_calls[0].get("args", {})
+    return tool_calls[0].get("args", {}), usage
 
 
 def _normalise_hotel_stars(raw_hotel_stars: Any, profile: dict[str, Any]) -> list[int]:
@@ -181,14 +186,18 @@ def trip_intake(state: dict) -> dict:
     logger.info("Trip intake using structured fields")
     raw_trip_data = dict(structured_fields)
 
+    token_usage: list[dict] = []
     preferences = raw_trip_data.get("preferences", "")
     if preferences.strip():
+        model = state.get("llm_model")
         llm = create_chat_model(
             state.get("llm_provider"),
-            state.get("llm_model"),
+            model,
             temperature=0,
         )
-        parsed = _parse_preferences(llm, preferences)
+        parsed, usage = _parse_preferences(llm, preferences, model=model)
+        if usage:
+            token_usage.append(usage)
         # Merge LLM-extracted filters into trip data
         for key in (
             "stops", "max_flight_price", "max_duration", "bags", "emissions",
@@ -220,6 +229,7 @@ def trip_intake(state: dict) -> dict:
 
     return {
         "trip_request": trip_data,
+        "token_usage": token_usage,
         "messages": [
             {
                 "role": "assistant",
