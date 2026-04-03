@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from domain.agents.flight_agent import search_flights
 from domain.agents.hotel_agent import search_hotels
-from infrastructure.llms.model_factory import create_chat_model, extract_token_usage
+from infrastructure.llms.model_factory import create_chat_model, extract_token_usage, invoke_with_retry
 from infrastructure.logging_utils import get_logger
 from infrastructure.rag.vectorstore import retrieve
 
@@ -192,7 +192,7 @@ def research_orchestrator(state: dict) -> dict:
     }
 
     for _ in range(6):
-        response = llm_with_tools.invoke(messages)
+        response = invoke_with_retry(llm_with_tools, messages)
         messages.append(response)
         token_usage.append(extract_token_usage(response, model=model, node="research_orchestrator"))
 

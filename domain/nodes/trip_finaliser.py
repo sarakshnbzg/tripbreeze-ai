@@ -2,7 +2,7 @@
 
 import json
 
-from infrastructure.llms.model_factory import create_chat_model, extract_token_usage
+from infrastructure.llms.model_factory import create_chat_model, extract_token_usage, invoke_with_retry
 from infrastructure.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -56,7 +56,8 @@ def trip_finaliser(state: dict) -> dict:
         model,
         temperature=0.5,
     )
-    response = llm.invoke(
+    response = invoke_with_retry(
+        llm,
         FINALISER_PROMPT.format(
             currency=state.get("trip_request", {}).get("currency", "EUR"),
             trip_request=json.dumps(state.get("trip_request", {}), indent=2),

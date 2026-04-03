@@ -7,6 +7,13 @@ from typing import Any
 
 from langchain_openai import ChatOpenAI
 from langchain_openai import OpenAIEmbeddings
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+    before_sleep_log,
+)
 
 from config import (
     DEFAULT_LLM_MODEL,
@@ -129,6 +136,43 @@ def extract_token_usage(response, *, model: str, node: str) -> dict:
         "output_tokens": output_tokens,
         "cost": cost,
     }
+
+
+_RETRYABLE_EXCEPTIONS = (TimeoutError, ConnectionError)
+
+try:
+    from openai import APITimeoutError, RateLimitError, APIConnectionError, InternalServerError
+
+    _RETRYABLE_EXCEPTIONS += (APITimeoutError, RateLimitError, APIConnectionError, InternalServerError)
+except ImportError:
+    pass
+
+try:
+    from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable, DeadlineExceeded
+
+    _RETRYABLE_EXCEPTIONS += (ResourceExhausted, ServiceUnavailable, DeadlineExceeded)
+except ImportError:
+    pass
+
+
+def invoke_with_retry(llm, prompt, *, max_attempts: int = 3):
+    """Invoke an LLM with automatic retry on transient failures.
+
+    Retries up to *max_attempts* times with exponential back-off (1s, 2s, 4s …)
+    on rate-limit, timeout, and server errors from OpenAI / Google.
+    """
+
+    @retry(
+        retry=retry_if_exception_type(_RETRYABLE_EXCEPTIONS),
+        stop=stop_after_attempt(max_attempts),
+        wait=wait_exponential(multiplier=1, min=1, max=16),
+        before_sleep=before_sleep_log(logger, 30),  # logging.WARNING
+        reraise=True,
+    )
+    def _call():
+        return llm.invoke(prompt)
+
+    return _call()
 
 
 def create_embeddings(provider: str | None = None):

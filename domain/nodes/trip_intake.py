@@ -6,7 +6,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from infrastructure.currency_utils import format_currency
-from infrastructure.llms.model_factory import create_chat_model, extract_token_usage
+from infrastructure.llms.model_factory import create_chat_model, extract_token_usage, invoke_with_retry
 from infrastructure.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -88,8 +88,9 @@ def _parse_preferences(llm, preferences: str, model: str) -> tuple[dict[str, Any
 
     logger.info("Parsing preferences via LLM: %s", preferences)
     llm_with_tools = llm.bind_tools([ExtractPreferences])
-    response = llm_with_tools.invoke(
-        f"{PREFERENCES_PROMPT}\n\nSpecial requests: {preferences}"
+    response = invoke_with_retry(
+        llm_with_tools,
+        f"{PREFERENCES_PROMPT}\n\nSpecial requests: {preferences}",
     )
 
     usage = extract_token_usage(response, model=model, node="trip_intake")
