@@ -50,8 +50,9 @@ class TestRetrieve:
                 return "vector_retriever"
 
         class FakeDoc:
-            def __init__(self, page_content):
+            def __init__(self, page_content, source):
                 self.page_content = page_content
+                self.metadata = {"source": source}
 
         class FakeEnsembleRetriever:
             def __init__(self, retrievers, weights):
@@ -60,7 +61,10 @@ class TestRetrieve:
 
             def invoke(self, query):
                 calls["query"] = query
-                return [FakeDoc("chunk 1"), FakeDoc("chunk 2")]
+                return [
+                    FakeDoc("chunk 1", "knowledge_base/destinations.md"),
+                    FakeDoc("chunk 2", "knowledge_base/visa_requirements.md"),
+                ]
 
         monkeypatch.setattr(
             "infrastructure.rag.vectorstore._build_vectorstore",
@@ -86,4 +90,7 @@ class TestRetrieve:
         assert calls["provider"] == "google"
         assert calls["search_kwargs"] == {"k": 2}
         assert calls["query"] == "visa query"
-        assert result == ["chunk 1", "chunk 2"]
+        assert result == [
+            {"content": "chunk 1", "source": "Destinations"},
+            {"content": "chunk 2", "source": "Visa Requirements"},
+        ]

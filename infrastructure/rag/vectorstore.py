@@ -90,11 +90,23 @@ def _build_vectorstore(
     )
 
 
-def retrieve(query: str, k: int = RAG_TOP_K, provider: str | None = DEFAULT_LLM_PROVIDER) -> list[str]:
-    """Return the top-k relevant text chunks using hybrid search.
+def _source_label(source_path: str) -> str:
+    """Turn a file path like 'knowledge_base/visa_requirements.md' into 'Visa Requirements'."""
+    from pathlib import Path
+
+    stem = Path(source_path).stem  # e.g. "visa_requirements"
+    return stem.replace("_", " ").title()
+
+
+def retrieve(
+    query: str, k: int = RAG_TOP_K, provider: str | None = DEFAULT_LLM_PROVIDER
+) -> list[dict[str, str]]:
+    """Return the top-k relevant text chunks with source metadata using hybrid search.
 
     Combines vector similarity (ChromaDB) with keyword matching (BM25)
     using reciprocal rank fusion via EnsembleRetriever.
+
+    Each result is a dict with keys ``content`` and ``source``.
     """
     logger.info("Running RAG retrieval query=%s k=%s provider=%s", query, k, provider)
     # Vector retriever
@@ -113,4 +125,10 @@ def retrieve(query: str, k: int = RAG_TOP_K, provider: str | None = DEFAULT_LLM_
 
     docs = ensemble_retriever.invoke(query)
     logger.info("RAG retrieval returned %s documents", len(docs[:k]))
-    return [doc.page_content for doc in docs[:k]]
+    return [
+        {
+            "content": doc.page_content,
+            "source": _source_label(doc.metadata.get("source", "Unknown")),
+        }
+        for doc in docs[:k]
+    ]

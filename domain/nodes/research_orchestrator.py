@@ -34,6 +34,10 @@ Available tools:
 Do not call tools that are impossible because required inputs are missing.
 If the knowledge base is thin, say that clearly instead of inventing facts.
 Only describe hotel star filtering as a user-requested criterion when `trip_request.hotel_stars_user_specified` is true.
+
+When writing the destination_briefing, cite the source of each piece of information
+inline using the source labels returned by `retrieve_knowledge`.
+Use the format "(Source: <label>)" at the end of each relevant sentence or paragraph.
 """
 
 
@@ -111,6 +115,7 @@ def research_orchestrator(state: dict) -> dict:
         "hotel_options": state.get("hotel_options"),
         "destination_info": state.get("destination_info", ""),
         "rag_used": False,
+        "rag_sources": [],
     }
 
     tool_state = {
@@ -155,8 +160,17 @@ def research_orchestrator(state: dict) -> dict:
             effective_query,
         )
         collected["rag_used"] = True
-        chunks = retrieve(effective_query, provider=state.get("llm_provider"))
-        return json.dumps({"query": effective_query, "chunks": chunks})
+        results = retrieve(effective_query, provider=state.get("llm_provider"))
+        # Track unique sources across all retrieval calls
+        for r in results:
+            if r["source"] not in collected["rag_sources"]:
+                collected["rag_sources"].append(r["source"])
+        return json.dumps({
+            "query": effective_query,
+            "chunks": [
+                {"content": r["content"], "source": r["source"]} for r in results
+            ],
+        })
 
     final_result: dict[str, Any] = {}
     token_usage: list[dict] = []
@@ -230,6 +244,7 @@ def research_orchestrator(state: dict) -> dict:
         "hotel_options": collected.get("hotel_options") or [],
         "destination_info": collected.get("destination_info") or "",
         "rag_used": bool(collected.get("rag_used")),
+        "rag_sources": collected.get("rag_sources") or [],
         "token_usage": token_usage,
         "messages": [{"role": "assistant", "content": summary}],
         "current_step": "research_complete",

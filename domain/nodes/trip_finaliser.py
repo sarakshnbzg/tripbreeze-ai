@@ -22,6 +22,9 @@ Selected Hotel:
 Destination Information:
 {destination_info}
 
+Knowledge Base Sources Used:
+{rag_sources}
+
 Budget Summary:
 {budget}
 
@@ -35,6 +38,10 @@ Create a comprehensive but concise trip plan that includes:
 5. Budget breakdown in the trip currency ({currency})
 6. Important visa/entry information
 7. Packing and preparation tips
+
+When destination information was sourced from the knowledge base, include a "Sources" section
+at the end listing the knowledge base documents that were referenced.
+Preserve any inline "(Source: ...)" citations from the destination information.
 
 Make it feel like a professional travel itinerary document."""
 
@@ -64,6 +71,7 @@ def trip_finaliser(state: dict) -> dict:
             selected_flight=json.dumps(selected_flight, indent=2) or "No flight selected",
             selected_hotel=json.dumps(selected_hotel, indent=2) or "No hotel selected",
             destination_info=state.get("destination_info", "") or "No destination info available",
+            rag_sources=", ".join(state.get("rag_sources", [])) or "None",
             budget=json.dumps(state.get("budget", {}), indent=2) or "No budget info",
             feedback=state.get("user_feedback", "") or "None",
         )

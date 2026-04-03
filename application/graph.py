@@ -45,6 +45,7 @@ def hitl_review(state: dict) -> dict:
     budget = state.get("budget", {})
     dest_info = state.get("destination_info", "")
     rag_used = state.get("rag_used", False)
+    rag_sources = state.get("rag_sources", [])
     trip = state.get("trip_request", {})
     logger.info(
         "Preparing HITL review with %s flights, %s hotels, budget_present=%s, destination_info_present=%s",
@@ -59,7 +60,8 @@ def hitl_review(state: dict) -> dict:
     if dest_info:
         heading = "**Destination Briefing**"
         if rag_used:
-            heading += "\n**From RAG** This section was generated from the local knowledge base retrieval."
+            source_list = ", ".join(rag_sources) if rag_sources else "local knowledge base"
+            heading += f"\n**Sources:** {source_list}"
         parts.append(f"{heading}\n{dest_info}")
     elif rag_used:
         parts.append(
