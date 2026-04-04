@@ -1,6 +1,7 @@
 """Trip Intake node — builds trip request from structured form fields
-and uses LLM tool calling only to parse the free-text preferences."""
+and/or a free-text query, using LLM tool calling to parse user input."""
 
+from datetime import date, timedelta
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -16,6 +17,13 @@ The user provided free-text special requests for their trip.
 Extract any structured filter criteria from the text.
 Always call the provided ExtractPreferences tool exactly once.
 If no relevant criteria are mentioned, use the default values.
+"""
+
+FREE_TEXT_PROMPT = """You are a travel planning assistant.
+The user described a trip in natural language. Extract trip details from their message.
+Always call the provided ExtractTripDetails tool exactly once.
+If certain details are not mentioned, use the default values.
+Today's date is {today}.
 """
 
 
@@ -76,6 +84,83 @@ class ExtractPreferences(BaseModel):
         default="",
         description="Cabin class if mentioned: ECONOMY, PREMIUM_ECONOMY, BUSINESS, or FIRST. Empty if not specified.",
     )
+
+
+class ExtractTripDetails(BaseModel):
+    """Full trip details extracted from a free-text query."""
+
+    origin: str = Field(
+        default="",
+        description="Origin / departure city. Empty if not mentioned.",
+    )
+    destination: str = Field(
+        default="",
+        description="Destination city. Empty if not mentioned.",
+    )
+    departure_date: str = Field(
+        default="",
+        description="Departure date in YYYY-MM-DD format. Empty if not mentioned.",
+    )
+    return_date: str = Field(
+        default="",
+        description="Return date in YYYY-MM-DD format. Empty if not mentioned.",
+    )
+    num_travelers: int = Field(
+        default=1,
+        description="Number of travelers. Use 1 if not mentioned.",
+    )
+    budget_limit: float = Field(
+        default=0,
+        description="Total budget limit. Use 0 if not mentioned.",
+    )
+    currency: str = Field(
+        default="",
+        description="Currency code (e.g. USD, EUR, GBP). Empty if not mentioned.",
+    )
+    preferences: str = Field(
+        default="",
+        description="Any remaining special requests or preferences not captured by other fields.",
+    )
+    # Also extract filter preferences in the same call
+    stops: int | None = Field(
+        default=None,
+        description="Maximum number of stops (0=direct, 1, 2). None if not specified.",
+    )
+    max_flight_price: float = Field(
+        default=0,
+        description="Maximum flight price per person. 0 if not specified.",
+    )
+    hotel_stars: list[int] = Field(
+        default_factory=list,
+        description="Preferred hotel star ratings (1-5). Empty if not specified.",
+    )
+    travel_class: str = Field(
+        default="",
+        description="Cabin class: ECONOMY, PREMIUM_ECONOMY, BUSINESS, or FIRST. Empty if not specified.",
+    )
+
+
+def _parse_free_text(llm, query: str, model: str) -> tuple[dict[str, Any], dict | None]:
+    """Use LLM tool calling to extract full trip details from a free-text query."""
+    if not query.strip():
+        return {}, None
+
+    logger.info("Parsing free-text query via LLM: %s", query)
+    llm_with_tools = llm.bind_tools([ExtractTripDetails])
+    prompt = FREE_TEXT_PROMPT.format(today=date.today().isoformat())
+    response = invoke_with_retry(
+        llm_with_tools,
+        f"{prompt}\n\nUser query: {query}",
+    )
+
+    usage = extract_token_usage(response, model=model, node="trip_intake")
+
+    tool_calls = getattr(response, "tool_calls", []) or []
+    if not tool_calls:
+        logger.warning("Free-text extraction returned no tool calls")
+        return {}, usage
+
+    return tool_calls[0].get("args", {}), usage
 
 
 def _parse_preferences(llm, preferences: str, model: str) -> tuple[dict[str, Any], dict | None]:
@@ -180,26 +265,52 @@ def _normalise_trip_data(raw_trip_data: dict[str, Any], profile: dict[str, Any])
 
 
 def trip_intake(state: dict) -> dict:
-    """LangGraph node: build trip request from structured form fields."""
+    """LangGraph node: build trip request from structured form fields and/or free text."""
     profile = state.get("user_profile", {})
     structured_fields = state.get("structured_fields", {})
-
-    logger.info("Trip intake using structured fields")
-    raw_trip_data = dict(structured_fields)
+    free_text_query = state.get("free_text_query", "")
 
     token_usage: list[dict] = []
+    model = state.get("llm_model")
+    provider = state.get("llm_provider")
+
+    # Start with structured fields as the base
+    raw_trip_data = dict(structured_fields)
+
+    # If there's a free-text query, extract trip details from it
+    if free_text_query.strip():
+        logger.info("Trip intake parsing free-text query")
+        llm = create_chat_model(provider, model, temperature=0)
+        parsed_query, usage = _parse_free_text(llm, free_text_query, model=model)
+        if usage:
+            token_usage.append(usage)
+
+        # Free-text extracted values fill in gaps (structured fields take precedence)
+        for key, value in parsed_query.items():
+            if value is not None and value != "" and value != [] and value != 0:
+                if not raw_trip_data.get(key):
+                    raw_trip_data[key] = value
+
+        # If the free-text query had extra preferences, append to existing
+        if parsed_query.get("preferences"):
+            existing_prefs = raw_trip_data.get("preferences", "")
+            ft_prefs = parsed_query["preferences"]
+            if existing_prefs and ft_prefs not in existing_prefs:
+                raw_trip_data["preferences"] = f"{existing_prefs}, {ft_prefs}"
+            elif not existing_prefs:
+                raw_trip_data["preferences"] = ft_prefs
+    else:
+        logger.info("Trip intake using structured fields only")
+
+    # Parse any remaining free-text preferences into filter criteria
     preferences = raw_trip_data.get("preferences", "")
-    if preferences.strip():
-        model = state.get("llm_model")
-        llm = create_chat_model(
-            state.get("llm_provider"),
-            model,
-            temperature=0,
-        )
+    if preferences.strip() and not free_text_query.strip():
+        # Only run separate preferences parsing if we didn't already parse free text
+        # (free text parsing already extracts filter criteria)
+        llm = create_chat_model(provider, model, temperature=0)
         parsed, usage = _parse_preferences(llm, preferences, model=model)
         if usage:
             token_usage.append(usage)
-        # Merge LLM-extracted filters into trip data
         for key in (
             "stops", "max_flight_price", "max_duration", "bags", "emissions",
             "layover_duration_min", "layover_duration_max",

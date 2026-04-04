@@ -21,6 +21,9 @@ class TravelState(TypedDict, total=False):
     # Profile (from long-term memory)
     user_profile: dict[str, Any]
 
+    # Free-text trip query (natural language input from the user)
+    free_text_query: str
+
     # Structured form fields (passed directly from UI, skips LLM parsing)
     structured_fields: dict[str, Any]
 
@@ -45,6 +48,7 @@ class TravelState(TypedDict, total=False):
 
     # Final output
     final_itinerary: str
+    itinerary_data: dict[str, Any]
 
     # Conversation history (append-only via operator.add)
     messages: Annotated[list[dict], operator.add]

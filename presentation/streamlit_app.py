@@ -7,6 +7,7 @@ This module only imports from the application and infrastructure layers.
 import streamlit as st
 
 from datetime import date, timedelta
+from typing import Any
 
 from config import (
     AIRLINES,
@@ -105,7 +106,11 @@ def _display_messages() -> None:
             st.markdown(message["content"])
 
 
-def _run_initial_planning(user_message: str, structured_fields: dict | None = None) -> None:
+def _run_initial_planning(
+    user_message: str,
+    structured_fields: dict | None = None,
+    free_text_query: str | None = None,
+) -> None:
     logger.info(
         "Starting initial planning for user_id=%s provider=%s model=%s",
         st.session_state.user_id,
@@ -131,6 +136,8 @@ def _run_initial_planning(user_message: str, structured_fields: dict | None = No
     }
     if structured_fields is not None:
         initial_state["structured_fields"] = structured_fields
+    if free_text_query:
+        initial_state["free_text_query"] = free_text_query
 
     try:
         with st.spinner("Researching flights, hotels, and destination info..."):
@@ -530,7 +537,7 @@ def _build_trip_message(fields: dict) -> str:
 
 
 def _render_trip_form() -> None:
-    """Render the structured trip request form."""
+    """Render the trip request form with free-text primary input and optional structured fields."""
     saved_profiles = list_profiles()
     if not saved_profiles:
         saved_profiles = [st.session_state.user_id]
@@ -555,89 +562,124 @@ def _render_trip_form() -> None:
     with st.form("trip_form"):
         st.subheader("Plan Your Trip")
 
-        col1, col2 = st.columns(2)
-        with col1:
-            origin_options = CITIES if default_origin in CITIES else [default_origin] + CITIES
-            origin = st.selectbox(
-                "From (Origin City)",
-                options=origin_options,
-                index=origin_options.index(default_origin) if default_origin else 0,
-            )
-        with col2:
-            destination = st.selectbox(
-                "To (Destination City)",
-                options=DESTINATIONS,
-                index=0,
-            )
-
-        col3, col4 = st.columns(2)
-        with col3:
-            departure_date = st.date_input(
-                "Departure Date",
-                value=date.today() + timedelta(days=14),
-                min_value=date.today(),
-            )
-        with col4:
-            return_date = st.date_input(
-                "Return Date",
-                value=date.today() + timedelta(days=21),
-                min_value=date.today(),
-            )
-
-        col5, col6, col7 = st.columns(3)
-        with col5:
-            num_travelers = st.number_input(
-                "Travelers", min_value=1, max_value=10, value=1,
-            )
-        with col6:
-            default_currency = normalise_currency(DEFAULT_CURRENCY)
-            currency = st.selectbox(
-                "Currency",
-                options=CURRENCIES,
-                index=CURRENCIES.index(default_currency),
-            )
-        with col7:
-            budget_limit = st.number_input(
-                "Budget (0 = flexible)", min_value=0, max_value=100000, value=0, step=500,
-            )
-
-        preferences = st.text_input(
-            "Special Requests (optional)",
-            placeholder="e.g. direct flights only, near city centre",
+        # Primary input: free-text query
+        free_text = st.text_area(
+            "Describe your trip",
+            placeholder="e.g. I want to fly from London to Tokyo, June 10-17, budget $3000, direct flights only",
+            help="Type your trip request in plain English. You can also use the fields below to be more specific.",
+            height=100,
         )
+
+        # Optional structured fields for refinement
+        with st.expander("Refine your search (optional)"):
+            col1, col2 = st.columns(2)
+            with col1:
+                origin_options = [""] + (CITIES if default_origin in CITIES else [default_origin] + CITIES)
+                origin = st.selectbox(
+                    "From (Origin City)",
+                    options=origin_options,
+                    index=origin_options.index(default_origin) if default_origin in origin_options else 0,
+                    help="Leave blank to use the origin from your text above.",
+                )
+            with col2:
+                destination_options = [""] + DESTINATIONS
+                destination = st.selectbox(
+                    "To (Destination City)",
+                    options=destination_options,
+                    index=0,
+                    help="Leave blank to use the destination from your text above.",
+                )
+
+            col3, col4 = st.columns(2)
+            with col3:
+                departure_date = st.date_input(
+                    "Departure Date",
+                    value=date.today() + timedelta(days=14),
+                    min_value=date.today(),
+                )
+            with col4:
+                return_date = st.date_input(
+                    "Return Date",
+                    value=date.today() + timedelta(days=21),
+                    min_value=date.today(),
+                )
+
+            col5, col6, col7 = st.columns(3)
+            with col5:
+                num_travelers = st.number_input(
+                    "Travelers", min_value=1, max_value=10, value=1,
+                )
+            with col6:
+                default_currency = normalise_currency(DEFAULT_CURRENCY)
+                currency = st.selectbox(
+                    "Currency",
+                    options=CURRENCIES,
+                    index=CURRENCIES.index(default_currency),
+                )
+            with col7:
+                budget_limit = st.number_input(
+                    "Budget (0 = flexible)", min_value=0, max_value=100000, value=0, step=500,
+                )
+
+            preferences = st.text_input(
+                "Special Requests (optional)",
+                placeholder="e.g. direct flights only, near city centre",
+            )
 
         submitted = st.form_submit_button(
             "Search Flights & Hotels", type="primary", use_container_width=True,
         )
 
     if submitted:
-        if not destination:
-            st.warning("Please select a destination.")
-            return
-        if return_date <= departure_date:
-            st.warning("Return date must be after departure date.")
+        # Build structured fields from the form (only include non-empty values)
+        fields: dict[str, Any] = {}
+        if origin:
+            fields["origin"] = origin
+        if destination:
+            fields["destination"] = destination
+        if num_travelers > 1:
+            fields["num_travelers"] = num_travelers
+        if budget_limit > 0:
+            fields["budget_limit"] = budget_limit
+        fields["currency"] = currency
+        if preferences:
+            fields["preferences"] = preferences
+
+        has_free_text = bool(free_text.strip())
+        has_structured = bool(fields.get("origin") or fields.get("destination"))
+
+        if not has_free_text and not has_structured:
+            st.warning("Please describe your trip or fill in at least a destination.")
             return
 
-        fields = {
-            "origin": origin,
-            "destination": destination,
-            "departure_date": str(departure_date),
-            "return_date": str(return_date),
-            "num_travelers": num_travelers,
-            "budget_limit": budget_limit,
-            "currency": currency,
-            "preferences": preferences,
-        }
-        user_message = _build_trip_message(fields)
+        # Always include dates from the form (they have sensible defaults)
+        fields["departure_date"] = str(departure_date)
+        fields["return_date"] = str(return_date)
+
+        if fields.get("return_date") and fields.get("departure_date"):
+            if return_date <= departure_date:
+                st.warning("Return date must be after departure date.")
+                return
+
+        # Build display message
+        if has_free_text:
+            user_message = free_text.strip()
+        else:
+            user_message = _build_trip_message(fields)
+
         st.session_state.messages.append({"role": "user", "content": user_message})
-        _run_initial_planning(user_message, structured_fields=fields)
+        _run_initial_planning(
+            user_message,
+            structured_fields=fields if has_structured else None,
+            free_text_query=free_text.strip() if has_free_text else None,
+        )
         st.rerun()
 
 
 def _render_main_area() -> None:
     st.title("TripBreeze AI")
     st.caption(
-        "Fill in your trip details below and I'll find flights, hotels, and destination info for you."
+        "Describe your trip below and I'll find flights, hotels, and destination info for you."
     )
     _display_messages()
 
