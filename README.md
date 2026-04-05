@@ -79,48 +79,6 @@ TripBreeze stores these separately under `chroma_db/openai` and `chroma_db/googl
 uv run streamlit run app.py
 ```
 
-## Deploy To Streamlit Community Cloud
-
-This repo is ready to deploy on Streamlit Community Cloud with `app.py` as the entrypoint.
-
-### Before you deploy
-
-- Push this repository to GitHub.
-- Make sure your app secrets are not committed.
-- Use Streamlit's app settings to provide secrets instead of relying on a local `.env`.
-
-Community Cloud supports multiple dependency file formats and will automatically detect one from your repo. This project already includes `uv.lock` and `pyproject.toml`, so you do not need to add a separate `requirements.txt`.
-
-### Secrets
-
-Copy `.streamlit/secrets.toml.example` into your local `.streamlit/secrets.toml` for local testing if you want, but do not commit that file.
-
-When deploying, paste the equivalent values into the app's "Advanced settings" secrets box:
-
-```toml
-OPENAI_API_KEY = "..."
-GOOGLE_API_KEY = "..."
-SERPAPI_API_KEY = "..."
-LANGCHAIN_TRACING_V2 = "false"
-LANGCHAIN_PROJECT = "tripbreeze-ai"
-LANGCHAIN_API_KEY = "..."
-```
-
-The app reads config from environment variables locally and falls back to `st.secrets` on Streamlit Community Cloud.
-
-### Deploy steps
-
-1. Open Streamlit Community Cloud.
-2. Create a new app from this GitHub repository.
-3. Set the main file path to `app.py`.
-4. Choose Python `3.13` in Advanced settings to match `pyproject.toml`.
-5. Paste your secrets into the secrets box.
-6. Deploy the app.
-
-### Important note about persistence
-
-TripBreeze stores user memory in `memory/` and retrieval indexes in `chroma_db/`. Community Cloud storage is not a durable database, so those files may be cleared when the app rebuilds or moves. The app will still run, but saved traveler profiles and cached RAG indexes should be treated as temporary in this hosting environment.
-
 ## Typical Flow
 
 1. Select an LLM provider and model in the sidebar.
