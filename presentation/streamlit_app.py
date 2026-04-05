@@ -139,9 +139,24 @@ def _run_initial_planning(
     if free_text_query:
         initial_state["free_text_query"] = free_text_query
 
+    node_labels = {
+        "load_profile": "Loading your traveler profile...",
+        "trip_intake": "Understanding your trip request...",
+        "research": "Researching flights, hotels, and destination info...",
+        "aggregate_budget": "Calculating budget breakdown...",
+        "review": "Preparing your trip summary...",
+    }
+
     try:
-        with st.spinner("Researching flights, hotels, and destination info..."):
-            result = compile_graph().invoke(initial_state)
+        result = initial_state.copy()
+        with st.status("Planning your trip...", expanded=True) as status:
+            for event in compile_graph().stream(initial_state):
+                for node_name, node_output in event.items():
+                    label = node_labels.get(node_name, f"Running {node_name}...")
+                    st.write(label)
+                    logger.info("Streaming node completed: %s", node_name)
+                    result.update(node_output)
+            status.update(label="Trip research complete!", state="complete", expanded=False)
     except Exception as exc:
         logger.exception("Initial planning failed")
         _append_assistant_message(f"I hit an error while planning your trip: {exc}")

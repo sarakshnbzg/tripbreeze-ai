@@ -25,8 +25,8 @@ DEFAULT_LLM_MODEL = {
     "google": "gemini-2.5-flash",
 }
 EMBEDDING_MODELS = {
-    "openai": "text-embedding-3-small",
-    "google": "gemini-embedding-001",
+    "openai": os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"),
+    "google": os.getenv("GOOGLE_EMBEDDING_MODEL", "gemini-embedding-001"),
 }
 
 # RAG settings
