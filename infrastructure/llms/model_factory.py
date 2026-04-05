@@ -59,17 +59,17 @@ def get_provider_status(provider: str) -> tuple[bool, str]:
             return (
                 False,
                 "Google Gemini support requires the `langchain-google-genai` package. "
-                "Run `pip install -r requirements.txt`.",
+                "Install dependencies with `uv sync`.",
             )
         if not GOOGLE_API_KEY:
             return (
                 False,
-                "Google Gemini support requires `GOOGLE_API_KEY` or `GEMINI_API_KEY` in `.env`.",
+                "Google Gemini support requires `GOOGLE_API_KEY` or `GEMINI_API_KEY` in your environment or Streamlit secrets.",
             )
         return True, ""
 
     if not OPENAI_API_KEY:
-        return False, "OpenAI support requires `OPENAI_API_KEY` in `.env`."
+        return False, "OpenAI support requires `OPENAI_API_KEY` in your environment or Streamlit secrets."
 
     return True, ""
 

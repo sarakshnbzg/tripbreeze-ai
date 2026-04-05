@@ -37,16 +37,14 @@ Profile Loader
 ### Prerequisites
 
 - Python 3.13
-- Conda or Miniconda
 - `SERPAPI_API_KEY`
 - `OPENAI_API_KEY`, `GOOGLE_API_KEY`, or both
 
 ### Install
 
 ```bash
-conda create -n tripbreeze-ai python=3.13 -y
-conda activate tripbreeze-ai
-pip install -r requirements.txt
+pip install uv
+uv sync
 cp .env.example .env
 ```
 
@@ -63,14 +61,14 @@ SERPAPI_API_KEY=...
 Run this once on first setup, and again after editing files in `knowledge_base/`:
 
 ```bash
-python scripts/rebuild_rag.py
+uv run python scripts/rebuild_rag.py
 ```
 
 If you want retrieval to work with both supported providers, rebuild a provider-specific index for each one:
 
 ```bash
-python scripts/rebuild_rag.py openai
-python scripts/rebuild_rag.py google
+uv run python scripts/rebuild_rag.py openai
+uv run python scripts/rebuild_rag.py google
 ```
 
 TripBreeze stores these separately under `chroma_db/openai` and `chroma_db/google`, and automatically uses the matching index for the provider selected in the app.
@@ -78,8 +76,50 @@ TripBreeze stores these separately under `chroma_db/openai` and `chroma_db/googl
 ### Run
 
 ```bash
-streamlit run app.py
+uv run streamlit run app.py
 ```
+
+## Deploy To Streamlit Community Cloud
+
+This repo is ready to deploy on Streamlit Community Cloud with `app.py` as the entrypoint.
+
+### Before you deploy
+
+- Push this repository to GitHub.
+- Make sure your app secrets are not committed.
+- Use Streamlit's app settings to provide secrets instead of relying on a local `.env`.
+
+Community Cloud supports multiple dependency file formats and will automatically detect one from your repo. This project already includes `uv.lock` and `pyproject.toml`, so you do not need to add a separate `requirements.txt`.
+
+### Secrets
+
+Copy `.streamlit/secrets.toml.example` into your local `.streamlit/secrets.toml` for local testing if you want, but do not commit that file.
+
+When deploying, paste the equivalent values into the app's "Advanced settings" secrets box:
+
+```toml
+OPENAI_API_KEY = "..."
+GOOGLE_API_KEY = "..."
+SERPAPI_API_KEY = "..."
+LANGCHAIN_TRACING_V2 = "false"
+LANGCHAIN_PROJECT = "tripbreeze-ai"
+LANGCHAIN_API_KEY = "..."
+```
+
+The app reads config from environment variables locally and falls back to `st.secrets` on Streamlit Community Cloud.
+
+### Deploy steps
+
+1. Open Streamlit Community Cloud.
+2. Create a new app from this GitHub repository.
+3. Set the main file path to `app.py`.
+4. Choose Python `3.13` in Advanced settings to match `pyproject.toml`.
+5. Paste your secrets into the secrets box.
+6. Deploy the app.
+
+### Important note about persistence
+
+TripBreeze stores user memory in `memory/` and retrieval indexes in `chroma_db/`. Community Cloud storage is not a durable database, so those files may be cleared when the app rebuilds or moves. The app will still run, but saved traveler profiles and cached RAG indexes should be treated as temporary in this hosting environment.
 
 ## Typical Flow
 
@@ -125,5 +165,5 @@ tripbreeze-ai/
 ## Notes
 
 - Model names, API keys, paths, and defaults are centralised in `config.py`.
-- If retrieval looks stale, rebuild the RAG index with `python scripts/rebuild_rag.py`.
-- If imports fail, make sure the Conda environment is active before running the app.
+- If retrieval looks stale, rebuild the RAG index with `uv run python scripts/rebuild_rag.py`.
+- If commands are missing, run them through `uv run` or make sure the project's virtual environment is active.

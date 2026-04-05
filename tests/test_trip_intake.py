@@ -156,32 +156,45 @@ class TestNormaliseTripData:
 
 class TestParsePreferences:
     def test_empty_preferences_returns_empty(self):
-        assert _parse_preferences(None, "") == {}
-        assert _parse_preferences(None, "   ") == {}
+        assert _parse_preferences(None, "", model="gpt-4o-mini") == ({}, None)
+        assert _parse_preferences(None, "   ", model="gpt-4o-mini") == ({}, None)
 
-    def test_llm_tool_call_result_returned(self):
+    @patch("domain.nodes.trip_intake.extract_token_usage")
+    @patch("domain.nodes.trip_intake.invoke_with_retry")
+    def test_llm_tool_call_result_returned(self, mock_invoke_with_retry, mock_extract_token_usage):
         mock_llm = MagicMock()
         mock_response = MagicMock()
         mock_response.tool_calls = [
             {"args": {"stops": 0, "max_flight_price": 400}}
         ]
         mock_bound = MagicMock()
-        mock_bound.invoke.return_value = mock_response
         mock_llm.bind_tools.return_value = mock_bound
+        mock_invoke_with_retry.return_value = mock_response
+        mock_extract_token_usage.return_value = {"node": "trip_intake", "model": "gpt-4o-mini"}
 
-        result = _parse_preferences(mock_llm, "direct flights, under 400 euros")
-        assert result == {"stops": 0, "max_flight_price": 400}
+        parsed, usage = _parse_preferences(
+            mock_llm,
+            "direct flights, under 400 euros",
+            model="gpt-4o-mini",
+        )
 
-    def test_no_tool_calls_returns_empty(self):
+        assert parsed == {"stops": 0, "max_flight_price": 400}
+        assert usage == {"node": "trip_intake", "model": "gpt-4o-mini"}
+
+    @patch("domain.nodes.trip_intake.extract_token_usage")
+    @patch("domain.nodes.trip_intake.invoke_with_retry")
+    def test_no_tool_calls_returns_empty(self, mock_invoke_with_retry, mock_extract_token_usage):
         mock_llm = MagicMock()
         mock_response = MagicMock()
         mock_response.tool_calls = []
         mock_bound = MagicMock()
-        mock_bound.invoke.return_value = mock_response
         mock_llm.bind_tools.return_value = mock_bound
+        mock_invoke_with_retry.return_value = mock_response
+        mock_extract_token_usage.return_value = {"node": "trip_intake", "model": "gpt-4o-mini"}
 
-        result = _parse_preferences(mock_llm, "some preferences")
-        assert result == {}
+        parsed, usage = _parse_preferences(mock_llm, "some preferences", model="gpt-4o-mini")
+        assert parsed == {}
+        assert usage == {"node": "trip_intake", "model": "gpt-4o-mini"}
 
 
 # ── trip_intake (node function) ──

@@ -14,9 +14,27 @@ MEMORY_DIR = PROJECT_ROOT / "memory"
 # Environment
 load_dotenv(PROJECT_ROOT / ".env")
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "") or os.getenv("GEMINI_API_KEY", "")
-SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY", "")
+
+def _get_config_value(name: str, default: str = "") -> str:
+    """Read configuration from env vars first, then Streamlit secrets if available."""
+    env_value = os.getenv(name)
+    if env_value:
+        return env_value
+
+    try:
+        import streamlit as st
+
+        if name in st.secrets:
+            value = st.secrets[name]
+            return str(value) if value is not None else default
+    except Exception:
+        pass
+
+    return default
+
+OPENAI_API_KEY = _get_config_value("OPENAI_API_KEY", "")
+GOOGLE_API_KEY = _get_config_value("GOOGLE_API_KEY", "") or _get_config_value("GEMINI_API_KEY", "")
+SERPAPI_API_KEY = _get_config_value("SERPAPI_API_KEY", "")
 
 # Model settings
 DEFAULT_LLM_PROVIDER = "openai"
@@ -25,8 +43,8 @@ DEFAULT_LLM_MODEL = {
     "google": "gemini-2.5-flash",
 }
 EMBEDDING_MODELS = {
-    "openai": os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"),
-    "google": os.getenv("GOOGLE_EMBEDDING_MODEL", "gemini-embedding-001"),
+    "openai": _get_config_value("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"),
+    "google": _get_config_value("GOOGLE_EMBEDDING_MODEL", "gemini-embedding-001"),
 }
 
 # RAG settings
@@ -44,9 +62,9 @@ DEFAULT_CURRENCY = "EUR"
 DEFAULT_DAILY_EXPENSE = 80.0
 
 # LangSmith tracing
-LANGCHAIN_TRACING_V2 = os.getenv("LANGCHAIN_TRACING_V2", "false").lower() == "true"
-LANGCHAIN_PROJECT = os.getenv("LANGCHAIN_PROJECT", "tripbreeze-ai")
-LANGCHAIN_API_KEY = os.getenv("LANGCHAIN_API_KEY", "")
+LANGCHAIN_TRACING_V2 = _get_config_value("LANGCHAIN_TRACING_V2", "false").lower() == "true"
+LANGCHAIN_PROJECT = _get_config_value("LANGCHAIN_PROJECT", "tripbreeze-ai")
+LANGCHAIN_API_KEY = _get_config_value("LANGCHAIN_API_KEY", "")
 
 if LANGCHAIN_TRACING_V2 and LANGCHAIN_API_KEY:
     os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
@@ -160,4 +178,4 @@ MODEL_COSTS: dict[str, dict[str, float]] = {
 }
 
 # Logging
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+LOG_LEVEL = _get_config_value("LOG_LEVEL", "INFO").upper()
