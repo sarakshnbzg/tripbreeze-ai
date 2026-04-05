@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import logging
+import sys
+
+from pythonjsonlogger.json import JsonFormatter
 
 from config import LOG_LEVEL
 
-_LOG_FORMAT = "%(asctime)s %(levelname)s [%(name)s] %(message)s"
+_JSON_FIELDS = "%(asctime)s %(levelname)s %(name)s %(message)s"
 
 
 def configure_logging(level: str | None = None) -> None:
@@ -16,10 +19,16 @@ def configure_logging(level: str | None = None) -> None:
         root_logger.setLevel(level or LOG_LEVEL)
         return
 
-    logging.basicConfig(
-        level=level or LOG_LEVEL,
-        format=_LOG_FORMAT,
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(
+        JsonFormatter(
+            fmt=_JSON_FIELDS,
+            rename_fields={"asctime": "ts", "levelname": "level", "name": "logger"},
+        )
     )
+
+    root_logger.setLevel(level or LOG_LEVEL)
+    root_logger.addHandler(handler)
 
 
 def get_logger(name: str) -> logging.Logger:
