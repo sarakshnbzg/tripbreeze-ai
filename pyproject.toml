@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "tripbreeze-ai"
 version = "0.1.0"
@@ -19,3 +23,7 @@ dependencies = [
     "pydantic>=2.0.0",
     "python-json-logger>=3.2.0",
 ]
+
+[tool.setuptools]
+packages = ["application", "domain", "infrastructure", "presentation"]
+py-modules = ["app", "config"]
