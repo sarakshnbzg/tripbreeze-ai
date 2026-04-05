@@ -1,17 +1,17 @@
 # TripBreeze AI
 
-TripBreeze AI is a single-trip planning assistant that combines live flight and hotel search, local destination knowledge, budget checks, and itinerary generation in one workflow.
+TripBreeze AI is an AI-powered travel planning assistant that combines live flight and hotel search, destination guidance, budget checks, and itinerary generation in one streamlined workflow.
 
-## What It Does
+## ✨ What It Does
 
-- Searches flights with SerpAPI / Google Flights
-- Searches hotels with SerpAPI / Google Hotels
-- Retrieves destination tips, visa info, and travel guidance from a local RAG knowledge base
-- Tracks budget against the trip request
-- Lets the user review results before finalising
-- Remembers preferences such as home airport, class, and trip history
+- ✈️ Searches flights with SerpAPI / Google Flights
+- 🏨 Searches hotels with SerpAPI / Google Hotels
+- 📚 Retrieves destination tips, visa info, and travel guidance from a local RAG knowledge base
+- 💸 Tracks budget against the trip request
+- ✅ Lets the user review results before finalising
+- 🧠 Remembers preferences such as home airport, class, and trip history
 
-## Workflow
+## 🧭 Workflow
 
 ```text
 Profile Loader
@@ -23,7 +23,7 @@ Profile Loader
   -> Memory Updater
 ```
 
-## Stack
+## 🛠️ Stack
 
 - `LangGraph` for workflow orchestration
 - `Streamlit` for the UI
@@ -32,15 +32,22 @@ Profile Loader
 - `ChromaDB` for local retrieval
 - JSON-based memory for user preferences
 
-## Setup
+## 🚀 Quick Start
 
-### Prerequisites
+Choose one of these paths:
+
+- `Local Python setup` if you want to run the app directly with `uv`
+- `Docker setup` if you want to run everything in a container
+
+## 💻 Local Setup
+
+### 1. Prerequisites
 
 - Python 3.13
 - `SERPAPI_API_KEY`
 - `OPENAI_API_KEY`, `GOOGLE_API_KEY`, or both
 
-### Install
+### 2. Install dependencies
 
 ```bash
 pip install uv
@@ -48,7 +55,7 @@ uv sync
 cp .env.example .env
 ```
 
-Add your keys to `.env`:
+Add your API keys to `.env`:
 
 ```env
 OPENAI_API_KEY=...
@@ -56,7 +63,7 @@ GOOGLE_API_KEY=...
 SERPAPI_API_KEY=...
 ```
 
-### Build The Knowledge Base
+### 3. Build the knowledge base
 
 Run this once on first setup, and again after editing files in `knowledge_base/`:
 
@@ -73,13 +80,42 @@ uv run python scripts/rebuild_rag.py google
 
 TripBreeze stores these separately under `chroma_db/openai` and `chroma_db/google`, and automatically uses the matching index for the provider selected in the app.
 
-### Run
+### 4. Run the app
 
 ```bash
 uv run streamlit run app.py
 ```
 
-## Typical Flow
+Then open `http://localhost:8501`.
+
+## 🐳 Docker Setup
+
+### 1. Build the image
+
+```bash
+docker build -t tripbreeze-ai .
+```
+
+### 2. Run the container
+
+Use your local `.env` file:
+
+```bash
+docker run --rm -p 8501:8501 --env-file .env tripbreeze-ai
+```
+
+If you want profile memory and cached RAG indexes to persist across container restarts, mount the data directories too:
+
+```bash
+docker run --rm -p 8501:8501 --env-file .env \
+  -v "$(pwd)/memory:/app/memory" \
+  -v "$(pwd)/chroma_db:/app/chroma_db" \
+  tripbreeze-ai
+```
+
+Then open `http://localhost:8501`.
+
+## 🧳 Typical Flow
 
 1. Select an LLM provider and model in the sidebar.
 2. Fill in the structured trip form for origin, destination, dates, travellers, budget, and similar core fields.
@@ -87,7 +123,7 @@ uv run streamlit run app.py
 4. Review flight, hotel, destination, and budget results.
 5. Approve to generate the final itinerary.
 
-## Free-Text Preference Examples
+## 💬 Free-Text Preference Examples
 
 Use the form for the main trip details. The optional free-text field is best for extra constraints like these:
 
@@ -103,7 +139,7 @@ Business class, exclude Ryanair, and keep the flight under 10 hours.
 4-star hotels and max flight price of 800 EUR per person.
 ```
 
-## Project Structure
+## 📁 Project Structure
 
 ```text
 tripbreeze-ai/
@@ -120,7 +156,7 @@ tripbreeze-ai/
 └── README.md
 ```
 
-## Notes
+## 📝 Notes
 
 - Model names, API keys, paths, and defaults are centralised in `config.py`.
 - If retrieval looks stale, rebuild the RAG index with `uv run python scripts/rebuild_rag.py`.
