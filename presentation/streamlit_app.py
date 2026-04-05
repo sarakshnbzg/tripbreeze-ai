@@ -523,29 +523,21 @@ def _render_review_actions() -> None:
         placeholder="e.g. I prefer a window seat",
     )
 
-    col1, col2 = st.columns(2)
-    with col1:
-        can_approve = selected_flight_idx is not None or selected_hotel_idx is not None
-        if st.button(
-            "Approve & Generate Itinerary",
-            type="primary",
-            use_container_width=True,
-            disabled=not can_approve,
-        ):
-            state["selected_flight"] = flights[selected_flight_idx] if selected_flight_idx is not None else {}
-            state["selected_hotel"] = hotels[selected_hotel_idx] if selected_hotel_idx is not None else {}
-            st.session_state.graph_state = state
-            st.session_state.messages.append(
-                {"role": "user", "content": "Approved! Please generate my final itinerary."}
-            )
-            _run_finalisation(feedback=feedback)
-            st.rerun()
-
-    with col2:
-        if st.button("Send Feedback", use_container_width=True, disabled=not feedback.strip()):
-            st.session_state.messages.append({"role": "user", "content": feedback})
-            _run_finalisation(feedback=feedback)
-            st.rerun()
+    can_approve = selected_flight_idx is not None or selected_hotel_idx is not None
+    if st.button(
+        "Approve & Generate Itinerary",
+        type="primary",
+        use_container_width=True,
+        disabled=not can_approve,
+    ):
+        state["selected_flight"] = flights[selected_flight_idx] if selected_flight_idx is not None else {}
+        state["selected_hotel"] = hotels[selected_hotel_idx] if selected_hotel_idx is not None else {}
+        st.session_state.graph_state = state
+        st.session_state.messages.append(
+            {"role": "user", "content": "Approved! Please generate my final itinerary."}
+        )
+        _run_finalisation(feedback=feedback)
+        st.rerun()
 
 
 def _build_trip_message(fields: dict) -> str:
