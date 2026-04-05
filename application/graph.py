@@ -23,7 +23,10 @@ logger = get_logger(__name__)
 
 def _format_trip_summary(trip: dict, flights: list[dict], hotels: list[dict]) -> str:
     route = f"{trip.get('origin', '?')} -> {trip.get('destination', '?')}"
-    dates = f"{trip.get('departure_date', '?')} to {trip.get('return_date', '?')}"
+    if trip.get("return_date"):
+        dates = f"{trip.get('departure_date', '?')} to {trip.get('return_date', '?')}"
+    else:
+        dates = f"{trip.get('departure_date', '?')} (one-way)"
     travelers = trip.get("num_travelers", 1)
     class_name = str(trip.get("travel_class", "ECONOMY")).replace("_", " ").title()
 

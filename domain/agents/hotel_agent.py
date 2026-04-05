@@ -16,7 +16,7 @@ def search_hotels(state: dict) -> dict:
 
     destination = trip.get("destination", "")
     check_in = trip.get("departure_date", "")
-    check_out = trip.get("return_date", "")
+    check_out = trip.get("return_date", "") or trip.get("check_out_date", "")
 
     if not all([destination, check_in, check_out]):
         logger.warning(

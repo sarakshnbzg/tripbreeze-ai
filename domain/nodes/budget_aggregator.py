@@ -12,7 +12,8 @@ logger = get_logger(__name__)
 def _trip_days(trip: dict) -> int:
     try:
         d1 = datetime.strptime(trip.get("departure_date", ""), "%Y-%m-%d")
-        d2 = datetime.strptime(trip.get("return_date", ""), "%Y-%m-%d")
+        end_date = trip.get("return_date", "") or trip.get("check_out_date", "")
+        d2 = datetime.strptime(end_date, "%Y-%m-%d")
         return (d2 - d1).days or 1
     except ValueError:
         return 1

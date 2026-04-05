@@ -218,6 +218,7 @@ def _normalise_trip_data(raw_trip_data: dict[str, Any], profile: dict[str, Any])
         "destination": raw_trip_data.get("destination") or "",
         "departure_date": raw_trip_data.get("departure_date") or "",
         "return_date": raw_trip_data.get("return_date") or "",
+        "check_out_date": raw_trip_data.get("check_out_date") or "",
         "num_travelers": raw_trip_data.get("num_travelers") or 1,
         "budget_limit": raw_trip_data.get("budget_limit") or 0,
         "currency": raw_trip_data.get("currency") or "EUR",
@@ -348,7 +349,8 @@ def trip_intake(state: dict) -> dict:
                 "content": (
                     f"Got it! Planning a trip:\n"
                     f"📍 {trip_data.get('origin', '?')} → {trip_data.get('destination', '?')}\n"
-                    f"📅 {trip_data.get('departure_date', '?')} to {trip_data.get('return_date', '?')}\n"
+                    f"📅 {trip_data.get('departure_date', '?')}"
+                    f"{' to ' + trip_data['return_date'] if trip_data.get('return_date') else ' (one-way)'}\n"
                     f"👥 {trip_data.get('num_travelers', 1)} traveler(s)\n"
                     f"💰 Budget: {format_currency(trip_data.get('budget_limit'), trip_data.get('currency')) if trip_data.get('budget_limit') else 'flexible'}\n\n"
                     "Searching for flights, hotels, and destination info..."

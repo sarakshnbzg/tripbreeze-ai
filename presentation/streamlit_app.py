@@ -412,22 +412,34 @@ def _render_review_actions() -> None:
     )
 
     # ── Flight selection ──
-    st.subheader("✈️ Select a Flight")
+    trip_request = state.get("trip_request", {})
+    is_round_trip = bool(trip_request.get("return_date"))
+    trip_type_label = "Round Trip" if is_round_trip else "One-Way"
+    st.subheader(f"✈️ Select a Flight ({trip_type_label})")
     if flights:
-        flight_labels = []
+        selected_flight_idx = None
         for i, f in enumerate(flights):
             stops = "Direct" if f["stops"] == 0 else f"{f['stops']} stop(s)"
-            flight_labels.append(
-                f"{f.get('airline', '?')} — {f['outbound_summary']} | "
-                f"{f['duration']} | {stops} | {format_currency(f['price'], currency)}"
-            )
-        selected_flight_idx = st.radio(
-            "Choose your flight",
-            options=range(len(flights)),
-            format_func=lambda i: flight_labels[i],
-            key="flight_selection",
-            label_visibility="collapsed",
-        )
+            with st.container(border=True):
+                col_select, col_route, col_details, col_price = st.columns(
+                    [0.5, 3, 2, 1.5],
+                )
+                with col_select:
+                    chosen = st.checkbox(
+                        "Select", value=(i == 0), key=f"flight_{i}",
+                        label_visibility="collapsed",
+                    )
+                with col_route:
+                    st.markdown(
+                        f"**{f.get('airline', '?')}**  \n"
+                        f"{f['outbound_summary']}"
+                    )
+                with col_details:
+                    st.markdown(f"{f['duration']}  \n{stops}")
+                with col_price:
+                    st.markdown(f"**{format_currency(f['price'], currency)}**")
+            if chosen:
+                selected_flight_idx = i
     else:
         if flights_removed_by_budget:
             st.warning("Flights were found, but none fit the selected total trip budget.")
@@ -438,19 +450,28 @@ def _render_review_actions() -> None:
     # ── Hotel selection ──
     st.subheader("🏨 Select a Hotel")
     if hotels:
-        hotel_labels = []
+        selected_hotel_idx = None
         for i, h in enumerate(hotels):
-            hotel_labels.append(
-                f"{h['name']} — {format_currency(h['price_per_night'], currency)}/night | "
-                f"Total: {format_currency(h['total_price'], currency)} | ⭐ {h.get('rating', '?')}"
-            )
-        selected_hotel_idx = st.radio(
-            "Choose your hotel",
-            options=range(len(hotels)),
-            format_func=lambda i: hotel_labels[i],
-            key="hotel_selection",
-            label_visibility="collapsed",
-        )
+            with st.container(border=True):
+                col_select, col_name, col_details, col_price = st.columns(
+                    [0.5, 3, 2, 1.5],
+                )
+                with col_select:
+                    chosen = st.checkbox(
+                        "Select", value=(i == 0), key=f"hotel_{i}",
+                        label_visibility="collapsed",
+                    )
+                with col_name:
+                    st.markdown(
+                        f"**{h['name']}**  \n"
+                        f"⭐ {h.get('rating', '?')}"
+                    )
+                with col_details:
+                    st.markdown(f"{format_currency(h['price_per_night'], currency)}/night")
+                with col_price:
+                    st.markdown(f"**{format_currency(h['total_price'], currency)}**")
+            if chosen:
+                selected_hotel_idx = i
     else:
         if hotels_removed_by_budget:
             st.warning("Hotels were found, but none fit the selected total trip budget.")
@@ -523,6 +544,8 @@ def _build_trip_message(fields: dict) -> str:
 
     if fields.get("departure_date") and fields.get("return_date"):
         parts.append(f"from {fields['departure_date']} to {fields['return_date']}")
+    elif fields.get("departure_date"):
+        parts.append(f"departing {fields['departure_date']} (one-way)")
 
     if fields.get("num_travelers", 1) > 1:
         parts.append(f"for {fields['num_travelers']} travelers")
@@ -559,76 +582,93 @@ def _render_trip_form() -> None:
 
     st.caption(f"Planning this trip with profile `{st.session_state.user_id}`.")
 
-    with st.form("trip_form"):
-        st.subheader("Plan Your Trip")
+    st.subheader("Plan Your Trip")
 
-        # Primary input: free-text query
-        free_text = st.text_area(
-            "Describe your trip",
-            placeholder="e.g. I want to fly from London to Tokyo, June 10-17, budget $3000, direct flights only",
-            help="Type your trip request in plain English. You can also use the fields below to be more specific.",
-            height=100,
+    # Primary input: free-text query
+    free_text = st.text_area(
+        "Describe your trip",
+        placeholder="e.g. I want to fly from London to Tokyo, June 10-17, budget $3000, direct flights only",
+        help="Type your trip request in plain English. You can also use the fields below to be more specific.",
+        height=100,
+    )
+
+    # Optional structured fields for refinement
+    with st.expander("Refine your search (optional)"):
+        col1, col2 = st.columns(2)
+        with col1:
+            origin_options = [""] + (CITIES if default_origin in CITIES else [default_origin] + CITIES)
+            origin = st.selectbox(
+                "From (Origin City)",
+                options=origin_options,
+                index=origin_options.index(default_origin) if default_origin in origin_options else 0,
+                help="Leave blank to use the origin from your text above.",
+            )
+        with col2:
+            destination_options = [""] + DESTINATIONS
+            destination = st.selectbox(
+                "To (Destination City)",
+                options=destination_options,
+                index=0,
+                help="Leave blank to use the destination from your text above.",
+            )
+
+        one_way = st.checkbox(
+            "One-way trip",
+            value=st.session_state.get("one_way_saved", False),
+            on_change=lambda: st.session_state.update(
+                one_way_saved=st.session_state["one_way_widget"]
+            ),
+            key="one_way_widget",
         )
 
-        # Optional structured fields for refinement
-        with st.expander("Refine your search (optional)"):
-            col1, col2 = st.columns(2)
-            with col1:
-                origin_options = [""] + (CITIES if default_origin in CITIES else [default_origin] + CITIES)
-                origin = st.selectbox(
-                    "From (Origin City)",
-                    options=origin_options,
-                    index=origin_options.index(default_origin) if default_origin in origin_options else 0,
-                    help="Leave blank to use the origin from your text above.",
+        col3, col4 = st.columns(2)
+        with col3:
+            departure_date = st.date_input(
+                "Departure Date",
+                value=date.today() + timedelta(days=14),
+                min_value=date.today(),
+            )
+        with col4:
+            if one_way:
+                num_nights = st.number_input(
+                    "Number of Nights",
+                    min_value=1,
+                    max_value=90,
+                    value=7,
+                    help="How many nights at your destination.",
                 )
-            with col2:
-                destination_options = [""] + DESTINATIONS
-                destination = st.selectbox(
-                    "To (Destination City)",
-                    options=destination_options,
-                    index=0,
-                    help="Leave blank to use the destination from your text above.",
-                )
-
-            col3, col4 = st.columns(2)
-            with col3:
-                departure_date = st.date_input(
-                    "Departure Date",
-                    value=date.today() + timedelta(days=14),
-                    min_value=date.today(),
-                )
-            with col4:
+            else:
                 return_date = st.date_input(
                     "Return Date",
                     value=date.today() + timedelta(days=21),
                     min_value=date.today(),
                 )
 
-            col5, col6, col7 = st.columns(3)
-            with col5:
-                num_travelers = st.number_input(
-                    "Travelers", min_value=1, max_value=10, value=1,
-                )
-            with col6:
-                default_currency = normalise_currency(DEFAULT_CURRENCY)
-                currency = st.selectbox(
-                    "Currency",
-                    options=CURRENCIES,
-                    index=CURRENCIES.index(default_currency),
-                )
-            with col7:
-                budget_limit = st.number_input(
-                    "Budget (0 = flexible)", min_value=0, max_value=100000, value=0, step=500,
-                )
-
-            preferences = st.text_input(
-                "Special Requests (optional)",
-                placeholder="e.g. direct flights only, near city centre",
+        col5, col6, col7 = st.columns(3)
+        with col5:
+            num_travelers = st.number_input(
+                "Travelers", min_value=1, max_value=10, value=1,
+            )
+        with col6:
+            default_currency = normalise_currency(DEFAULT_CURRENCY)
+            currency = st.selectbox(
+                "Currency",
+                options=CURRENCIES,
+                index=CURRENCIES.index(default_currency),
+            )
+        with col7:
+            budget_limit = st.number_input(
+                "Budget (0 = flexible)", min_value=0, max_value=100000, value=0, step=500,
             )
 
-        submitted = st.form_submit_button(
-            "Search Flights & Hotels", type="primary", use_container_width=True,
+        preferences = st.text_input(
+            "Special Requests (optional)",
+            placeholder="e.g. direct flights only, near city centre",
         )
+
+    submitted = st.button(
+        "Search Flights & Hotels", type="primary", use_container_width=True,
+    )
 
     if submitted:
         # Build structured fields from the form (only include non-empty values)
@@ -654,9 +694,12 @@ def _render_trip_form() -> None:
 
         # Always include dates from the form (they have sensible defaults)
         fields["departure_date"] = str(departure_date)
-        fields["return_date"] = str(return_date)
-
-        if fields.get("return_date") and fields.get("departure_date"):
+        if one_way:
+            # No return flight, but compute a check-out date for hotel search
+            check_out = departure_date + timedelta(days=num_nights)
+            fields["check_out_date"] = str(check_out)
+        else:
+            fields["return_date"] = str(return_date)
             if return_date <= departure_date:
                 st.warning("Return date must be after departure date.")
                 return
