@@ -1,0 +1,11 @@
+.env
+.venv/
+.git/
+.gitignore
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+chroma_db/
+memory/*.json
+tests/
