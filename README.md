@@ -10,6 +10,7 @@ TripBreeze AI is an AI-powered travel planning assistant that combines live flig
 - 💸 Tracks budget against the trip request
 - ✅ Lets the user review results before finalising
 - 🧠 Remembers preferences such as home airport, class, and trip history
+- 📈 Supports LangSmith tracing for LLM observability
 
 ## 🧭 Workflow
 
@@ -31,6 +32,7 @@ Profile Loader
 - `SerpAPI` for live flight and hotel data
 - `ChromaDB` for local retrieval
 - JSON-based memory for user preferences
+- `LangSmith` for observability and trace dashboards
 
 ## 🚀 Quick Start
 
@@ -62,6 +64,17 @@ OPENAI_API_KEY=...
 GOOGLE_API_KEY=...
 SERPAPI_API_KEY=...
 ```
+
+Optional LangSmith tracing:
+
+```env
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_PROJECT=tripbreeze-ai
+LANGCHAIN_API_KEY=...
+```
+
+LangSmith dashboard:
+<https://smith.langchain.com/o/877c675a-ba6b-46dd-8d36-826feba406a5/dashboards/projects/26b438d7-28b2-4404-bb1f-74410a14ed91>
 
 ### 3. Build the knowledge base
 
