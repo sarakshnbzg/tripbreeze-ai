@@ -425,29 +425,19 @@ def _render_review_actions() -> None:
     trip_type_label = "Round Trip" if is_round_trip else "One-Way"
     st.subheader(f"✈️ Select a Flight ({trip_type_label})")
     if flights:
-        selected_flight_idx = None
-        for i, f in enumerate(flights):
+        flight_labels = []
+        for f in flights:
             stops = "Direct" if f["stops"] == 0 else f"{f['stops']} stop(s)"
-            with st.container(border=True):
-                col_select, col_route, col_details, col_price = st.columns(
-                    [0.5, 3, 2, 1.5],
-                )
-                with col_select:
-                    chosen = st.checkbox(
-                        "Select", value=(i == 0), key=f"flight_{i}",
-                        label_visibility="collapsed",
-                    )
-                with col_route:
-                    st.markdown(
-                        f"**{f.get('airline', '?')}**  \n"
-                        f"{f['outbound_summary']}"
-                    )
-                with col_details:
-                    st.markdown(f"{f['duration']}  \n{stops}")
-                with col_price:
-                    st.markdown(f"**{format_currency(f['price'], currency)}**")
-            if chosen:
-                selected_flight_idx = i
+            flight_labels.append(
+                f"{f.get('airline', '?')} — {f['outbound_summary']} — {f['duration']} — {stops} — {format_currency(f['price'], currency)}"
+            )
+        selected_flight_idx = st.radio(
+            "Choose a flight",
+            options=range(len(flights)),
+            format_func=lambda i: flight_labels[i],
+            index=0,
+            label_visibility="collapsed",
+        )
     else:
         if flights_removed_by_budget:
             st.warning("Flights were found, but none fit the selected total trip budget.")
@@ -458,28 +448,18 @@ def _render_review_actions() -> None:
     # ── Hotel selection ──
     st.subheader("🏨 Select a Hotel")
     if hotels:
-        selected_hotel_idx = None
-        for i, h in enumerate(hotels):
-            with st.container(border=True):
-                col_select, col_name, col_details, col_price = st.columns(
-                    [0.5, 3, 2, 1.5],
-                )
-                with col_select:
-                    chosen = st.checkbox(
-                        "Select", value=(i == 0), key=f"hotel_{i}",
-                        label_visibility="collapsed",
-                    )
-                with col_name:
-                    st.markdown(
-                        f"**{h['name']}**  \n"
-                        f"⭐ {h.get('rating', '?')}"
-                    )
-                with col_details:
-                    st.markdown(f"{format_currency(h['price_per_night'], currency)}/night")
-                with col_price:
-                    st.markdown(f"**{format_currency(h['total_price'], currency)}**")
-            if chosen:
-                selected_hotel_idx = i
+        hotel_labels = []
+        for h in hotels:
+            hotel_labels.append(
+                f"{h['name']} — ⭐ {h.get('rating', '?')} — {format_currency(h['price_per_night'], currency)}/night — {format_currency(h['total_price'], currency)} total"
+            )
+        selected_hotel_idx = st.radio(
+            "Choose a hotel",
+            options=range(len(hotels)),
+            format_func=lambda i: hotel_labels[i],
+            index=0,
+            label_visibility="collapsed",
+        )
     else:
         if hotels_removed_by_budget:
             st.warning("Hotels were found, but none fit the selected total trip budget.")
