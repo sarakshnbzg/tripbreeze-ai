@@ -433,8 +433,12 @@ def _render_review_actions() -> None:
         flight_labels = []
         for f in flights:
             stops = "Direct" if f["stops"] == 0 else f"{f['stops']} stop(s)"
+            return_label = ""
+            if is_round_trip:
+                return_summary = f.get("return_summary") or "Return details not included in this search result"
+                return_label = f" — Return: {return_summary}"
             flight_labels.append(
-                f"{f.get('airline', '?')} — {f['outbound_summary']} — {f['duration']} — {stops} — {format_currency(f['price'], currency)}"
+                f"{f.get('airline', '?')} — Outbound: {f['outbound_summary']}{return_label} — {f['duration']} — {stops} — {format_currency(f['price'], currency)}"
             )
         selected_flight_idx = st.radio(
             "Choose a flight",

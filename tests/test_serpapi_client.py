@@ -223,3 +223,70 @@ class TestSearchFlightsParams:
         assert flight["stops"] == 0
         assert flight["price"] == 250
         assert flight["duration"] == "2h 30m"
+
+    @patch("infrastructure.apis.serpapi_client.GoogleSearch")
+    def test_round_trip_without_inline_return_details_is_labelled(self, mock_gs_cls):
+        mock_gs_cls.return_value.get_dict.return_value = {
+            "best_flights": [
+                {
+                    "flights": [
+                        {
+                            "airline": "British Airways",
+                            "departure_airport": {"id": "LHR", "time": "2025-06-01 08:00"},
+                            "arrival_airport": {"id": "CDG", "time": "2025-06-01 10:30"},
+                        }
+                    ],
+                    "total_duration": 150,
+                    "price": 250,
+                    "departure_token": "token-123",
+                }
+            ],
+            "other_flights": [],
+        }
+
+        results = search_flights(
+            "London",
+            "Paris",
+            "2025-06-01",
+            return_date="2025-06-08",
+        )
+
+        assert results[0]["departure_token"] == "token-123"
+        assert results[0]["return_details_available"] is False
+        assert "Return details require selecting" in results[0]["return_summary"]
+
+    @patch("infrastructure.apis.serpapi_client.GoogleSearch")
+    def test_round_trip_inline_return_details_are_normalised(self, mock_gs_cls):
+        mock_gs_cls.return_value.get_dict.return_value = {
+            "best_flights": [
+                {
+                    "flights": [
+                        {
+                            "airline": "British Airways",
+                            "departure_airport": {"id": "LHR", "time": "2025-06-01 08:00"},
+                            "arrival_airport": {"id": "CDG", "time": "2025-06-01 10:30"},
+                        }
+                    ],
+                    "return_flights": [
+                        {
+                            "airline": "British Airways",
+                            "departure_airport": {"id": "CDG", "time": "2025-06-08 18:00"},
+                            "arrival_airport": {"id": "LHR", "time": "2025-06-08 19:30"},
+                        }
+                    ],
+                    "total_duration": 150,
+                    "price": 250,
+                }
+            ],
+            "other_flights": [],
+        }
+
+        results = search_flights(
+            "London",
+            "Paris",
+            "2025-06-01",
+            return_date="2025-06-08",
+        )
+
+        assert results[0]["return_details_available"] is True
+        assert results[0]["return_summary"] == "CDG 2025-06-08 18:00 → LHR 2025-06-08 19:30"

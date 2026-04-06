@@ -18,6 +18,29 @@ logger = get_logger(__name__)
 TRAVEL_CLASS_MAP = {"ECONOMY": "1", "PREMIUM_ECONOMY": "2", "BUSINESS": "3", "FIRST": "4"}
 
 
+def _format_flight_legs_summary(legs: list[dict]) -> str:
+    """Create a compact route/time summary from a SerpAPI flight leg list."""
+    if not legs:
+        return ""
+
+    first_leg, last_leg = legs[0], legs[-1]
+    dep = first_leg.get("departure_airport", {})
+    arr = last_leg.get("arrival_airport", {})
+    return (
+        f"{dep.get('id', '?')} {dep.get('time', '?')} → "
+        f"{arr.get('id', '?')} {arr.get('time', '?')}"
+    )
+
+
+def _extract_inline_return_legs(group: dict) -> list[dict]:
+    """Return inline return-leg data when a provider includes it in the result."""
+    for key in ("return_flights", "returning_flights", "return_flight"):
+        value = group.get(key)
+        if isinstance(value, list) and value:
+            return value
+    return []
+
+
 def search_flights(
     origin: str,
     destination: str,
@@ -125,6 +148,13 @@ def search_flights(
         total_duration = group.get("total_duration", 0)
         dep = first_leg.get("departure_airport", {})
         arr = last_leg.get("arrival_airport", {})
+        inline_return_legs = _extract_inline_return_legs(group)
+        return_summary = _format_flight_legs_summary(inline_return_legs)
+        if return_date and not return_summary:
+            return_summary = (
+                "Return details require selecting this outbound option "
+                "with Google Flights."
+            )
 
         flights.append({
             "airline": first_leg.get("airline", ""),
@@ -135,10 +165,11 @@ def search_flights(
             "price": group.get("price", 0),
             "currency": currency,
             "outbound_summary": (
-                f"{dep.get('id', '?')} {dep.get('time', '?')} → "
-                f"{arr.get('id', '?')} {arr.get('time', '?')}"
+                _format_flight_legs_summary(legs)
             ),
-            "return_summary": "",
+            "return_summary": return_summary,
+            "return_details_available": bool(inline_return_legs),
+            "departure_token": group.get("departure_token", ""),
         })
 
     logger.info("Normalised %s raw flight candidates", len(flights))
