@@ -25,8 +25,10 @@ from infrastructure.logging_utils import get_logger
 
 logger = get_logger(__name__)
 
-# Module-level cache for chunked documents (used by BM25 retriever).
+# Module-level caches
 _cached_chunks: list | None = None
+_cached_vectorstores: dict[str, Chroma] = {}
+_cached_bm25: BM25Retriever | None = None
 
 
 def _load_and_split_docs() -> list:
@@ -65,7 +67,13 @@ def _build_vectorstore(
     force_rebuild: bool = False,
 ) -> Chroma:
     """Build or load the ChromaDB vector store from knowledge-base documents."""
+    global _cached_vectorstores
     chosen_provider, _ = normalise_llm_selection(provider, None)
+
+    if not force_rebuild and chosen_provider in _cached_vectorstores:
+        logger.info("Using cached vectorstore for provider=%s", chosen_provider)
+        return _cached_vectorstores[chosen_provider]
+
     chroma_dir = _chroma_dir_for_provider(chosen_provider)
     chroma_exists = chroma_dir.exists() and any(chroma_dir.iterdir())
     logger.info(
@@ -78,16 +86,18 @@ def _build_vectorstore(
 
     if chroma_exists and not force_rebuild:
         logger.info("Loading existing Chroma vectorstore from %s", chroma_dir)
-        return Chroma(persist_directory=str(chroma_dir), embedding_function=embeddings)
+        vs = Chroma(persist_directory=str(chroma_dir), embedding_function=embeddings)
+    else:
+        chunks = _load_and_split_docs()
+        chroma_dir.parent.mkdir(parents=True, exist_ok=True)
+        vs = Chroma.from_documents(
+            documents=chunks,
+            embedding=embeddings,
+            persist_directory=str(chroma_dir),
+        )
 
-    chunks = _load_and_split_docs()
-    chroma_dir.parent.mkdir(parents=True, exist_ok=True)
-
-    return Chroma.from_documents(
-        documents=chunks,
-        embedding=embeddings,
-        persist_directory=str(chroma_dir),
-    )
+    _cached_vectorstores[chosen_provider] = vs
+    return vs
 
 
 def _source_label(source_path: str) -> str:
@@ -108,14 +118,18 @@ def retrieve(
 
     Each result is a dict with keys ``content`` and ``source``.
     """
+    global _cached_bm25
     logger.info("Running RAG retrieval query=%s k=%s provider=%s", query, k, provider)
     # Vector retriever
     vs = _build_vectorstore(provider=provider)
     vector_retriever = vs.as_retriever(search_kwargs={"k": k})
 
-    # BM25 keyword retriever
-    chunks = _load_and_split_docs()
-    bm25_retriever = BM25Retriever.from_documents(chunks, k=k)
+    # BM25 keyword retriever (cached; k is set per-query)
+    if _cached_bm25 is None:
+        chunks = _load_and_split_docs()
+        _cached_bm25 = BM25Retriever.from_documents(chunks, k=k)
+    _cached_bm25.k = k
+    bm25_retriever = _cached_bm25
 
     # Hybrid: ensemble with reciprocal rank fusion
     ensemble_retriever = EnsembleRetriever(

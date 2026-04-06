@@ -4,6 +4,7 @@ This is the only module that reads/writes user profile files.
 """
 
 import json
+import re
 
 from config import MEMORY_DIR
 from infrastructure.logging_utils import get_logger
@@ -23,9 +24,21 @@ _DEFAULT_PROFILE = {
     "past_trips": [],
 }
 
+_SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
+
+
+def _sanitise_user_id(user_id: str) -> str:
+    """Validate user_id to prevent path traversal."""
+    if not user_id or not _SAFE_ID_RE.match(user_id):
+        raise ValueError(
+            f"Invalid profile ID '{user_id}'. "
+            "Use only letters, digits, hyphens, and underscores."
+        )
+    return user_id
+
 
 def _user_file(user_id: str):
-    return MEMORY_DIR / f"{user_id}.json"
+    return MEMORY_DIR / f"{_sanitise_user_id(user_id)}.json"
 
 
 def list_profiles() -> list[str]:
