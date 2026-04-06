@@ -1,5 +1,6 @@
 """Tests for domain/nodes/trip_intake.py."""
 
+from datetime import date, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -8,8 +9,13 @@ from domain.nodes.trip_intake import (
     _normalise_hotel_stars,
     _normalise_trip_data,
     _parse_preferences,
+    _validate_date,
     trip_intake,
 )
+
+# Future dates used across test fixtures
+_DEPARTURE = str(date.today() + timedelta(days=30))
+_RETURN = str(date.today() + timedelta(days=37))
 
 
 # ── _normalise_hotel_stars ──
@@ -47,6 +53,30 @@ class TestNormaliseHotelStars:
         assert _normalise_hotel_stars([], {}) == []
 
 
+# ── _validate_date ──
+
+
+class TestValidateDate:
+    def test_empty_returns_empty(self):
+        assert _validate_date("", "Test") == ""
+
+    def test_valid_future_date(self):
+        assert _validate_date(_DEPARTURE, "Test") == _DEPARTURE
+
+    def test_invalid_format_raises(self):
+        with pytest.raises(ValueError, match="not a valid date"):
+            _validate_date("not-a-date", "Test")
+
+    def test_past_date_raises(self):
+        yesterday = str(date.today() - timedelta(days=1))
+        with pytest.raises(ValueError, match="in the past"):
+            _validate_date(yesterday, "Test")
+
+    def test_today_is_accepted(self):
+        today = str(date.today())
+        assert _validate_date(today, "Test") == today
+
+
 # ── _normalise_trip_data ──
 
 
@@ -55,8 +85,8 @@ class TestNormaliseTripData:
         data = {
             "origin": "London",
             "destination": "Paris",
-            "departure_date": "2025-06-01",
-            "return_date": "2025-06-08",
+            "departure_date": _DEPARTURE,
+            "return_date": _RETURN,
             "num_travelers": 2,
             "budget_limit": 3000,
             "currency": "eur",
@@ -209,8 +239,8 @@ class TestTripIntakeNode:
             "structured_fields": {
                 "origin": "London",
                 "destination": "Paris",
-                "departure_date": "2025-06-01",
-                "return_date": "2025-06-08",
+                "departure_date": _DEPARTURE,
+                "return_date": _RETURN,
                 "num_travelers": 2,
                 "budget_limit": 3000,
                 "currency": "EUR",

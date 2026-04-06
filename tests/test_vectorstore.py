@@ -42,6 +42,11 @@ class TestBuildVectorstore:
 
 class TestRetrieve:
     def test_passes_provider_through_to_vectorstore(self, monkeypatch):
+        import infrastructure.rag.vectorstore as vs_module
+
+        # Clear cached BM25 so from_documents is called
+        monkeypatch.setattr(vs_module, "_cached_bm25", None)
+
         calls = {}
 
         class FakeVectorStore:
@@ -53,6 +58,10 @@ class TestRetrieve:
             def __init__(self, page_content, source):
                 self.page_content = page_content
                 self.metadata = {"source": source}
+
+        class FakeBM25:
+            def __init__(self, k):
+                self.k = k
 
         class FakeEnsembleRetriever:
             def __init__(self, retrievers, weights):
@@ -78,7 +87,7 @@ class TestRetrieve:
         )
         monkeypatch.setattr(
             "infrastructure.rag.vectorstore.BM25Retriever.from_documents",
-            lambda chunks, k: ("bm25", chunks, k),
+            lambda chunks, k: FakeBM25(k),
         )
         monkeypatch.setattr(
             "infrastructure.rag.vectorstore.EnsembleRetriever",
