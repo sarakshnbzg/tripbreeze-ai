@@ -137,3 +137,15 @@ def compile_graph():
     """Compile the graph for execution."""
     logger.info("Compiling travel planning graph")
     return build_graph().compile()
+
+
+def run_finalisation(state: dict) -> dict:
+    """Run the finalise and memory-update nodes outside the graph.
+
+    Called by the presentation layer after the user approves their
+    selections, keeping domain imports out of the UI module.
+    """
+    logger.info("Running finalisation for user_id=%s", state.get("user_id"))
+    state.update(trip_finaliser(state))
+    state.update(memory_updater(state))
+    return state

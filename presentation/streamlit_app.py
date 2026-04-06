@@ -19,9 +19,7 @@ from config import (
     HOTEL_STARS,
     TRAVEL_CLASSES,
 )
-from application.graph import compile_graph
-from domain.nodes.memory_updater import memory_updater
-from domain.nodes.trip_finaliser import trip_finaliser
+from application.graph import compile_graph, run_finalisation
 from infrastructure.currency_utils import format_currency, normalise_currency
 from infrastructure.logging_utils import get_logger
 from infrastructure.llms.model_factory import (
@@ -45,10 +43,6 @@ SESSION_DEFAULTS = {
     "llm_provider": "openai",
     "llm_model": "gpt-4o-mini",
 }
-
-
-def _format_hour_label(hour: int) -> str:
-    return f"{hour:02d}:00"
 
 
 def _compress_star_preferences(stars: list[int]) -> list[int]:
@@ -199,8 +193,7 @@ def _run_finalisation(feedback: str = "") -> None:
 
     try:
         with st.spinner("Generating your final itinerary..."):
-            state.update(trip_finaliser(state))
-            state.update(memory_updater(state))
+            state = run_finalisation(state)
     except Exception as exc:
         logger.exception("Finalisation failed")
         _append_assistant_message(f"I hit an error while generating the itinerary: {exc}")
