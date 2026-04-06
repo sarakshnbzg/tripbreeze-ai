@@ -19,7 +19,12 @@ from config import (
     HOTEL_STARS,
     TRAVEL_CLASSES,
 )
-from application.graph import compile_graph, run_finalisation
+from application.graph import compile_graph as _compile_graph, run_finalisation
+
+
+@st.cache_resource
+def _get_graph():
+    return _compile_graph()
 from infrastructure.currency_utils import format_currency, normalise_currency
 from infrastructure.logging_utils import get_logger
 from infrastructure.llms.model_factory import (
@@ -144,7 +149,7 @@ def _run_initial_planning(
     try:
         result = initial_state.copy()
         with st.status("Planning your trip...", expanded=True) as status:
-            for event in compile_graph().stream(initial_state):
+            for event in _get_graph().stream(initial_state):
                 for node_name, node_output in event.items():
                     label = node_labels.get(node_name, f"Running {node_name}...")
                     st.write(label)
