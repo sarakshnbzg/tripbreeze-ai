@@ -116,11 +116,11 @@ def trip_finaliser(state: dict) -> dict:
     prompt = FINALISER_PROMPT.format(
         currency=state.get("trip_request", {}).get("currency", "EUR"),
         trip_request=json.dumps(state.get("trip_request", {}), indent=2),
-        selected_flight=json.dumps(selected_flight, indent=2) or "No flight selected",
-        selected_hotel=json.dumps(selected_hotel, indent=2) or "No hotel selected",
+        selected_flight=json.dumps(selected_flight, indent=2) if selected_flight else "No flight selected",
+        selected_hotel=json.dumps(selected_hotel, indent=2) if selected_hotel else "No hotel selected",
         destination_info=state.get("destination_info", "") or "No destination info available",
         rag_sources=", ".join(state.get("rag_sources", [])) or "None",
-        budget=json.dumps(state.get("budget", {}), indent=2) or "No budget info",
+        budget=json.dumps(state.get("budget", {}), indent=2) if state.get("budget") else "No budget info",
         feedback=state.get("user_feedback", "") or "None",
     )
     result = invoke_with_retry(structured_llm, prompt)
