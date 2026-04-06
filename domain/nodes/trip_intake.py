@@ -211,14 +211,41 @@ def _normalise_hotel_stars(raw_hotel_stars: Any, profile: dict[str, Any]) -> lis
     return sorted(normalised)
 
 
+def _validate_date(value: str, field_name: str) -> str:
+    """Validate a date string is YYYY-MM-DD format and not in the past. Returns the validated string or empty."""
+    if not value:
+        return ""
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError:
+        raise ValueError(f"{field_name} '{value}' is not a valid date (expected YYYY-MM-DD).")
+    if parsed < date.today():
+        raise ValueError(f"{field_name} ({value}) is in the past.")
+    return value
+
+
 def _normalise_trip_data(raw_trip_data: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
     hotel_stars_user_specified = raw_trip_data.get("hotel_stars") not in (None, "", [])
+
+    departure_date = _validate_date(raw_trip_data.get("departure_date") or "", "Departure date")
+    return_date = _validate_date(raw_trip_data.get("return_date") or "", "Return date")
+    check_out_date = _validate_date(raw_trip_data.get("check_out_date") or "", "Check-out date")
+
+    if departure_date and return_date and return_date <= departure_date:
+        raise ValueError(f"Return date ({return_date}) must be after departure date ({departure_date}).")
+    if departure_date and check_out_date and check_out_date <= departure_date:
+        raise ValueError(f"Check-out date ({check_out_date}) must be after departure date ({departure_date}).")
+
+    # One-way trips without a check-out date: default to 7 nights so hotel search works.
+    if departure_date and not return_date and not check_out_date:
+        check_out_date = str(date.fromisoformat(departure_date) + timedelta(days=7))
+
     trip_data = {
         "origin": raw_trip_data.get("origin") or "",
         "destination": raw_trip_data.get("destination") or "",
-        "departure_date": raw_trip_data.get("departure_date") or "",
-        "return_date": raw_trip_data.get("return_date") or "",
-        "check_out_date": raw_trip_data.get("check_out_date") or "",
+        "departure_date": departure_date,
+        "return_date": return_date,
+        "check_out_date": check_out_date,
         "num_travelers": raw_trip_data.get("num_travelers") or 1,
         "budget_limit": raw_trip_data.get("budget_limit") or 0,
         "currency": raw_trip_data.get("currency") or "EUR",

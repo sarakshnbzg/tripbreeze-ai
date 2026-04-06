@@ -39,6 +39,11 @@ def search_flights(
     exclude_airlines: list[str] | None = None,
 ) -> list[dict]:
     """Query Google Flights via SerpAPI and return normalised results."""
+    if not SERPAPI_API_KEY:
+        raise RuntimeError(
+            "Flight search requires `SERPAPI_API_KEY` in your environment or Streamlit secrets."
+        )
+
     origin = CITY_TO_AIRPORT.get(origin, origin)
     destination = CITY_TO_AIRPORT.get(destination, destination)
 
@@ -154,6 +159,11 @@ def search_hotels(
     currency: str = "EUR",
 ) -> list[dict]:
     """Query Google Hotels via SerpAPI and return normalised results."""
+    if not SERPAPI_API_KEY:
+        raise RuntimeError(
+            "Hotel search requires `SERPAPI_API_KEY` in your environment or Streamlit secrets."
+        )
+
     from datetime import datetime
 
     hotel_stars = sorted(hotel_stars or [])

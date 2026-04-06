@@ -27,7 +27,7 @@ def search_hotels(state: dict) -> dict:
         )
         return {
             "hotel_options": [],
-            "messages": [{"role": "assistant", "content": "Missing hotel search details (destination or dates)."}],
+            "messages": [{"role": "assistant", "content": "Missing hotel search details (destination or check-out date). For one-way trips, please specify the number of nights or a check-out date."}],
         }
 
     try:
