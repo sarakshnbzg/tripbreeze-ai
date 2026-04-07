@@ -159,3 +159,36 @@ class TestBudgetAggregatorNode:
         result = budget_aggregator(state)
         # 1 night × 80.0 EUR fallback
         assert result["budget"]["estimated_daily_expenses"] == 80.0
+
+    def test_flight_total_price_used_for_budget(self):
+        """When flights have total_price, budget should use it instead of per-person price."""
+        state = {
+            "trip_request": {
+                "budget_limit": 2000,
+                "currency": "EUR",
+                "departure_date": "2025-06-01",
+                "return_date": "2025-06-08",
+            },
+            "flight_options": [
+                {"price": 150, "total_price": 300},  # 2 adults
+            ],
+            "hotel_options": [{"total_price": 700}],
+        }
+        result = budget_aggregator(state)
+        # Flight cost in budget should be 300 (total), not 150 (per-person)
+        assert result["budget"]["flight_cost"] == 300
+
+    def test_flight_without_total_price_falls_back_to_price(self):
+        """Flights without total_price should fall back to price field."""
+        state = {
+            "trip_request": {
+                "budget_limit": 2000,
+                "currency": "EUR",
+                "departure_date": "2025-06-01",
+                "return_date": "2025-06-08",
+            },
+            "flight_options": [{"price": 300}],
+            "hotel_options": [{"total_price": 700}],
+        }
+        result = budget_aggregator(state)
+        assert result["budget"]["flight_cost"] == 300

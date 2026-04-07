@@ -96,3 +96,65 @@ class TestSubmitResearchResultToolMessage:
         assert "Paris is lovely." in result["destination_info"]
         # Only one LLM call needed
         assert mock_llm.invoke.call_count == 1
+
+
+class TestIterationExhaustion:
+    @patch("domain.nodes.research_orchestrator.retrieve")
+    @patch("domain.nodes.research_orchestrator.search_hotels")
+    @patch("domain.nodes.research_orchestrator.search_flights")
+    @patch("domain.nodes.research_orchestrator.create_chat_model")
+    def test_produces_result_after_exhausting_iterations(
+        self, mock_create, mock_sf, mock_sh, mock_retrieve
+    ):
+        """When the LLM never calls SubmitResearchResult, the orchestrator
+        should still return a valid result after exhausting all iterations."""
+        # Every response calls a real tool but never submits
+        def make_tool_response():
+            return _make_ai_message(
+                tool_calls=[{"name": "search_flights", "args": {}, "id": "call_loop"}]
+            )
+
+        mock_sf.return_value = {
+            "flight_options": [],
+            "messages": [{"role": "assistant", "content": "No flights found."}],
+        }
+
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+        mock_llm.invoke.side_effect = [make_tool_response() for _ in range(6)]
+        mock_create.return_value = mock_llm
+
+        result = research_orchestrator(_base_state())
+
+        assert result["current_step"] == "research_complete"
+        assert mock_llm.invoke.call_count == 6
+
+    @patch("domain.nodes.research_orchestrator.retrieve")
+    @patch("domain.nodes.research_orchestrator.search_hotels")
+    @patch("domain.nodes.research_orchestrator.search_flights")
+    @patch("domain.nodes.research_orchestrator.create_chat_model")
+    def test_logs_warning_on_exhaustion(
+        self, mock_create, mock_sf, mock_sh, mock_retrieve
+    ):
+        """Exhausting iterations should log a warning."""
+        def make_tool_response():
+            return _make_ai_message(
+                tool_calls=[{"name": "search_flights", "args": {}, "id": "call_loop"}]
+            )
+
+        mock_sf.return_value = {
+            "flight_options": [],
+            "messages": [{"role": "assistant", "content": "No flights found."}],
+        }
+
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+        mock_llm.invoke.side_effect = [make_tool_response() for _ in range(6)]
+        mock_create.return_value = mock_llm
+
+        with patch("domain.nodes.research_orchestrator.logger") as mock_logger:
+            research_orchestrator(_base_state())
+            mock_logger.warning.assert_any_call(
+                "Research orchestrator exhausted all %s iterations without a final result",
+                6,
+            )

@@ -341,3 +341,80 @@ class TestUnknownCityWarning:
         params = mock_gs_cls.call_args[0][0]
         assert params["departure_id"] == "LHR"
         assert params["arrival_id"] == "Nice"
+
+
+class TestFlightPriceNormalization:
+    @patch("infrastructure.apis.serpapi_client.GoogleSearch")
+    def test_single_adult_price_unchanged(self, mock_gs_cls):
+        mock_gs_cls.return_value.get_dict.return_value = {
+            "best_flights": [
+                {
+                    "flights": [
+                        {
+                            "airline": "BA",
+                            "departure_airport": {"id": "LHR", "time": "08:00"},
+                            "arrival_airport": {"id": "CDG", "time": "10:00"},
+                        }
+                    ],
+                    "total_duration": 120,
+                    "price": 250,
+                }
+            ],
+            "other_flights": [],
+        }
+
+        results = search_flights("London", "Paris", "2025-06-01", adults=1)
+
+        assert results[0]["price"] == 250
+        assert results[0]["total_price"] == 250
+        assert results[0]["adults"] == 1
+
+    @patch("infrastructure.apis.serpapi_client.GoogleSearch")
+    def test_multi_adult_price_split(self, mock_gs_cls):
+        mock_gs_cls.return_value.get_dict.return_value = {
+            "best_flights": [
+                {
+                    "flights": [
+                        {
+                            "airline": "BA",
+                            "departure_airport": {"id": "LHR", "time": "08:00"},
+                            "arrival_airport": {"id": "CDG", "time": "10:00"},
+                        }
+                    ],
+                    "total_duration": 120,
+                    "price": 500,
+                }
+            ],
+            "other_flights": [],
+        }
+
+        results = search_flights("London", "Paris", "2025-06-01", adults=2)
+
+        assert results[0]["price"] == 250.0  # per person
+        assert results[0]["total_price"] == 500  # raw total
+        assert results[0]["adults"] == 2
+
+
+class TestHotelUnknownDestinationWarning:
+    @patch("infrastructure.apis.serpapi_client.GoogleSearch")
+    def test_known_destination_no_warning(self, mock_gs_cls):
+        """Known destinations should not trigger a warning."""
+        mock_gs_cls.return_value.get_dict.return_value = {"properties": []}
+
+        with patch("infrastructure.apis.serpapi_client.logger") as mock_logger:
+            search_hotels("Paris", "2025-06-01", "2025-06-08")
+            # No warning calls about unknown destination
+            for call in mock_logger.warning.call_args_list:
+                assert "not found in known destinations" not in str(call)
+
+    @patch("infrastructure.apis.serpapi_client.GoogleSearch")
+    def test_unknown_destination_logs_warning(self, mock_gs_cls):
+        """Unknown destinations should trigger a warning log."""
+        mock_gs_cls.return_value.get_dict.return_value = {"properties": []}
+
+        with patch("infrastructure.apis.serpapi_client.logger") as mock_logger:
+            search_hotels("Timbuktu", "2025-06-01", "2025-06-08")
+            mock_logger.warning.assert_any_call(
+                "Hotel destination '%s' not found in known destinations — passing as-is",
+                "Timbuktu",
+            )

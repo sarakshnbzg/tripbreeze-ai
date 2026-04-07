@@ -312,3 +312,25 @@ class TestTripIntakeNode:
         result = trip_intake(state)
 
         assert "$1,200" in result["messages"][0]["content"]
+
+    def test_validation_error_returns_friendly_message(self):
+        state = self._base_state()
+        state["structured_fields"]["departure_date"] = _RETURN
+        state["structured_fields"]["return_date"] = _DEPARTURE  # return before departure
+
+        result = trip_intake(state)
+
+        assert result["current_step"] == "intake_error"
+        assert "messages" in result
+        assert "couldn't process" in result["messages"][0]["content"].lower()
+
+    def test_validation_error_does_not_expose_exception_type(self):
+        state = self._base_state()
+        state["structured_fields"]["departure_date"] = "not-a-date"
+
+        result = trip_intake(state)
+
+        assert result["current_step"] == "intake_error"
+        assert "messages" in result
+        # Should have a user-facing message, not a raw traceback
+        assert result["messages"][0]["role"] == "assistant"
