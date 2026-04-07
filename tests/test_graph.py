@@ -1,6 +1,7 @@
 """Tests for application/graph.py — HITL review, routing, and graph structure."""
 
 from application.graph import (
+    _markdown_table_value,
     _format_trip_summary,
     _route_after_review,
     hitl_review,
@@ -8,6 +9,7 @@ from application.graph import (
     compile_graph,
     run_finalisation,
 )
+from domain.nodes.research_orchestrator import _format_destination_info
 
 
 # ── _format_trip_summary ──
@@ -24,6 +26,8 @@ class TestFormatTripSummary:
             "travel_class": "BUSINESS",
         }
         result = _format_trip_summary(trip, [], [])
+        assert "### Trip Summary" in result
+        assert "| Detail | Selection |" in result
         assert "London -> Paris" in result
         assert "2026-07-01 to 2026-07-08" in result
         assert "2" in result
@@ -48,6 +52,9 @@ class TestFormatTripSummary:
         trip = {"travel_class": "PREMIUM_ECONOMY"}
         result = _format_trip_summary(trip, [], [])
         assert "Premium Economy" in result
+
+    def test_markdown_table_values_escape_pipes(self):
+        assert _markdown_table_value("Paris | Tokyo") == "Paris \\| Tokyo"
 
 
 # ── _route_after_review ──
@@ -90,9 +97,9 @@ class TestHitlReview:
         }
         result = hitl_review(state)
         content = result["messages"][0]["content"]
-        assert "Destination Briefing" in content
+        assert "### Destination Briefing" in content
         assert "Great city to visit" in content
-        assert "Destinations, Travel Tips" in content
+        assert "_Source: Destinations, Travel Tips_" in content
 
     def test_rag_used_without_dest_info(self):
         state = {
@@ -104,7 +111,8 @@ class TestHitlReview:
         }
         result = hitl_review(state)
         content = result["messages"][0]["content"]
-        assert "From RAG" in content
+        assert "### Destination Briefing" in content
+        assert "no destination briefing text was produced" in content
 
     def test_budget_notes_included(self):
         state = {
@@ -115,12 +123,43 @@ class TestHitlReview:
         }
         result = hitl_review(state)
         content = result["messages"][0]["content"]
+        assert "### Budget Note" in content
         assert "You're within budget" in content
 
     def test_next_step_always_present(self):
         state = {"trip_request": {}, "flight_options": [], "hotel_options": []}
         result = hitl_review(state)
-        assert "Next Step" in result["messages"][0]["content"]
+        content = result["messages"][0]["content"]
+        assert "### Next Step" in content
+        assert "approve to generate the final itinerary" in content
+
+
+# ── destination info formatting ──
+
+
+class TestDestinationInfoFormatting:
+    def test_formats_structured_destination_sections(self):
+        result = _format_destination_info(
+            {
+                "destination_overview": "Tokyo is strong for food and transit. (Source: Destinations)",
+                "entry_requirements": "Check passport validity before travel. (Source: Visa Requirements)",
+                "transport_tips": "Use trains for most city travel. (Source: Travel Tips)",
+            }
+        )
+
+        assert "**Overview**" in result
+        assert "**Entry Requirements**" in result
+        assert "**Transport**" in result
+        assert "Tokyo is strong" in result
+        assert "Check passport validity" in result
+        assert "Use trains" in result
+
+    def test_falls_back_to_legacy_destination_briefing(self):
+        result = _format_destination_info(
+            {"destination_briefing": "Great city to visit. (Source: Destinations)"}
+        )
+
+        assert result == "Great city to visit. (Source: Destinations)"
 
 
 # ── build_graph / compile_graph ──

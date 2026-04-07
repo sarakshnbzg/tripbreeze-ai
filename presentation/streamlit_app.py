@@ -501,8 +501,9 @@ def _render_review_actions() -> None:
 
     # ── Actions ──
     feedback = st.text_input(
-        "Special requests or adjustments (optional)",
-        placeholder="e.g. I prefer a window seat",
+        "Final itinerary notes (optional)",
+        placeholder="e.g. Make it relaxed, add vegetarian tips, mention window seat preference",
+        help="These notes guide the final itinerary text. They do not re-run flight or hotel search.",
     )
 
     can_approve = selected_flight_idx is not None or selected_hotel_idx is not None
@@ -639,15 +640,15 @@ def _render_trip_form() -> None:
                 "Travelers", min_value=1, max_value=10, value=1,
             )
         with col6:
+            budget_limit = st.number_input(
+                "Budget (0 = flexible)", min_value=0, max_value=100000, value=0, step=500,
+            )
+        with col7:
             default_currency = normalise_currency(DEFAULT_CURRENCY)
             currency = st.selectbox(
                 "Currency",
                 options=CURRENCIES,
                 index=CURRENCIES.index(default_currency),
-            )
-        with col7:
-            budget_limit = st.number_input(
-                "Budget (0 = flexible)", min_value=0, max_value=100000, value=0, step=500,
             )
 
         preferences = st.text_input(

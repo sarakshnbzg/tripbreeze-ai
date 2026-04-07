@@ -21,6 +21,11 @@ logger = get_logger(__name__)
 # ── HITL review node ──
 
 
+def _markdown_table_value(value: object) -> str:
+    """Keep dynamic values safe inside Markdown table cells."""
+    return str(value).replace("|", "\\|").replace("\n", " ")
+
+
 def _format_trip_summary(trip: dict, flights: list[dict], hotels: list[dict]) -> str:
     route = f"{trip.get('origin', '?')} -> {trip.get('destination', '?')}"
     if trip.get("return_date"):
@@ -32,11 +37,14 @@ def _format_trip_summary(trip: dict, flights: list[dict], hotels: list[dict]) ->
 
     return "\n".join(
         [
-            "**Trip Summary**",
-            f"- Route: {route}",
-            f"- Dates: {dates}",
-            f"- Travelers: {travelers}",
-            f"- Cabin class: {class_name}",
+            "### Trip Summary",
+            "",
+            "| Detail | Selection |",
+            "|:---|:---|",
+            f"| Route | {_markdown_table_value(route)} |",
+            f"| Dates | {_markdown_table_value(dates)} |",
+            f"| Travelers | {_markdown_table_value(travelers)} |",
+            f"| Cabin class | {_markdown_table_value(class_name)} |",
         ]
     )
 
@@ -61,21 +69,25 @@ def hitl_review(state: dict) -> dict:
     parts = []
 
     if dest_info:
-        heading = "**Destination Briefing**"
+        heading = "### Destination Briefing"
         if rag_used:
             source_list = ", ".join(rag_sources) if rag_sources else "local knowledge base"
-            heading += f"\n**Sources:** {source_list}"
-        parts.append(f"{heading}\n{dest_info}")
+            heading += f"\n\n_Source: {source_list}_"
+        parts.append(f"{heading}\n\n{dest_info}")
     elif rag_used:
         parts.append(
-            "**From RAG**\n"
+            "### Destination Briefing\n\n"
             "Local knowledge retrieval was used for this search, but no destination briefing text was produced."
         )
 
     parts.append(_format_trip_summary(trip, flights, hotels))
     if budget.get("budget_notes"):
-        parts.append(f"**Budget Note**\n{budget['budget_notes']}")
-    parts.append("**Next Step**\nPlease select your preferred flight and hotel below.")
+        parts.append(f"### Budget Note\n\n> {budget['budget_notes']}")
+    parts.append(
+        "### Next Step\n\n"
+        "Review the options below, choose your preferred flight and hotel, "
+        "then approve to generate the final itinerary."
+    )
 
     return {
         "messages": [{"role": "assistant", "content": "\n\n".join(parts)}],

@@ -38,16 +38,56 @@ Only describe hotel star filtering as a user-requested criterion when `trip_requ
 When writing the destination_briefing, cite the source of each piece of information
 inline using the source labels returned by `retrieve_knowledge`.
 Use the format "(Source: <label>)" at the end of each relevant sentence or paragraph.
+
+Prefer filling the structured destination fields over destination_briefing.
+Use the structured fields only when grounded in retrieved knowledge, and keep each
+field concise:
+- destination_overview: why the destination is relevant for this trip
+- entry_requirements: visa, passport, or entry notes when available
+- transport_tips: airport transfer or local transport tips when available
+- safety_notes: safety, local norms, or practical cautions when available
+- budget_tips: cost-saving or budget expectations when available
 """
+
+DESTINATION_INFO_SECTIONS = (
+    ("destination_overview", "Overview"),
+    ("entry_requirements", "Entry Requirements"),
+    ("transport_tips", "Transport"),
+    ("safety_notes", "Safety"),
+    ("budget_tips", "Budget Tips"),
+)
 
 
 class SubmitResearchResult(BaseModel):
     """Structured final output for the research step."""
 
     summary: str = Field(description="Short grounded summary of the research results for the user.")
+    destination_overview: str = Field(
+        default="",
+        description="Concise overview of the destination, with inline source citations.",
+    )
+    entry_requirements: str = Field(
+        default="",
+        description="Visa, passport, or entry requirement notes, with inline source citations.",
+    )
+    transport_tips: str = Field(
+        default="",
+        description="Airport transfer or local transport notes, with inline source citations.",
+    )
+    safety_notes: str = Field(
+        default="",
+        description="Safety, local norms, or practical caution notes, with inline source citations.",
+    )
+    budget_tips: str = Field(
+        default="",
+        description="Budget expectations or cost-saving tips, with inline source citations.",
+    )
     destination_briefing: str = Field(
         default="",
-        description="Destination briefing text. Leave empty if no destination briefing is available.",
+        description=(
+            "Legacy fallback destination briefing text. Prefer the structured "
+            "destination fields when possible. Leave empty if no destination briefing is available."
+        ),
     )
 
 
@@ -97,6 +137,21 @@ def _build_research_summary(results: dict[str, Any], final_response: str) -> str
     if results.get("destination_info"):
         parts.append("Destination briefing prepared.")
     return " ".join(parts)
+
+
+def _format_destination_info(final_result: dict[str, Any]) -> str:
+    """Format structured destination fields into a stable user-facing briefing."""
+    sections = []
+    for field_name, heading in DESTINATION_INFO_SECTIONS:
+        content = str(final_result.get(field_name, "")).strip()
+        if content:
+            sections.append(f"**{heading}**\n{content}")
+
+    if sections:
+        return "\n\n".join(sections)
+
+    # Backward-compatible fallback for older model/tool outputs.
+    return str(final_result.get("destination_briefing", "")).strip()
 
 
 def research_orchestrator(state: dict) -> dict:
@@ -228,8 +283,9 @@ def research_orchestrator(state: dict) -> dict:
         if final_result:
             break
 
-    if final_result.get("destination_briefing"):
-        collected["destination_info"] = final_result["destination_briefing"].strip()
+    formatted_destination_info = _format_destination_info(final_result)
+    if formatted_destination_info:
+        collected["destination_info"] = formatted_destination_info
 
     summary = final_result.get("summary") or _build_research_summary(collected, final_response)
     logger.info(
