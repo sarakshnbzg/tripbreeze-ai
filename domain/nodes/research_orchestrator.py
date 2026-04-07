@@ -276,6 +276,10 @@ def research_orchestrator(state: dict) -> dict:
             if tool_name == "SubmitResearchResult":
                 final_result = tool_call.get("args", {})
                 final_response = final_result.get("summary", "")
+                messages.append(ToolMessage(
+                    content="Research result received.",
+                    tool_call_id=tool_call["id"],
+                ))
                 logger.info("Research orchestrator received final structured result")
                 break
             if tool_name not in tools_by_name:
