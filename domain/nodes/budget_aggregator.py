@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from config import DEFAULT_DAILY_EXPENSE
+from config import DAILY_EXPENSE_BY_CURRENCY, DEFAULT_DAILY_EXPENSE
 from infrastructure.currency_utils import currency_prefix
 from infrastructure.logging_utils import get_logger
 
@@ -57,7 +57,8 @@ def budget_aggregator(state: dict) -> dict:
     prefix = currency_prefix(currency)
 
     num_days = _trip_days(trip)
-    estimated_daily_total = DEFAULT_DAILY_EXPENSE * num_days
+    daily_rate = DAILY_EXPENSE_BY_CURRENCY.get(currency, DEFAULT_DAILY_EXPENSE)
+    estimated_daily_total = daily_rate * num_days
     filtered_flights, filtered_hotels = _filter_options_within_budget(
         flights,
         hotels,

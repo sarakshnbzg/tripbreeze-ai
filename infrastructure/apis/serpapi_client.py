@@ -5,6 +5,8 @@ logic in the domain layer calls through here, so swapping providers
 means changing only this file.
 """
 
+from datetime import datetime
+
 from serpapi import GoogleSearch
 
 from config import SERPAPI_API_KEY, RAW_FLIGHT_CANDIDATES, MAX_HOTEL_RESULTS, CITY_TO_AIRPORT
@@ -67,6 +69,10 @@ def search_flights(
             "Flight search requires `SERPAPI_API_KEY` in your environment or Streamlit secrets."
         )
 
+    if origin not in CITY_TO_AIRPORT:
+        logger.warning("Origin city '%s' not found in airport mapping — passing as-is", origin)
+    if destination not in CITY_TO_AIRPORT:
+        logger.warning("Destination city '%s' not found in airport mapping — passing as-is", destination)
     origin = CITY_TO_AIRPORT.get(origin, origin)
     destination = CITY_TO_AIRPORT.get(destination, destination)
 
@@ -129,7 +135,12 @@ def search_flights(
     if return_date and return_time_window and return_time_window != (0, 23):
         params["return_times"] = f"{return_time_window[0]},{return_time_window[1]}"
 
-    results = GoogleSearch(params).get_dict()
+    try:
+        results = GoogleSearch(params).get_dict()
+    except Exception as exc:
+        logger.error("SerpAPI flight search failed: %s", exc)
+        return []
+
     logger.info(
         "SerpAPI flight response best_flights=%s other_flights=%s",
         len(results.get("best_flights", [])),
@@ -195,8 +206,6 @@ def search_hotels(
             "Hotel search requires `SERPAPI_API_KEY` in your environment or Streamlit secrets."
         )
 
-    from datetime import datetime
-
     hotel_stars = sorted(hotel_stars or [])
     min_selected_star = min(hotel_stars) if hotel_stars else None
 
@@ -225,7 +234,12 @@ def search_hotels(
     if min_rating:
         params["min_rating"] = min_rating
 
-    results = GoogleSearch(params).get_dict()
+    try:
+        results = GoogleSearch(params).get_dict()
+    except Exception as exc:
+        logger.error("SerpAPI hotel search failed: %s", exc)
+        return []
+
     properties = results.get("properties", [])
     logger.info("SerpAPI hotel response properties=%s", len(properties))
 

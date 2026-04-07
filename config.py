@@ -64,7 +64,19 @@ MAX_FLIGHT_RESULTS = 5
 RAW_FLIGHT_CANDIDATES = 15
 MAX_HOTEL_RESULTS = 5
 DEFAULT_CURRENCY = "EUR"
-DEFAULT_DAILY_EXPENSE = 80.0
+DEFAULT_DAILY_EXPENSE = 80.0  # EUR baseline — used as fallback
+DAILY_EXPENSE_BY_CURRENCY: dict[str, float] = {
+    "EUR": 80.0,
+    "USD": 85.0,
+    "GBP": 70.0,
+    "CAD": 115.0,
+    "AUD": 130.0,
+    "JPY": 12000.0,
+    "CHF": 100.0,
+    "SGD": 115.0,
+    "AED": 310.0,
+    "NZD": 140.0,
+}
 
 # LangSmith tracing
 LANGCHAIN_TRACING_V2 = _get_config_value("LANGCHAIN_TRACING_V2", "false").lower() == "true"

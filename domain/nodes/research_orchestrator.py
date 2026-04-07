@@ -278,6 +278,13 @@ def research_orchestrator(state: dict) -> dict:
                 final_response = final_result.get("summary", "")
                 logger.info("Research orchestrator received final structured result")
                 break
+            if tool_name not in tools_by_name:
+                logger.warning("Research orchestrator received unknown tool call: %s", tool_name)
+                messages.append(ToolMessage(
+                    content=f"Error: unknown tool '{tool_name}'. Available tools: {', '.join(tools_by_name)}.",
+                    tool_call_id=tool_call["id"],
+                ))
+                continue
             tool_result = tools_by_name[tool_name].invoke(tool_call.get("args", {}))
             messages.append(ToolMessage(content=tool_result, tool_call_id=tool_call["id"]))
         if final_result:
