@@ -151,6 +151,19 @@ def compile_graph():
     return build_graph().compile()
 
 
+_APPEND_KEYS = {"messages", "token_usage"}
+
+
+def _merge_node_output(state: dict, output: dict) -> None:
+    """Merge a node's output into state, appending list-valued keys instead of overwriting."""
+    for key, value in output.items():
+        if key in _APPEND_KEYS and isinstance(value, list):
+            state.setdefault(key, [])
+            state[key].extend(value)
+        else:
+            state[key] = value
+
+
 def run_finalisation(state: dict) -> dict:
     """Run the finalise and memory-update nodes outside the graph.
 
@@ -158,6 +171,6 @@ def run_finalisation(state: dict) -> dict:
     selections, keeping domain imports out of the UI module.
     """
     logger.info("Running finalisation for user_id=%s", state.get("user_id"))
-    state.update(trip_finaliser(state))
-    state.update(memory_updater(state))
+    _merge_node_output(state, trip_finaliser(state))
+    _merge_node_output(state, memory_updater(state))
     return state
