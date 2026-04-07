@@ -437,8 +437,11 @@ def _render_review_actions() -> None:
             if is_round_trip:
                 return_summary = f.get("return_summary") or "Return details not included in this search result"
                 return_label = f" — Return: {return_summary}"
+            price_label = format_currency(f.get("total_price", f["price"]), currency)
+            if f.get("adults", 1) > 1:
+                price_label += f" ({format_currency(f['price'], currency)}/person)"
             flight_labels.append(
-                f"{f.get('airline', '?')} — Outbound: {f['outbound_summary']}{return_label} — {f['duration']} — {stops} — {format_currency(f['price'], currency)}"
+                f"{f.get('airline', '?')} — Outbound: {f['outbound_summary']}{return_label} — {f['duration']} — {stops} — {price_label}"
             )
         selected_flight_idx = st.radio(
             "Choose a flight",
@@ -479,7 +482,8 @@ def _render_review_actions() -> None:
     # ── Budget summary ──
     if budget:
         st.subheader("💰 Budget Summary")
-        sel_flight_price = flights[selected_flight_idx]["price"] if selected_flight_idx is not None else 0
+        sel_flight = flights[selected_flight_idx] if selected_flight_idx is not None else {}
+        sel_flight_price = sel_flight.get("total_price", sel_flight.get("price", 0)) if sel_flight else 0
         sel_hotel_price = hotels[selected_hotel_idx]["total_price"] if selected_hotel_idx is not None else 0
         daily_expenses = budget.get("estimated_daily_expenses", 0)
         total = sel_flight_price + sel_hotel_price + daily_expenses

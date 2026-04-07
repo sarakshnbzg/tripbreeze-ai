@@ -359,11 +359,19 @@ def trip_intake(state: dict) -> dict:
 
     try:
         trip_data = _normalise_trip_data(raw_trip_data, profile)
+    except ValueError as exc:
+        logger.warning("Trip intake validation error: %s", exc)
+        return {
+            "error": str(exc),
+            "current_step": "intake_error",
+            "messages": [{"role": "assistant", "content": f"I couldn't process your trip details: {exc}"}],
+        }
     except Exception as exc:
         logger.exception("Trip intake failed during normalisation")
         return {
-            "error": f"Could not normalise trip details: {exc}",
+            "error": "Something went wrong while processing your trip details. Please try again.",
             "current_step": "intake_error",
+            "messages": [{"role": "assistant", "content": "Something went wrong while processing your trip details. Please try again."}],
         }
 
     logger.info(

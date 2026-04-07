@@ -9,7 +9,7 @@ from datetime import datetime
 
 from serpapi import GoogleSearch
 
-from config import SERPAPI_API_KEY, RAW_FLIGHT_CANDIDATES, MAX_HOTEL_RESULTS, CITY_TO_AIRPORT
+from config import SERPAPI_API_KEY, RAW_FLIGHT_CANDIDATES, MAX_HOTEL_RESULTS, CITY_TO_AIRPORT, DESTINATIONS
 from infrastructure.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -167,13 +167,19 @@ def search_flights(
                 "with Google Flights."
             )
 
+        # SerpAPI returns total price for all passengers; normalise to per-person
+        raw_price = group.get("price", 0)
+        price_per_person = round(raw_price / adults, 2) if adults > 1 else raw_price
+
         flights.append({
             "airline": first_leg.get("airline", ""),
             "departure_time": dep.get("time", ""),
             "arrival_time": arr.get("time", ""),
             "duration": f"{total_duration // 60}h {total_duration % 60}m",
             "stops": len(legs) - 1,
-            "price": group.get("price", 0),
+            "price": price_per_person,
+            "total_price": raw_price,
+            "adults": adults,
             "currency": currency,
             "outbound_summary": (
                 _format_flight_legs_summary(legs)
@@ -205,6 +211,9 @@ def search_hotels(
         raise RuntimeError(
             "Hotel search requires `SERPAPI_API_KEY` in your environment or Streamlit secrets."
         )
+
+    if destination not in CITY_TO_AIRPORT and destination not in DESTINATIONS:
+        logger.warning("Hotel destination '%s' not found in known destinations — passing as-is", destination)
 
     hotel_stars = sorted(hotel_stars or [])
     min_selected_star = min(hotel_stars) if hotel_stars else None

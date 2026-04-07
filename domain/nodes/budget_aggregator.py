@@ -20,6 +20,11 @@ def _trip_days(trip: dict) -> int:
         return 1
 
 
+def _flight_total(flight: dict) -> float:
+    """Return the total price for all passengers on a flight."""
+    return flight.get("total_price", flight["price"])
+
+
 def _filter_options_within_budget(
     flights: list[dict],
     hotels: list[dict],
@@ -30,13 +35,13 @@ def _filter_options_within_budget(
     if budget_limit <= 0:
         return flights, hotels
 
-    cheapest_flight = min((f["price"] for f in flights), default=None)
+    cheapest_flight = min((_flight_total(f) for f in flights), default=None)
     cheapest_hotel = min((h["total_price"] for h in hotels), default=None)
 
     filtered_flights = [
         flight
         for flight in flights
-        if cheapest_hotel is not None and flight["price"] + cheapest_hotel + estimated_daily_total <= budget_limit
+        if cheapest_hotel is not None and _flight_total(flight) + cheapest_hotel + estimated_daily_total <= budget_limit
     ]
     filtered_hotels = [
         hotel
@@ -66,7 +71,7 @@ def budget_aggregator(state: dict) -> dict:
         estimated_daily_total,
     )
 
-    flight_cost = min((f["price"] for f in filtered_flights), default=0.0)
+    flight_cost = min((_flight_total(f) for f in filtered_flights), default=0.0)
     hotel_cost = min((h["total_price"] for h in filtered_hotels), default=0.0)
     total = flight_cost + hotel_cost + estimated_daily_total
     has_viable_combination = bool(filtered_flights) and bool(filtered_hotels)

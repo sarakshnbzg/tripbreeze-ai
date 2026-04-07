@@ -264,7 +264,8 @@ def research_orchestrator(state: dict) -> dict:
         "retrieve_knowledge": retrieve_knowledge_tool,
     }
 
-    for _ in range(6):
+    max_iterations = 6
+    for iteration in range(max_iterations):
         response = invoke_with_retry(llm_with_tools, messages)
         messages.append(response)
         token_usage.append(extract_token_usage(response, model=model, node="research_orchestrator"))
@@ -297,6 +298,11 @@ def research_orchestrator(state: dict) -> dict:
             messages.append(ToolMessage(content=tool_result, tool_call_id=tool_call["id"]))
         if final_result:
             break
+    else:
+        logger.warning(
+            "Research orchestrator exhausted all %s iterations without a final result",
+            max_iterations,
+        )
 
     formatted_destination_info = _format_destination_info(final_result)
     if formatted_destination_info:
