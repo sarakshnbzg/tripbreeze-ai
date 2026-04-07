@@ -74,7 +74,7 @@ LANGCHAIN_API_KEY=...
 ```
 
 LangSmith dashboard:
-<https://smith.langchain.com/o/877c675a-ba6b-46dd-8d36-826feba406a5/dashboards/projects/26b438d7-28b2-4404-bb1f-74410a14ed91>
+<https://smith.langchain.com/o/877c675a-ba6b-46dd-8d36-826feba406a5/dashboards/projects/ba117436-e649-43df-bd87-4ebf4e8c22c8>
 
 ### 3. Build the knowledge base
 
