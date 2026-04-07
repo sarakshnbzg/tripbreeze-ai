@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from infrastructure.apis.serpapi_client import search_flights
+from infrastructure.apis.serpapi_client import search_flights, search_hotels
 
 
 def _mock_google_search(expected_params_subset):
@@ -290,3 +290,54 @@ class TestSearchFlightsParams:
 
         assert results[0]["return_details_available"] is True
         assert results[0]["return_summary"] == "CDG 2025-06-08 18:00 → LHR 2025-06-08 19:30"
+
+
+class TestSearchFlightsNetworkFailure:
+    @patch("infrastructure.apis.serpapi_client.GoogleSearch")
+    def test_returns_empty_list_on_exception(self, mock_gs_cls):
+        mock_gs_cls.return_value.get_dict.side_effect = ConnectionError("network down")
+
+        result = search_flights("London", "Paris", "2025-06-01")
+
+        assert result == []
+
+    @patch("infrastructure.apis.serpapi_client.GoogleSearch")
+    def test_returns_empty_list_on_timeout(self, mock_gs_cls):
+        mock_gs_cls.return_value.get_dict.side_effect = TimeoutError("request timed out")
+
+        result = search_flights("London", "Paris", "2025-06-01")
+
+        assert result == []
+
+
+class TestSearchHotelsNetworkFailure:
+    @patch("infrastructure.apis.serpapi_client.GoogleSearch")
+    def test_returns_empty_list_on_exception(self, mock_gs_cls):
+        mock_gs_cls.return_value.get_dict.side_effect = ConnectionError("network down")
+
+        result = search_hotels("Paris", "2025-06-01", "2025-06-08")
+
+        assert result == []
+
+
+class TestUnknownCityWarning:
+    @patch("infrastructure.apis.serpapi_client.GoogleSearch")
+    def test_unknown_origin_passed_as_is(self, mock_gs_cls):
+        mock_gs_cls.return_value.get_dict.return_value = {"best_flights": [], "other_flights": []}
+
+        search_flights("Marseille", "Paris", "2025-06-01")
+
+        params = mock_gs_cls.call_args[0][0]
+        # Marseille is not in CITY_TO_AIRPORT, so it should be passed through unchanged
+        assert params["departure_id"] == "Marseille"
+        assert params["arrival_id"] == "CDG"
+
+    @patch("infrastructure.apis.serpapi_client.GoogleSearch")
+    def test_unknown_destination_passed_as_is(self, mock_gs_cls):
+        mock_gs_cls.return_value.get_dict.return_value = {"best_flights": [], "other_flights": []}
+
+        search_flights("London", "Nice", "2025-06-01")
+
+        params = mock_gs_cls.call_args[0][0]
+        assert params["departure_id"] == "LHR"
+        assert params["arrival_id"] == "Nice"

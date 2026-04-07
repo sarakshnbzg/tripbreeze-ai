@@ -129,3 +129,33 @@ class TestBudgetAggregatorNode:
         ))
         assert "No flight and hotel combinations" in result["budget"]["budget_notes"]
         assert result["budget"]["within_budget"] is False
+
+    def test_jpy_uses_currency_specific_daily_rate(self):
+        state = {
+            "trip_request": {
+                "budget_limit": 0,
+                "currency": "JPY",
+                "departure_date": "2025-06-01",
+                "return_date": "2025-06-02",
+            },
+            "flight_options": [{"price": 50000}],
+            "hotel_options": [{"total_price": 10000}],
+        }
+        result = budget_aggregator(state)
+        # 1 night × 12000 JPY/day
+        assert result["budget"]["estimated_daily_expenses"] == 12000.0
+
+    def test_unknown_currency_uses_fallback_daily_rate(self):
+        state = {
+            "trip_request": {
+                "budget_limit": 0,
+                "currency": "XYZ",
+                "departure_date": "2025-06-01",
+                "return_date": "2025-06-02",
+            },
+            "flight_options": [{"price": 300}],
+            "hotel_options": [{"total_price": 200}],
+        }
+        result = budget_aggregator(state)
+        # 1 night × 80.0 EUR fallback
+        assert result["budget"]["estimated_daily_expenses"] == 80.0
