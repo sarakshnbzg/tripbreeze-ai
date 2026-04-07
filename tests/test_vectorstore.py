@@ -23,18 +23,18 @@ class TestBuildVectorstore:
         )
 
         class FakeChroma:
-            @staticmethod
-            def from_documents(documents, embedding, persist_directory):
-                captured["documents"] = documents
-                captured["embedding"] = embedding
+            def __init__(self, persist_directory, embedding_function):
+                captured["embedding"] = embedding_function
                 captured["persist_directory"] = persist_directory
-                return "vectorstore"
+
+            def add_documents(self, documents):
+                captured["documents"] = documents
 
         monkeypatch.setattr("infrastructure.rag.vectorstore.Chroma", FakeChroma)
 
         result = _build_vectorstore(provider="google", force_rebuild=True)
 
-        assert result == "vectorstore"
+        assert isinstance(result, FakeChroma)
         assert captured["documents"] == ["doc1"]
         assert captured["embedding"] == "embeddings:google"
         assert captured["persist_directory"].endswith("chroma_db/google")

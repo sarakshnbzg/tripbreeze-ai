@@ -4,6 +4,12 @@ Uses hybrid search (vector similarity + BM25 keyword matching) via
 LangChain's EnsembleRetriever for better retrieval quality.
 """
 
+from __future__ import annotations
+
+import re
+import shutil
+import time
+
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
 from langchain_community.retrievers import BM25Retriever
 from langchain_chroma import Chroma
@@ -19,6 +25,9 @@ from config import (
     RAG_TOP_K,
     RAG_VECTOR_WEIGHT,
     RAG_BM25_WEIGHT,
+    RAG_EMBEDDING_BATCH_SIZE,
+    RAG_EMBEDDING_MAX_RETRIES,
+    RAG_GOOGLE_EMBEDDING_BATCH_DELAY_SECONDS,
 )
 from infrastructure.llms.model_factory import create_embeddings, normalise_llm_selection
 from infrastructure.logging_utils import get_logger
@@ -29,6 +38,77 @@ logger = get_logger(__name__)
 _cached_chunks: list | None = None
 _cached_vectorstores: dict[str, Chroma] = {}
 _cached_bm25: BM25Retriever | None = None
+
+
+def _batched(items: list, batch_size: int):
+    """Yield non-empty batches from a list."""
+    safe_batch_size = max(1, batch_size)
+    for index in range(0, len(items), safe_batch_size):
+        yield items[index : index + safe_batch_size]
+
+
+def _retry_delay_from_error(exc: Exception) -> float | None:
+    """Extract a provider-suggested retry delay from quota errors when present."""
+    message = str(exc)
+    patterns = [
+        r"retryDelay['\"]?:\s*['\"]?(\d+(?:\.\d+)?)s",
+        r"retry in (\d+(?:\.\d+)?)s",
+        r"Please retry in (\d+(?:\.\d+)?)s",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, message, flags=re.IGNORECASE)
+        if match:
+            return float(match.group(1))
+    return None
+
+
+def _add_documents_with_quota_backoff(
+    *,
+    vectorstore: Chroma,
+    chunks: list,
+    provider: str,
+) -> None:
+    """Add chunks in batches, slowing down for providers with strict embedding quotas."""
+    is_google = provider == "google"
+    batch_delay = RAG_GOOGLE_EMBEDDING_BATCH_DELAY_SECONDS if is_google else 0
+    batches = list(_batched(chunks, RAG_EMBEDDING_BATCH_SIZE))
+
+    for batch_number, batch in enumerate(batches, start=1):
+        for attempt in range(1, RAG_EMBEDDING_MAX_RETRIES + 1):
+            try:
+                logger.info(
+                    "Adding RAG embedding batch provider=%s batch=%s/%s size=%s attempt=%s",
+                    provider,
+                    batch_number,
+                    len(batches),
+                    len(batch),
+                    attempt,
+                )
+                vectorstore.add_documents(batch)
+                break
+            except Exception as exc:
+                if attempt >= RAG_EMBEDDING_MAX_RETRIES:
+                    raise
+                retry_delay = _retry_delay_from_error(exc)
+                fallback_delay = min(60, 2 ** attempt)
+                sleep_seconds = retry_delay if retry_delay is not None else fallback_delay
+                logger.warning(
+                    "Embedding batch failed; retrying provider=%s batch=%s/%s attempt=%s sleep_seconds=%s error=%s",
+                    provider,
+                    batch_number,
+                    len(batches),
+                    attempt,
+                    sleep_seconds,
+                    exc,
+                )
+                time.sleep(sleep_seconds)
+
+        if batch_delay and batch_number < len(batches):
+            logger.info(
+                "Sleeping between Google embedding batches seconds=%s",
+                batch_delay,
+            )
+            time.sleep(batch_delay)
 
 
 def _load_and_split_docs() -> list:
@@ -89,11 +169,18 @@ def _build_vectorstore(
         vs = Chroma(persist_directory=str(chroma_dir), embedding_function=embeddings)
     else:
         chunks = _load_and_split_docs()
+        if force_rebuild and chroma_dir.exists():
+            logger.info("Removing existing Chroma vectorstore at %s", chroma_dir)
+            shutil.rmtree(chroma_dir)
         chroma_dir.parent.mkdir(parents=True, exist_ok=True)
-        vs = Chroma.from_documents(
-            documents=chunks,
-            embedding=embeddings,
+        vs = Chroma(
             persist_directory=str(chroma_dir),
+            embedding_function=embeddings,
+        )
+        _add_documents_with_quota_backoff(
+            vectorstore=vs,
+            chunks=chunks,
+            provider=chosen_provider,
         )
 
     _cached_vectorstores[chosen_provider] = vs
