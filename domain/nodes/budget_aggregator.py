@@ -62,8 +62,9 @@ def budget_aggregator(state: dict) -> dict:
     prefix = currency_prefix(currency)
 
     num_days = _trip_days(trip)
+    num_travelers = max(1, int(trip.get("num_travelers", 1) or 1))
     daily_rate = DAILY_EXPENSE_BY_CURRENCY.get(currency, DEFAULT_DAILY_EXPENSE)
-    estimated_daily_total = daily_rate * num_days
+    estimated_daily_total = daily_rate * num_days * num_travelers
     filtered_flights, filtered_hotels = _filter_options_within_budget(
         flights,
         hotels,
@@ -117,6 +118,9 @@ def budget_aggregator(state: dict) -> dict:
             "flight_cost": flight_cost,
             "hotel_cost": hotel_cost,
             "estimated_daily_expenses": estimated_daily_total,
+            "daily_expense_per_traveler": daily_rate,
+            "daily_expense_days": num_days,
+            "daily_expense_travelers": num_travelers,
             "total_estimated": total,
             "currency": currency,
             "within_budget": within_budget,

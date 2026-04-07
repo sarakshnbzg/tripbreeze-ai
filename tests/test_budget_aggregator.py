@@ -137,6 +137,7 @@ class TestBudgetAggregatorNode:
                 "currency": "JPY",
                 "departure_date": "2025-06-01",
                 "return_date": "2025-06-02",
+                "num_travelers": 1,
             },
             "flight_options": [{"price": 50000}],
             "hotel_options": [{"total_price": 10000}],
@@ -152,6 +153,7 @@ class TestBudgetAggregatorNode:
                 "currency": "XYZ",
                 "departure_date": "2025-06-01",
                 "return_date": "2025-06-02",
+                "num_travelers": 1,
             },
             "flight_options": [{"price": 300}],
             "hotel_options": [{"total_price": 200}],
@@ -159,6 +161,25 @@ class TestBudgetAggregatorNode:
         result = budget_aggregator(state)
         # 1 night × 80.0 EUR fallback
         assert result["budget"]["estimated_daily_expenses"] == 80.0
+
+    def test_daily_expenses_scale_by_traveler_count(self):
+        state = {
+            "trip_request": {
+                "budget_limit": 0,
+                "currency": "EUR",
+                "departure_date": "2025-06-01",
+                "return_date": "2025-06-04",
+                "num_travelers": 2,
+            },
+            "flight_options": [{"price": 300}],
+            "hotel_options": [{"total_price": 200}],
+        }
+        result = budget_aggregator(state)
+        # 3 days × 80 EUR/day × 2 travelers
+        assert result["budget"]["estimated_daily_expenses"] == 480.0
+        assert result["budget"]["daily_expense_per_traveler"] == 80.0
+        assert result["budget"]["daily_expense_days"] == 3
+        assert result["budget"]["daily_expense_travelers"] == 2
 
     def test_flight_total_price_used_for_budget(self):
         """When flights have total_price, budget should use it instead of per-person price."""

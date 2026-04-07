@@ -20,11 +20,7 @@ from config import (
     TRAVEL_CLASSES,
 )
 from application.graph import compile_graph as _compile_graph, run_finalisation
-
-
-@st.cache_resource
-def _get_graph():
-    return _compile_graph()
+from infrastructure.apis.serpapi_client import search_return_flights
 from infrastructure.currency_utils import format_currency, normalise_currency
 from infrastructure.logging_utils import get_logger
 from infrastructure.llms.model_factory import (
@@ -33,6 +29,11 @@ from infrastructure.llms.model_factory import (
     normalise_llm_selection,
 )
 from infrastructure.persistence.memory_store import load_profile, save_profile, list_profiles
+
+
+@st.cache_resource
+def _get_graph():
+    return _compile_graph()
 
 logger = get_logger(__name__)
 
@@ -48,6 +49,60 @@ SESSION_DEFAULTS = {
     "llm_provider": "openai",
     "llm_model": "gpt-4o-mini",
 }
+
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def _get_return_flight_options(
+    origin: str,
+    destination: str,
+    departure_date: str,
+    return_date: str,
+    departure_token: str,
+    adults: int,
+    travel_class: str,
+    currency: str,
+    return_time_window: tuple[int, int] | None,
+) -> list[dict]:
+    return search_return_flights(
+        origin=origin,
+        destination=destination,
+        departure_date=departure_date,
+        return_date=return_date,
+        departure_token=departure_token,
+        adults=adults,
+        travel_class=travel_class,
+        currency=currency,
+        return_time_window=return_time_window,
+    )
+
+
+def _normalise_time_window(raw_window: object) -> tuple[int, int] | None:
+    if not isinstance(raw_window, list) or len(raw_window) != 2:
+        return None
+    try:
+        start = int(raw_window[0])
+        end = int(raw_window[1])
+    except (TypeError, ValueError):
+        return None
+    if 0 <= start <= end <= 23:
+        return start, end
+    return None
+
+
+def _combine_round_trip_flight(outbound: dict, return_flight: dict) -> dict:
+    """Store the user's outbound and return choices as one itinerary object."""
+    total_price = return_flight.get("total_price", outbound.get("total_price", outbound.get("price", 0)))
+    adults = outbound.get("adults", 1)
+    price = round(total_price / adults, 2) if adults > 1 else total_price
+    return {
+        **outbound,
+        "return_summary": return_flight.get("return_summary", outbound.get("return_summary", "")),
+        "return_details_available": True,
+        "selected_return": return_flight,
+        "total_price": total_price,
+        "price": price,
+        "currency": return_flight.get("currency", outbound.get("currency")),
+    }
 
 
 def _compress_star_preferences(stars: list[int]) -> list[int]:
@@ -433,18 +488,14 @@ def _render_review_actions() -> None:
         flight_labels = []
         for f in flights:
             stops = "Direct" if f["stops"] == 0 else f"{f['stops']} stop(s)"
-            return_label = ""
-            if is_round_trip:
-                return_summary = f.get("return_summary") or "Return details not included in this search result"
-                return_label = f" — Return: {return_summary}"
             price_label = format_currency(f.get("total_price", f["price"]), currency)
             if f.get("adults", 1) > 1:
                 price_label += f" ({format_currency(f['price'], currency)}/person)"
             flight_labels.append(
-                f"{f.get('airline', '?')} — Outbound: {f['outbound_summary']}{return_label} — {f['duration']} — {stops} — {price_label}"
+                f"{f.get('airline', '?')} — Outbound: {f['outbound_summary']} — {f['duration']} — {stops} — {price_label}"
             )
         selected_flight_idx = st.radio(
-            "Choose a flight",
+            "Choose an outbound flight",
             options=range(len(flights)),
             format_func=lambda i: flight_labels[i],
             index=0,
@@ -456,6 +507,54 @@ def _render_review_actions() -> None:
         else:
             st.warning("No flights found. Try different dates or cities.")
         selected_flight_idx = None
+
+    selected_outbound = flights[selected_flight_idx] if selected_flight_idx is not None else {}
+    return_options = []
+    selected_return_idx = None
+    if is_round_trip and selected_outbound:
+        st.subheader("↩️ Select a Return Flight")
+        departure_token = selected_outbound.get("departure_token", "")
+        if departure_token:
+            user_profile = state.get("user_profile", {})
+            return_time_window = _normalise_time_window(
+                user_profile.get("preferred_return_time_window")
+            )
+            with st.spinner("Loading return flight options..."):
+                return_options = _get_return_flight_options(
+                    origin=trip_request.get("origin", ""),
+                    destination=trip_request.get("destination", ""),
+                    departure_date=trip_request.get("departure_date", ""),
+                    return_date=trip_request.get("return_date", ""),
+                    departure_token=departure_token,
+                    adults=trip_request.get("num_travelers", 1),
+                    travel_class=trip_request.get("travel_class", "ECONOMY"),
+                    currency=currency,
+                    return_time_window=return_time_window,
+                )
+
+            if return_options:
+                return_labels = []
+                for option in return_options:
+                    stops = "Direct" if option["stops"] == 0 else f"{option['stops']} stop(s)"
+                    price_label = format_currency(option.get("total_price", option["price"]), currency)
+                    if option.get("adults", 1) > 1:
+                        price_label += f" ({format_currency(option['price'], currency)}/person)"
+                    return_labels.append(
+                        f"{option.get('airline', '?')} — Return: {option['return_summary']} — {option['duration']} — {stops} — {price_label}"
+                    )
+                selected_return_idx = st.radio(
+                    "Choose a return flight",
+                    options=range(len(return_options)),
+                    format_func=lambda i: return_labels[i],
+                    index=0,
+                    label_visibility="collapsed",
+                )
+            else:
+                st.warning("No return flights were found for the selected outbound option. Try another outbound flight.")
+        elif selected_outbound.get("return_details_available"):
+            st.info(f"Return: {selected_outbound.get('return_summary')}")
+        else:
+            st.warning("This outbound option does not include a token for loading return flights.")
 
     # ── Hotel selection ──
     st.subheader("🏨 Select a Hotel")
@@ -482,10 +581,17 @@ def _render_review_actions() -> None:
     # ── Budget summary ──
     if budget:
         st.subheader("💰 Budget Summary")
-        sel_flight = flights[selected_flight_idx] if selected_flight_idx is not None else {}
+        sel_return = return_options[selected_return_idx] if selected_return_idx is not None else {}
+        sel_flight = _combine_round_trip_flight(selected_outbound, sel_return) if sel_return else selected_outbound
         sel_flight_price = sel_flight.get("total_price", sel_flight.get("price", 0)) if sel_flight else 0
         sel_hotel_price = hotels[selected_hotel_idx]["total_price"] if selected_hotel_idx is not None else 0
         daily_expenses = budget.get("estimated_daily_expenses", 0)
+        daily_expense_label = "Daily Expenses (est.)"
+        if budget.get("daily_expense_travelers") and budget.get("daily_expense_days"):
+            daily_expense_label = (
+                f"Daily Expenses (est., {budget['daily_expense_travelers']} "
+                f"traveler(s) × {budget['daily_expense_days']} day(s))"
+            )
         total = sel_flight_price + sel_hotel_price + daily_expenses
 
         budget_md = (
@@ -493,7 +599,7 @@ def _render_review_actions() -> None:
             "|:---|---:|\n"
             f"| ✈️ Flight | {format_currency(sel_flight_price, currency)} |\n"
             f"| 🏨 Hotel | {format_currency(sel_hotel_price, currency)} |\n"
-            f"| 🍽️ Daily Expenses (est.) | {format_currency(daily_expenses, currency)} |\n"
+            f"| 🍽️ {daily_expense_label} | {format_currency(daily_expenses, currency)} |\n"
             f"| **🧳 Total** | **{format_currency(total, currency)}** |"
         )
         st.markdown(budget_md)
@@ -510,14 +616,28 @@ def _render_review_actions() -> None:
         help="These notes guide the final itinerary text. They do not re-run flight or hotel search.",
     )
 
-    can_approve = selected_flight_idx is not None or selected_hotel_idx is not None
+    flight_selection_complete = (
+        selected_flight_idx is not None
+        and (
+            not is_round_trip
+            or selected_return_idx is not None
+            or selected_outbound.get("return_details_available")
+        )
+    )
+    can_approve = flight_selection_complete or selected_hotel_idx is not None
     if st.button(
         "Approve & Generate Itinerary",
         type="primary",
         use_container_width=True,
         disabled=not can_approve,
     ):
-        state["selected_flight"] = flights[selected_flight_idx] if selected_flight_idx is not None else {}
+        selected_return = return_options[selected_return_idx] if selected_return_idx is not None else {}
+        if selected_return:
+            state["selected_flight"] = _combine_round_trip_flight(selected_outbound, selected_return)
+        elif flight_selection_complete:
+            state["selected_flight"] = selected_outbound
+        else:
+            state["selected_flight"] = {}
         state["selected_hotel"] = hotels[selected_hotel_idx] if selected_hotel_idx is not None else {}
         st.session_state.graph_state = state
         st.session_state.messages.append(

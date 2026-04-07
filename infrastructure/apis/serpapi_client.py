@@ -9,7 +9,7 @@ from datetime import datetime
 
 from serpapi import GoogleSearch
 
-from config import SERPAPI_API_KEY, RAW_FLIGHT_CANDIDATES, MAX_HOTEL_RESULTS, CITY_TO_AIRPORT, DESTINATIONS
+from config import SERPAPI_API_KEY, RAW_FLIGHT_CANDIDATES, MAX_FLIGHT_RESULTS, MAX_HOTEL_RESULTS, CITY_TO_AIRPORT, DESTINATIONS
 from infrastructure.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -41,6 +41,37 @@ def _extract_inline_return_legs(group: dict) -> list[dict]:
         if isinstance(value, list) and value:
             return value
     return []
+
+
+def _base_flight_params(
+    origin: str,
+    destination: str,
+    departure_date: str,
+    return_date: str | None,
+    adults: int,
+    travel_class: str,
+    currency: str,
+) -> dict:
+    """Build shared Google Flights params for initial and token-based searches."""
+    params = {
+        "engine": "google_flights",
+        "departure_id": origin,
+        "arrival_id": destination,
+        "outbound_date": departure_date,
+        "adults": min(adults, 9),
+        "travel_class": TRAVEL_CLASS_MAP.get(travel_class, "1"),
+        "currency": currency,
+        "hl": "en",
+        "api_key": SERPAPI_API_KEY,
+    }
+
+    if return_date:
+        params["return_date"] = return_date
+        params["type"] = "1"  # round trip
+    else:
+        params["type"] = "2"  # one way
+
+    return params
 
 
 def search_flights(
@@ -88,23 +119,15 @@ def search_flights(
         outbound_time_window,
         return_time_window,
     )
-    params = {
-        "engine": "google_flights",
-        "departure_id": origin,
-        "arrival_id": destination,
-        "outbound_date": departure_date,
-        "adults": min(adults, 9),
-        "travel_class": TRAVEL_CLASS_MAP.get(travel_class, "1"),
-        "currency": currency,
-        "hl": "en",
-        "api_key": SERPAPI_API_KEY,
-    }
-
-    if return_date:
-        params["return_date"] = return_date
-        params["type"] = "1"  # round trip
-    else:
-        params["type"] = "2"  # one way
+    params = _base_flight_params(
+        origin=origin,
+        destination=destination,
+        departure_date=departure_date,
+        return_date=return_date,
+        adults=adults,
+        travel_class=travel_class,
+        currency=currency,
+    )
 
     if stops is not None and 0 <= stops <= 2:
         # SerpAPI stops values: 1 = nonstop, 2 = 1 stop or fewer, 3 = 2 stops or fewer
@@ -191,6 +214,86 @@ def search_flights(
 
     logger.info("Normalised %s raw flight candidates", len(flights))
     return flights
+
+
+def search_return_flights(
+    origin: str,
+    destination: str,
+    departure_date: str,
+    return_date: str,
+    departure_token: str,
+    adults: int = 1,
+    travel_class: str = "ECONOMY",
+    currency: str = "EUR",
+    return_time_window: tuple[int, int] | None = None,
+) -> list[dict]:
+    """Use an outbound `departure_token` to fetch return-flight options."""
+    if not SERPAPI_API_KEY:
+        raise RuntimeError(
+            "Return flight search requires `SERPAPI_API_KEY` in your environment or Streamlit secrets."
+        )
+
+    if not return_date or not departure_token:
+        logger.warning(
+            "Return flight search skipped return_date_present=%s departure_token_present=%s",
+            bool(return_date),
+            bool(departure_token),
+        )
+        return []
+
+    origin = CITY_TO_AIRPORT.get(origin, origin)
+    destination = CITY_TO_AIRPORT.get(destination, destination)
+
+    params = _base_flight_params(
+        origin=origin,
+        destination=destination,
+        departure_date=departure_date,
+        return_date=return_date,
+        adults=adults,
+        travel_class=travel_class,
+        currency=currency,
+    )
+    params["departure_token"] = departure_token
+
+    if return_time_window and return_time_window != (0, 23):
+        params["return_times"] = f"{return_time_window[0]},{return_time_window[1]}"
+
+    try:
+        results = GoogleSearch(params).get_dict()
+    except Exception as exc:
+        logger.error("SerpAPI return flight search failed: %s", exc)
+        return []
+
+    raw_groups = results.get("best_flights", []) + results.get("other_flights", [])
+    return_options = []
+    for group in raw_groups[:MAX_FLIGHT_RESULTS]:
+        legs = group.get("flights", [])
+        if not legs:
+            continue
+
+        first_leg, last_leg = legs[0], legs[-1]
+        total_duration = group.get("total_duration", 0)
+        dep = first_leg.get("departure_airport", {})
+        arr = last_leg.get("arrival_airport", {})
+        raw_price = group.get("price", 0)
+        price_per_person = round(raw_price / adults, 2) if adults > 1 else raw_price
+
+        return_options.append({
+            "airline": first_leg.get("airline", ""),
+            "departure_time": dep.get("time", ""),
+            "arrival_time": arr.get("time", ""),
+            "duration": f"{total_duration // 60}h {total_duration % 60}m",
+            "stops": len(legs) - 1,
+            "price": price_per_person,
+            "total_price": raw_price,
+            "adults": adults,
+            "currency": currency,
+            "return_summary": _format_flight_legs_summary(legs),
+            "booking_token": group.get("booking_token", ""),
+        })
+
+    logger.info("Normalised %s return flight candidates", len(return_options))
+    return return_options
 
 
 # ── Hotel search ──

@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from infrastructure.apis.serpapi_client import search_flights, search_hotels
+from infrastructure.apis.serpapi_client import search_flights, search_return_flights, search_hotels
 
 
 def _mock_google_search(expected_params_subset):
@@ -308,6 +308,82 @@ class TestSearchFlightsNetworkFailure:
         result = search_flights("London", "Paris", "2025-06-01")
 
         assert result == []
+
+
+class TestSearchReturnFlights:
+    @patch("infrastructure.apis.serpapi_client.GoogleSearch")
+    def test_return_flight_params_include_departure_token(self, mock_gs_cls):
+        mock_gs_cls.return_value.get_dict.return_value = {"best_flights": [], "other_flights": []}
+
+        search_return_flights(
+            "London",
+            "Paris",
+            "2025-06-01",
+            "2025-06-08",
+            departure_token="token-123",
+            adults=2,
+            return_time_window=(10, 20),
+        )
+
+        params = mock_gs_cls.call_args[0][0]
+        assert params["departure_id"] == "LHR"
+        assert params["arrival_id"] == "CDG"
+        assert params["outbound_date"] == "2025-06-01"
+        assert params["return_date"] == "2025-06-08"
+        assert params["type"] == "1"
+        assert params["departure_token"] == "token-123"
+        assert params["return_times"] == "10,20"
+        assert params["adults"] == 2
+
+    @patch("infrastructure.apis.serpapi_client.GoogleSearch")
+    def test_return_flight_results_are_normalised(self, mock_gs_cls):
+        mock_gs_cls.return_value.get_dict.return_value = {
+            "best_flights": [
+                {
+                    "flights": [
+                        {
+                            "airline": "Air France",
+                            "departure_airport": {"id": "CDG", "time": "2025-06-08 18:00"},
+                            "arrival_airport": {"id": "LHR", "time": "2025-06-08 19:30"},
+                        }
+                    ],
+                    "total_duration": 90,
+                    "price": 500,
+                    "booking_token": "book-123",
+                }
+            ],
+            "other_flights": [],
+        }
+
+        results = search_return_flights(
+            "London",
+            "Paris",
+            "2025-06-01",
+            "2025-06-08",
+            departure_token="token-123",
+            adults=2,
+        )
+
+        assert len(results) == 1
+        assert results[0]["airline"] == "Air France"
+        assert results[0]["return_summary"] == "CDG 2025-06-08 18:00 → LHR 2025-06-08 19:30"
+        assert results[0]["duration"] == "1h 30m"
+        assert results[0]["total_price"] == 500
+        assert results[0]["price"] == 250
+        assert results[0]["booking_token"] == "book-123"
+
+    @patch("infrastructure.apis.serpapi_client.GoogleSearch")
+    def test_missing_departure_token_skips_api_call(self, mock_gs_cls):
+        result = search_return_flights(
+            "London",
+            "Paris",
+            "2025-06-01",
+            "2025-06-08",
+            departure_token="",
+        )
+
+        assert result == []
+        mock_gs_cls.assert_not_called()
 
 
 class TestSearchHotelsNetworkFailure:
