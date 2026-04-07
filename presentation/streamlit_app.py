@@ -105,6 +105,102 @@ def _combine_round_trip_flight(outbound: dict, return_flight: dict) -> dict:
     }
 
 
+def _format_stops(stops: int) -> str:
+    if stops == 0:
+        return "Direct"
+    return f"{stops} stop" if stops == 1 else f"{stops} stops"
+
+
+def _option_total_price(option: dict) -> float:
+    return float(option.get("total_price", option.get("price", 0)) or 0)
+
+
+def _format_option_price(option: dict, currency: str) -> str:
+    total_price = _option_total_price(option)
+    price_label = format_currency(total_price, currency)
+    if option.get("adults", 1) > 1:
+        price_label += f" total ({format_currency(option.get('price', 0), currency)}/person)"
+    return price_label
+
+
+def _duration_to_minutes(option: dict) -> int:
+    raw_duration = str(option.get("duration", ""))
+    hours = 0
+    minutes = 0
+    for part in raw_duration.split():
+        if part.endswith("h"):
+            try:
+                hours = int(part[:-1])
+            except ValueError:
+                pass
+        elif part.endswith("m"):
+            try:
+                minutes = int(part[:-1])
+            except ValueError:
+                pass
+    return hours * 60 + minutes
+
+
+def _flight_badges(options: list[dict], option: dict) -> list[str]:
+    badges = []
+    prices = [_option_total_price(item) for item in options if _option_total_price(item) > 0]
+    durations = [_duration_to_minutes(item) for item in options if _duration_to_minutes(item) > 0]
+
+    if prices and _option_total_price(option) == min(prices):
+        badges.append("Best price")
+    if option.get("stops") == 0:
+        badges.append("Direct")
+    if durations and _duration_to_minutes(option) == min(durations):
+        badges.append("Shortest")
+    return badges
+
+
+def _hotel_badges(hotels: list[dict], hotel: dict) -> list[str]:
+    badges = []
+    prices = [float(item.get("total_price", 0) or 0) for item in hotels if item.get("total_price")]
+    ratings = [float(item.get("rating", 0) or 0) for item in hotels if item.get("rating")]
+
+    if prices and float(hotel.get("total_price", 0) or 0) == min(prices):
+        badges.append("Best price")
+    if ratings and float(hotel.get("rating", 0) or 0) == max(ratings):
+        badges.append("Top rated")
+    return badges
+
+
+def _badge_line(badges: list[str]) -> str:
+    return " · ".join(badges)
+
+
+def _format_flight_option_label(
+    option: dict,
+    options: list[dict],
+    currency: str,
+    leg_label: str,
+    index: int,
+) -> str:
+    summary_key = "return_summary" if leg_label == "Return" else "outbound_summary"
+    badges = _flight_badges(options, option)
+    badge_text = f" [{_badge_line(badges)}]" if badges else ""
+    return (
+        f"Option {index + 1}: {option.get('airline', 'Unknown airline')}{badge_text} | "
+        f"{leg_label}: {option.get(summary_key, 'Details unavailable')} | "
+        f"{option.get('duration', 'Unknown duration')} | "
+        f"{_format_stops(option.get('stops', 0))} | "
+        f"{_format_option_price(option, currency)}"
+    )
+
+
+def _format_hotel_option_label(hotel: dict, hotels: list[dict], currency: str, index: int) -> str:
+    badges = _hotel_badges(hotels, hotel)
+    badge_text = f" [{_badge_line(badges)}]" if badges else ""
+    return (
+        f"Option {index + 1}: {hotel.get('name', 'Unknown Hotel')}{badge_text} | "
+        f"Rating: {hotel.get('rating', '?')} | "
+        f"{format_currency(hotel.get('price_per_night', 0), currency)}/night | "
+        f"{format_currency(hotel.get('total_price', 0), currency)} total"
+    )
+
+
 def _compress_star_preferences(stars: list[int]) -> list[int]:
     """Collapse expanded star lists into minimal `N-star and up` thresholds for display."""
     selected = sorted({int(star) for star in stars if star in HOTEL_STARS})
@@ -484,22 +580,21 @@ def _render_review_actions() -> None:
     is_round_trip = bool(trip_request.get("return_date"))
     trip_type_label = "Round Trip" if is_round_trip else "One-Way"
     st.subheader(f"✈️ Select a Flight ({trip_type_label})")
+    if is_round_trip:
+        st.caption(
+            "Step 1: choose an outbound flight. Step 2: choose a matching return flight for that outbound option."
+        )
+    else:
+        st.caption("Choose the outbound flight you want included in the itinerary.")
     if flights:
         flight_labels = []
-        for f in flights:
-            stops = "Direct" if f["stops"] == 0 else f"{f['stops']} stop(s)"
-            price_label = format_currency(f.get("total_price", f["price"]), currency)
-            if f.get("adults", 1) > 1:
-                price_label += f" ({format_currency(f['price'], currency)}/person)"
-            flight_labels.append(
-                f"{f.get('airline', '?')} — Outbound: {f['outbound_summary']} — {f['duration']} — {stops} — {price_label}"
-            )
+        for idx, flight in enumerate(flights):
+            flight_labels.append(_format_flight_option_label(flight, flights, currency, "Outbound", idx))
         selected_flight_idx = st.radio(
-            "Choose an outbound flight",
+            "Outbound options",
             options=range(len(flights)),
             format_func=lambda i: flight_labels[i],
             index=0,
-            label_visibility="collapsed",
         )
     else:
         if flights_removed_by_budget:
@@ -513,6 +608,7 @@ def _render_review_actions() -> None:
     selected_return_idx = None
     if is_round_trip and selected_outbound:
         st.subheader("↩️ Select a Return Flight")
+        st.caption("Return options are loaded for the outbound flight selected above.")
         departure_token = selected_outbound.get("departure_token", "")
         if departure_token:
             user_profile = state.get("user_profile", {})
@@ -534,23 +630,21 @@ def _render_review_actions() -> None:
 
             if return_options:
                 return_labels = []
-                for option in return_options:
-                    stops = "Direct" if option["stops"] == 0 else f"{option['stops']} stop(s)"
-                    price_label = format_currency(option.get("total_price", option["price"]), currency)
-                    if option.get("adults", 1) > 1:
-                        price_label += f" ({format_currency(option['price'], currency)}/person)"
+                for idx, option in enumerate(return_options):
                     return_labels.append(
-                        f"{option.get('airline', '?')} — Return: {option['return_summary']} — {option['duration']} — {stops} — {price_label}"
+                        _format_flight_option_label(option, return_options, currency, "Return", idx)
                     )
                 selected_return_idx = st.radio(
-                    "Choose a return flight",
+                    "Return options",
                     options=range(len(return_options)),
                     format_func=lambda i: return_labels[i],
                     index=0,
-                    label_visibility="collapsed",
                 )
+                st.success("Return flight selected and paired with your outbound choice.")
             else:
-                st.warning("No return flights were found for the selected outbound option. Try another outbound flight.")
+                st.warning(
+                    "No return flights were found for this outbound option. Choose another outbound flight above to load a different return set."
+                )
         elif selected_outbound.get("return_details_available"):
             st.info(f"Return: {selected_outbound.get('return_summary')}")
         else:
@@ -558,18 +652,16 @@ def _render_review_actions() -> None:
 
     # ── Hotel selection ──
     st.subheader("🏨 Select a Hotel")
+    st.caption("Hotel totals use the destination dates and traveller count from your trip request.")
     if hotels:
         hotel_labels = []
-        for h in hotels:
-            hotel_labels.append(
-                f"{h['name']} — ⭐ {h.get('rating', '?')} — {format_currency(h['price_per_night'], currency)}/night — {format_currency(h['total_price'], currency)} total"
-            )
+        for idx, h in enumerate(hotels):
+            hotel_labels.append(_format_hotel_option_label(h, hotels, currency, idx))
         selected_hotel_idx = st.radio(
-            "Choose a hotel",
+            "Hotel options",
             options=range(len(hotels)),
             format_func=lambda i: hotel_labels[i],
             index=0,
-            label_visibility="collapsed",
         )
     else:
         if hotels_removed_by_budget:
@@ -581,28 +673,43 @@ def _render_review_actions() -> None:
     # ── Budget summary ──
     if budget:
         st.subheader("💰 Budget Summary")
+        st.caption("Estimated totals for the currently selected options. Flight and daily expenses include all travellers.")
         sel_return = return_options[selected_return_idx] if selected_return_idx is not None else {}
         sel_flight = _combine_round_trip_flight(selected_outbound, sel_return) if sel_return else selected_outbound
         sel_flight_price = sel_flight.get("total_price", sel_flight.get("price", 0)) if sel_flight else 0
         sel_hotel_price = hotels[selected_hotel_idx]["total_price"] if selected_hotel_idx is not None else 0
         daily_expenses = budget.get("estimated_daily_expenses", 0)
-        daily_expense_label = "Daily Expenses (est.)"
-        if budget.get("daily_expense_travelers") and budget.get("daily_expense_days"):
-            daily_expense_label = (
-                f"Daily Expenses (est., {budget['daily_expense_travelers']} "
-                f"traveler(s) × {budget['daily_expense_days']} day(s))"
+        daily_days = budget.get("daily_expense_days", 0)
+        daily_travelers = budget.get("daily_expense_travelers", 0)
+        daily_rate = budget.get("daily_expense_per_traveler", 0)
+        flight_label = "Flight"
+        if sel_flight.get("adults", 1) > 1:
+            flight_label = f"Flight ({sel_flight['adults']} travellers)"
+        daily_expense_detail = "Estimated meals, local transport, and incidentals"
+        if daily_travelers and daily_days and daily_rate:
+            daily_expense_detail = (
+                f"{daily_travelers} traveller(s) × {daily_days} day(s) × "
+                f"{format_currency(daily_rate, currency)}/day"
             )
         total = sel_flight_price + sel_hotel_price + daily_expenses
 
         budget_md = (
-            "| Category | Amount |\n"
-            "|:---|---:|\n"
-            f"| ✈️ Flight | {format_currency(sel_flight_price, currency)} |\n"
-            f"| 🏨 Hotel | {format_currency(sel_hotel_price, currency)} |\n"
-            f"| 🍽️ {daily_expense_label} | {format_currency(daily_expenses, currency)} |\n"
-            f"| **🧳 Total** | **{format_currency(total, currency)}** |"
+            "| Category | What It Covers | Amount |\n"
+            "|:---|:---|---:|\n"
+            f"| ✈️ {flight_label} | Selected itinerary total | {format_currency(sel_flight_price, currency)} |\n"
+            f"| 🏨 Hotel | Full stay for selected room/search | {format_currency(sel_hotel_price, currency)} |\n"
+            f"| 🍽️ Daily expenses | {daily_expense_detail} | {format_currency(daily_expenses, currency)} |\n"
+            f"| **🧳 Total** | **Selected trip estimate** | **{format_currency(total, currency)}** |"
         )
         st.markdown(budget_md)
+
+        budget_limit = trip_request.get("budget_limit", 0) or 0
+        if budget_limit > 0:
+            remaining = budget_limit - total
+            if remaining >= 0:
+                st.success(f"Selected options are within budget with {format_currency(remaining, currency)} to spare.")
+            else:
+                st.warning(f"Selected options are over budget by {format_currency(abs(remaining), currency)}.")
 
         if budget.get("budget_notes"):
             st.info(f"📝 {budget['budget_notes']}")
@@ -624,7 +731,13 @@ def _render_review_actions() -> None:
             or selected_outbound.get("return_details_available")
         )
     )
-    can_approve = flight_selection_complete or selected_hotel_idx is not None
+    flight_selection_required = selected_flight_idx is not None
+    can_approve = (
+        (not flight_selection_required or flight_selection_complete)
+        and (flight_selection_complete or selected_hotel_idx is not None)
+    )
+    if is_round_trip and selected_flight_idx is not None and not flight_selection_complete:
+        st.warning("Choose a return flight before approving this round trip.")
     if st.button(
         "Approve & Generate Itinerary",
         type="primary",
