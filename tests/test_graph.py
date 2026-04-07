@@ -29,7 +29,9 @@ class TestFormatTripSummary:
         assert "### Trip Summary" in result
         assert "| Detail | Selection |" in result
         assert "London -> Paris" in result
+        assert "| Trip type | Round trip |" in result
         assert "2026-07-01 to 2026-07-08" in result
+        assert "| Nights | 7 |" in result
         assert "2" in result
         assert "Business" in result
 
@@ -38,11 +40,14 @@ class TestFormatTripSummary:
             "origin": "NYC",
             "destination": "LAX",
             "departure_date": "2026-08-01",
+            "check_out_date": "2026-08-05",
             "num_travelers": 1,
         }
         result = _format_trip_summary(trip, [], [])
+        assert "| Trip type | One-way |" in result
         assert "one-way" in result
         assert "NYC -> LAX" in result
+        assert "| Nights | 4 |" in result
 
     def test_missing_fields_show_question_marks(self):
         result = _format_trip_summary({}, [], [])
