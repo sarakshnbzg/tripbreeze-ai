@@ -215,6 +215,12 @@ def _extract_trip_duration_days(query: str) -> int:
         return 0
 
 
+def _query_mentions_one_way(query: str) -> bool:
+    """Return true when the user explicitly requests a one-way trip."""
+    lowered = query.lower()
+    return "one-way" in lowered or "one way" in lowered
+
+
 def _apply_free_text_trip_fallbacks(
     raw_trip_data: dict[str, Any],
     free_text_query: str,
@@ -232,6 +238,7 @@ def _apply_free_text_trip_fallbacks(
 
     duration_days = _extract_trip_duration_days(free_text_query)
     departure_date = trip_data.get("departure_date")
+    is_one_way = _query_mentions_one_way(free_text_query)
     if (
         duration_days > 0
         and departure_date
@@ -239,8 +246,14 @@ def _apply_free_text_trip_fallbacks(
         and not structured_fields.get("check_out_date")
     ):
         end_date = date.fromisoformat(departure_date) + timedelta(days=duration_days)
-        trip_data["return_date"] = end_date.isoformat()
         trip_data["check_out_date"] = end_date.isoformat()
+        if is_one_way:
+            trip_data["return_date"] = ""
+        else:
+            trip_data["return_date"] = end_date.isoformat()
+
+    if is_one_way and not structured_fields.get("return_date"):
+        trip_data["return_date"] = ""
 
     return trip_data
 

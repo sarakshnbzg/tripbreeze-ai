@@ -6,6 +6,7 @@ from presentation.streamlit_app import (
     _build_structured_fields_from_form,
     _build_token_usage_label,
     _summarise_token_usage,
+    _token_usage_table_markdown,
 )
 
 
@@ -49,6 +50,25 @@ class TestBuildTokenUsageLabel:
 
     def test_falls_back_to_search_index(self):
         assert _build_token_usage_label({}, index=2) == "Search 2"
+
+
+class TestTokenUsageTableMarkdown:
+    def test_renders_single_markdown_table(self):
+        table = _token_usage_table_markdown(
+            [
+                {
+                    "search": "London (2026-04-20)",
+                    "input": "1,840",
+                    "output": "312",
+                    "cost": "$0.0005",
+                }
+            ]
+        )
+
+        assert "| Search | Input | Output | Cost |" in table
+        assert "|:---|---:|---:|---:|" in table
+        assert "| London (2026-04-20) | 1,840 | 312 | $0.0005 |" in table
+        assert table.count("\n") >= 2
 
 
 class TestBuildStructuredFieldsFromForm:

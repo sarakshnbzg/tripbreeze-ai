@@ -292,6 +292,19 @@ def _build_token_usage_label(state: dict, index: int | None = None) -> str:
     return "Search"
 
 
+def _token_usage_table_markdown(rows: list[dict[str, str]]) -> str:
+    """Render token-usage rows as a single markdown table."""
+    lines = [
+        "| Search | Input | Output | Cost |",
+        "|:---|---:|---:|---:|",
+    ]
+    for row in rows[:5]:
+        lines.append(
+            f"| {row['search']} | {row['input']} | {row['output']} | {row['cost']} |"
+        )
+    return "\n".join(lines)
+
+
 def _archive_current_token_usage() -> None:
     state = st.session_state.get("graph_state")
     if not state or state.get("_token_usage_archived"):
@@ -525,12 +538,7 @@ def _render_token_usage() -> None:
                 "cost": f"${item['cost']:.4f}",
             })
 
-        st.markdown("| Search | Input | Output | Cost |")
-        st.markdown("|:---|---:|---:|---:|")
-        for row in rows[:5]:
-            st.markdown(
-                f"| {row['search']} | {row['input']} | {row['output']} | {row['cost']} |"
-            )
+        st.markdown(_token_usage_table_markdown(rows))
 
 
 def _render_profile_sidebar() -> None:

@@ -9,6 +9,7 @@ from domain.nodes.trip_intake import (
     _apply_free_text_trip_fallbacks,
     _extract_explicit_departure_date,
     _extract_trip_duration_days,
+    _query_mentions_one_way,
     _normalise_hotel_stars,
     _normalise_trip_data,
     _parse_preferences,
@@ -90,6 +91,10 @@ class TestFreeTextTripFallbacks:
     def test_extracts_trip_duration_days(self):
         assert _extract_trip_duration_days("I want to stay for 2 days") == 2
 
+    def test_detects_one_way_phrase(self):
+        assert _query_mentions_one_way("I want a one way flight to Barcelona") is True
+        assert _query_mentions_one_way("I want a one-way flight to Barcelona") is True
+
     def test_duration_and_date_override_missing_or_incorrect_llm_dates(self):
         raw = {
             "origin": "Berlin",
@@ -122,6 +127,24 @@ class TestFreeTextTripFallbacks:
 
         assert result["departure_date"] == "2026-04-25"
         assert result["return_date"] == "2026-04-28"
+
+    def test_one_way_duration_sets_check_out_not_return_date(self):
+        raw = {
+            "origin": "Berlin",
+            "destination": "Barcelona",
+            "departure_date": "2026-04-22",
+            "return_date": "2026-04-29",
+        }
+
+        result = _apply_free_text_trip_fallbacks(
+            raw,
+            "I want to fly from Berlin to Barcelona on the 19th of April. One way for 2 nights.",
+            {},
+        )
+
+        assert result["departure_date"] == "2026-04-19"
+        assert result["return_date"] == ""
+        assert result["check_out_date"] == "2026-04-21"
 
 
 class TestNormaliseTripData:
@@ -409,3 +432,34 @@ class TestTripIntakeNode:
         assert trip["departure_date"] == "2026-04-20"
         assert trip["return_date"] == "2026-04-22"
         assert trip["check_out_date"] == "2026-04-22"
+
+    def test_free_text_one_way_duration_does_not_create_round_trip(self):
+        mock_llm = MagicMock()
+        mock_response = MagicMock()
+        mock_response.tool_calls = [
+            {
+                "args": {
+                    "origin": "Berlin",
+                    "destination": "Barcelona",
+                    "departure_date": "2026-04-22",
+                    "return_date": "2026-04-29",
+                }
+            }
+        ]
+        mock_llm.bind_tools.return_value = MagicMock()
+
+        state = self._base_state(
+            structured_fields={},
+            free_text_query="I want to fly from Berlin to Barcelona on the 19th of April. One way for 2 nights.",
+        )
+
+        with patch("domain.nodes.trip_intake.create_chat_model", return_value=mock_llm):
+            with patch("domain.nodes.trip_intake.invoke_with_retry", return_value=mock_response):
+                with patch("domain.nodes.trip_intake.extract_token_usage", return_value=None):
+                    result = trip_intake(state)
+
+        trip = result["trip_request"]
+        assert trip["departure_date"] == "2026-04-19"
+        assert trip["return_date"] == ""
+        assert trip["check_out_date"] == "2026-04-21"
+        assert "(one-way)" in result["messages"][0]["content"]
