@@ -3,6 +3,7 @@
 from datetime import date
 
 from presentation.streamlit_app import (
+    _can_approve_itinerary,
     _build_structured_fields_from_form,
     _build_token_usage_label,
     _planning_progress_markdown,
@@ -125,3 +126,50 @@ class TestBuildStructuredFieldsFromForm:
         assert result["num_travelers"] == 2
         assert result["budget_limit"] == 1200
         assert result["currency"] == "USD"
+
+
+class TestCanApproveItinerary:
+    def test_requires_flight_and_hotel_for_one_way(self):
+        assert _can_approve_itinerary(
+            is_round_trip=False,
+            selected_flight_idx=0,
+            selected_hotel_idx=0,
+            selected_return_idx=None,
+            selected_outbound={},
+        ) is True
+
+    def test_blocks_when_hotel_missing(self):
+        assert _can_approve_itinerary(
+            is_round_trip=False,
+            selected_flight_idx=0,
+            selected_hotel_idx=None,
+            selected_return_idx=None,
+            selected_outbound={},
+        ) is False
+
+    def test_blocks_when_flight_missing(self):
+        assert _can_approve_itinerary(
+            is_round_trip=False,
+            selected_flight_idx=None,
+            selected_hotel_idx=0,
+            selected_return_idx=None,
+            selected_outbound={},
+        ) is False
+
+    def test_round_trip_requires_return_selection_when_not_embedded(self):
+        assert _can_approve_itinerary(
+            is_round_trip=True,
+            selected_flight_idx=0,
+            selected_hotel_idx=0,
+            selected_return_idx=None,
+            selected_outbound={"return_details_available": False},
+        ) is False
+
+    def test_round_trip_accepts_embedded_return_details(self):
+        assert _can_approve_itinerary(
+            is_round_trip=True,
+            selected_flight_idx=0,
+            selected_hotel_idx=0,
+            selected_return_idx=None,
+            selected_outbound={"return_details_available": True},
+        ) is True

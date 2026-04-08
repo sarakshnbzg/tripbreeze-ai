@@ -305,6 +305,24 @@ def _token_usage_table_markdown(rows: list[dict[str, str]]) -> str:
     return "\n".join(lines)
 
 
+def _can_approve_itinerary(
+    *,
+    is_round_trip: bool,
+    selected_flight_idx: int | None,
+    selected_hotel_idx: int | None,
+    selected_return_idx: int | None,
+    selected_outbound: dict,
+) -> bool:
+    """Require both flight and hotel selections before approval."""
+    flight_ready = selected_flight_idx is not None and (
+        not is_round_trip
+        or selected_return_idx is not None
+        or selected_outbound.get("return_details_available")
+    )
+    hotel_ready = selected_hotel_idx is not None
+    return flight_ready and hotel_ready
+
+
 def _archive_current_token_usage() -> None:
     state = st.session_state.get("graph_state")
     if not state or state.get("_token_usage_archived"):
@@ -839,18 +857,17 @@ def _render_review_actions() -> None:
         help="These notes guide the final itinerary text. They do not re-run flight or hotel search.",
     )
 
-    flight_selection_complete = (
-        selected_flight_idx is not None
-        and (
-            not is_round_trip
-            or selected_return_idx is not None
-            or selected_outbound.get("return_details_available")
-        )
+    flight_selection_complete = selected_flight_idx is not None and (
+        not is_round_trip
+        or selected_return_idx is not None
+        or selected_outbound.get("return_details_available")
     )
-    flight_selection_required = selected_flight_idx is not None
-    can_approve = (
-        (not flight_selection_required or flight_selection_complete)
-        and (flight_selection_complete or selected_hotel_idx is not None)
+    can_approve = _can_approve_itinerary(
+        is_round_trip=is_round_trip,
+        selected_flight_idx=selected_flight_idx,
+        selected_hotel_idx=selected_hotel_idx,
+        selected_return_idx=selected_return_idx,
+        selected_outbound=selected_outbound,
     )
     if is_round_trip and selected_flight_idx is not None and not flight_selection_complete:
         st.warning("Choose a return flight before approving this round trip.")
