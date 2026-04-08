@@ -117,6 +117,28 @@ def _render_section_body(title: str, body: str) -> str:
     return _sentence_bullets(body)
 
 
+def _selected_flight_context(selected_flight: dict, trip_request: dict) -> str:
+    """Build a stable finaliser prompt block that clearly shows outbound and return legs."""
+    if not selected_flight:
+        return "No flight selected"
+
+    flight_payload = json.dumps(selected_flight, indent=2)
+    outbound_summary = selected_flight.get("outbound_summary", "")
+    return_summary = selected_flight.get("return_summary", "")
+    is_round_trip = bool(trip_request.get("return_date"))
+
+    sections = ["Structured flight data:", flight_payload]
+    if outbound_summary:
+        sections.append(f"Outbound flight summary: {outbound_summary}")
+    if is_round_trip:
+        if return_summary:
+            sections.append(f"Return flight summary: {return_summary}")
+        else:
+            sections.append("Return flight summary: Not available.")
+
+    return "\n\n".join(sections)
+
+
 def render_itinerary_markdown(itinerary: Itinerary) -> str:
     """Render a structured Itinerary as a user-facing markdown string."""
     sections = [
@@ -163,7 +185,7 @@ def trip_finaliser(state: dict) -> dict:
     prompt = FINALISER_PROMPT.format(
         currency=state.get("trip_request", {}).get("currency", "EUR"),
         trip_request=json.dumps(state.get("trip_request", {}), indent=2),
-        selected_flight=json.dumps(selected_flight, indent=2) if selected_flight else "No flight selected",
+        selected_flight=_selected_flight_context(selected_flight, state.get("trip_request", {})),
         selected_hotel=json.dumps(selected_hotel, indent=2) if selected_hotel else "No hotel selected",
         destination_info=state.get("destination_info", "") or "No destination info available",
         rag_sources=", ".join(state.get("rag_sources", [])) or "None",

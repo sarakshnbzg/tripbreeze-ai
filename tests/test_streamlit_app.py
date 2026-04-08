@@ -4,11 +4,17 @@ from datetime import date
 
 from presentation.streamlit_app import (
     _can_approve_itinerary,
+    _badge_pills_html,
+    _flight_option_cards,
     _build_structured_fields_from_form,
     _build_token_usage_label,
+    _hotel_option_cards,
     _is_budget_status_note,
+    _normalise_selected_index,
     _parse_num_nights,
     _planning_progress_markdown,
+    _render_option_card,
+    _selection_button_label,
     _summarise_token_usage,
     _token_usage_table_markdown,
 )
@@ -79,6 +85,70 @@ class TestPlanningProgressMarkdown:
     def test_joins_updates_with_blank_lines(self):
         content = _planning_progress_markdown(["Planning your trip...", "**Searching flights...**", "Found 5 flight options."])
         assert content == "Planning your trip...\n\n**Searching flights...**\n\nFound 5 flight options."
+
+
+class TestOptionCardRendering:
+    def test_badge_pills_html_uses_badge_labels(self):
+        html_content = _badge_pills_html(["Best price", "Direct"])
+        assert "Best price" in html_content
+        assert "Direct" in html_content
+        assert "border-radius:999px" in html_content
+
+    def test_render_option_card_includes_title_badges_and_details(self):
+        card_html = _render_option_card(
+            title="Option 1: easyJet",
+            badges=["Best price", "Direct"],
+            details=["Outbound: BER -> CDG", "Price: EUR 117 total"],
+        )
+        assert "Option 1: easyJet" in card_html
+        assert "Best price" in card_html
+        assert "Outbound: BER -&gt; CDG" in card_html
+        assert "Price: EUR 117 total" in card_html
+
+    def test_selection_button_label_changes_with_state(self):
+        assert _selection_button_label(True) == "◉ Selected"
+        assert _selection_button_label(False) == "○ Select"
+
+    def test_normalise_selected_index_defaults_to_first_option(self):
+        assert _normalise_selected_index(None, 3) == 0
+        assert _normalise_selected_index(9, 3) == 0
+        assert _normalise_selected_index(1, 3) == 1
+        assert _normalise_selected_index(None, 0) is None
+
+    def test_flight_option_cards_build_display_data(self):
+        cards = _flight_option_cards(
+            [
+                {
+                    "airline": "easyJet",
+                    "outbound_summary": "BER 08:35 -> CDG 10:25",
+                    "duration": "1h 50m",
+                    "stops": 0,
+                    "total_price": 117,
+                    "price": 58,
+                    "adults": 2,
+                }
+            ],
+            "EUR",
+            "Outbound",
+        )
+        assert cards[0]["title"] == "Option 1: easyJet"
+        assert "Best price" in cards[0]["badges"]
+        assert "Direct" in cards[0]["badges"]
+
+    def test_hotel_option_cards_build_display_data(self):
+        cards = _hotel_option_cards(
+            [
+                {
+                    "name": "Hotel Lumiere",
+                    "rating": 9.1,
+                    "price_per_night": 120,
+                    "total_price": 360,
+                }
+            ],
+            "EUR",
+        )
+        assert cards[0]["title"] == "Option 1: Hotel Lumiere"
+        assert "Rating: 9.1" in cards[0]["details"][0]
 
 
 class TestBuildStructuredFieldsFromForm:

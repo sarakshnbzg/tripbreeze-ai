@@ -4,6 +4,7 @@ from domain.nodes.trip_finaliser import (
     render_itinerary_markdown,
     Itinerary,
     Source,
+    _selected_flight_context,
 )
 
 
@@ -113,3 +114,28 @@ class TestItineraryModel:
         assert restored.trip_overview == "overview"
         assert len(restored.sources) == 1
         assert restored.sources[0].document == "doc.md"
+
+
+class TestSelectedFlightContext:
+    def test_includes_outbound_and_return_summaries_for_round_trip(self):
+        context = _selected_flight_context(
+            {
+                "airline": "Lufthansa",
+                "outbound_summary": "BER 2026-04-09 08:00 -> LHR 2026-04-09 09:00",
+                "return_summary": "LHR 2026-04-10 18:00 -> BER 2026-04-10 21:00",
+                "selected_return": {"airline": "Lufthansa"},
+            },
+            {"return_date": "2026-04-10"},
+        )
+        assert "Outbound flight summary:" in context
+        assert "Return flight summary:" in context
+        assert "BER 2026-04-09 08:00" in context
+        assert "LHR 2026-04-10 18:00" in context
+
+    def test_omits_return_summary_for_one_way(self):
+        context = _selected_flight_context(
+            {"outbound_summary": "BER 2026-04-09 08:00 -> LHR 2026-04-09 09:00"},
+            {},
+        )
+        assert "Outbound flight summary:" in context
+        assert "Return flight summary:" not in context

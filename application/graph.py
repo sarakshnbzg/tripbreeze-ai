@@ -104,11 +104,6 @@ def hitl_review(state: dict) -> dict:
     parts.append(_format_trip_summary(trip, flights, hotels))
     if budget.get("budget_notes"):
         parts.append(f"### Budget Note\n\n> {budget['budget_notes']}")
-    parts.append(
-        "### Next Step\n\n"
-        "Review the options below, choose your preferred flight and hotel, "
-        "then approve to generate the final itinerary."
-    )
 
     return {
         "messages": [{"role": "assistant", "content": "\n\n".join(parts)}],

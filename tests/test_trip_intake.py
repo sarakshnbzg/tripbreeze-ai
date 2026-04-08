@@ -92,6 +92,13 @@ class TestFreeTextTripFallbacks:
     def test_extracts_trip_duration_days(self):
         assert _extract_trip_duration_days("I want to stay for 2 days") == 2
 
+    def test_extracts_worded_trip_duration_days(self):
+        assert _extract_trip_duration_days("I want a one day trip to London") == 1
+        assert _extract_trip_duration_days("Plan a one-day trip from Berlin to London") == 1
+
+    def test_extracts_day_trip_phrase(self):
+        assert _extract_trip_duration_days("Plan a day trip from Berlin to London") == 1
+
     def test_detects_one_way_phrase(self):
         assert _query_mentions_one_way("I want a one way flight to Barcelona") is True
         assert _query_mentions_one_way("I want a one-way flight to Barcelona") is True

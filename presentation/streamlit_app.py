@@ -4,6 +4,7 @@ Dependency direction: presentation -> application -> domain -> infrastructure
 This module only imports from the application and infrastructure layers.
 """
 
+import html
 import streamlit as st
 
 from datetime import date, timedelta
@@ -179,6 +180,124 @@ def _hotel_badges(hotels: list[dict], hotel: dict) -> list[str]:
 
 def _badge_line(badges: list[str]) -> str:
     return " · ".join(badges)
+
+
+_BADGE_COLORS = {
+    "Best price": ("#14532d", "#bbf7d0"),
+    "Direct": ("#1d4ed8", "#bfdbfe"),
+    "Shortest": ("#581c87", "#e9d5ff"),
+    "Top rated": ("#78350f", "#fde68a"),
+}
+
+
+def _badge_pills_html(badges: list[str]) -> str:
+    pills = []
+    for badge in badges:
+        background, foreground = _BADGE_COLORS.get(badge, ("#374151", "#e5e7eb"))
+        pills.append(
+            f"<span style='display:inline-block;margin-right:0.4rem;margin-bottom:0.35rem;"
+            f"padding:0.18rem 0.55rem;border-radius:999px;background:{background};"
+            f"color:{foreground};font-size:0.82rem;font-weight:600;'>{html.escape(badge)}</span>"
+        )
+    return "".join(pills)
+
+
+def _render_option_card(title: str, badges: list[str], details: list[str]) -> str:
+    details_html = "".join(
+        f"<div style='margin-top:0.25rem;color:#d1d5db;'>{html.escape(detail)}</div>"
+        for detail in details
+        if detail
+    )
+    badges_html = _badge_pills_html(badges)
+    badges_block = f"<div style='margin-top:0.5rem;'>{badges_html}</div>" if badges_html else ""
+    return (
+        "<div style='padding:0.9rem 1rem;margin:0.45rem 0 0.7rem 0;border:1px solid #374151;"
+        "border-radius:0.85rem;background:#111827;'>"
+        f"<div style='font-weight:700;color:#f9fafb;'>{html.escape(title)}</div>"
+        f"{badges_block}"
+        f"{details_html}"
+        "</div>"
+    )
+
+
+def _normalise_selected_index(selected_index: int | None, num_options: int) -> int | None:
+    """Return a safe selected index for a fixed-size option list."""
+    if num_options <= 0:
+        return None
+    if selected_index is None:
+        return 0
+    return selected_index if 0 <= selected_index < num_options else 0
+
+
+def _selection_button_label(is_selected: bool) -> str:
+    return "◉ Selected" if is_selected else "○ Select"
+
+
+def _render_selectable_cards(
+    *,
+    selection_key: str,
+    cards: list[dict[str, object]],
+) -> int | None:
+    """Render simple selectable cards and return the chosen index."""
+    selected_index = _normalise_selected_index(st.session_state.get(selection_key), len(cards))
+    if selected_index is not None:
+        st.session_state[selection_key] = selected_index
+
+    for index, card in enumerate(cards):
+        is_selected = index == selected_index
+        with st.container():
+            content_col, action_col = st.columns([8, 2], vertical_alignment="center")
+            with content_col:
+                st.markdown(
+                    _render_option_card(
+                        title=str(card["title"]),
+                        badges=list(card["badges"]),
+                        details=list(card["details"]),
+                    ),
+                    unsafe_allow_html=True,
+                )
+            with action_col:
+                if st.button(
+                    _selection_button_label(is_selected),
+                    key=f"{selection_key}_{index}",
+                    type="primary" if is_selected else "secondary",
+                    use_container_width=True,
+                ):
+                    selected_index = index
+                    st.session_state[selection_key] = index
+
+    return selected_index
+
+
+def _flight_option_cards(options: list[dict], currency: str, leg_label: str) -> list[dict[str, object]]:
+    summary_key = "return_summary" if leg_label == "Return" else "outbound_summary"
+    return [
+        {
+            "title": f"Option {index + 1}: {option.get('airline', 'Unknown airline')}",
+            "badges": _flight_badges(options, option),
+            "details": [
+                f"{leg_label}: {option.get(summary_key, 'Details unavailable')}",
+                f"Duration: {option.get('duration', 'Unknown duration')} · {_format_stops(option.get('stops', 0))}",
+                f"Price: {_format_option_price(option, currency)}",
+            ],
+        }
+        for index, option in enumerate(options)
+    ]
+
+
+def _hotel_option_cards(hotels: list[dict], currency: str) -> list[dict[str, object]]:
+    return [
+        {
+            "title": f"Option {index + 1}: {hotel.get('name', 'Unknown Hotel')}",
+            "badges": _hotel_badges(hotels, hotel),
+            "details": [
+                f"Rating: {hotel.get('rating', '?')}",
+                f"Per night: {format_currency(hotel.get('price_per_night', 0), currency)}",
+                f"Total: {format_currency(hotel.get('total_price', 0), currency)}",
+            ],
+        }
+        for index, hotel in enumerate(hotels)
+    ]
 
 
 def _format_flight_option_label(
@@ -697,6 +816,10 @@ def _render_review_actions() -> None:
     if not state:
         return
 
+    st.caption(
+        "Review the options below, choose your preferred flight and hotel, then approve to generate the final itinerary."
+    )
+
     flights = state.get("flight_options", [])[:5]
     hotels = state.get("hotel_options", [])[:5]
     budget = state.get("budget", {})
@@ -724,14 +847,9 @@ def _render_review_actions() -> None:
     else:
         st.caption("Choose the outbound flight you want included in the itinerary.")
     if flights:
-        flight_labels = []
-        for idx, flight in enumerate(flights):
-            flight_labels.append(_format_flight_option_label(flight, flights, currency, "Outbound", idx))
-        selected_flight_idx = st.radio(
-            "Outbound options",
-            options=range(len(flights)),
-            format_func=lambda i: flight_labels[i],
-            index=0,
+        selected_flight_idx = _render_selectable_cards(
+            selection_key="selected_outbound_option_index",
+            cards=_flight_option_cards(flights, currency, "Outbound"),
         )
     else:
         if flights_removed_by_budget:
@@ -739,6 +857,7 @@ def _render_review_actions() -> None:
         else:
             st.warning("No flights found. Try different dates or cities.")
         selected_flight_idx = None
+        st.session_state.pop("selected_outbound_option_index", None)
 
     selected_outbound = flights[selected_flight_idx] if selected_flight_idx is not None else {}
     return_options = []
@@ -766,39 +885,32 @@ def _render_review_actions() -> None:
                 )
 
             if return_options:
-                return_labels = []
-                for idx, option in enumerate(return_options):
-                    return_labels.append(
-                        _format_flight_option_label(option, return_options, currency, "Return", idx)
-                    )
-                selected_return_idx = st.radio(
-                    "Return options",
-                    options=range(len(return_options)),
-                    format_func=lambda i: return_labels[i],
-                    index=0,
+                selected_return_idx = _render_selectable_cards(
+                    selection_key="selected_return_option_index",
+                    cards=_flight_option_cards(return_options, currency, "Return"),
                 )
                 st.success("Return flight selected and paired with your outbound choice.")
             else:
                 st.warning(
                     "No return flights were found for this outbound option. Choose another outbound flight above to load a different return set."
                 )
+                st.session_state.pop("selected_return_option_index", None)
         elif selected_outbound.get("return_details_available"):
             st.info(f"Return: {selected_outbound.get('return_summary')}")
+            st.session_state.pop("selected_return_option_index", None)
         else:
             st.warning("This outbound option does not include a token for loading return flights.")
+            st.session_state.pop("selected_return_option_index", None)
+    else:
+        st.session_state.pop("selected_return_option_index", None)
 
     # ── Hotel selection ──
     st.subheader("🏨 Select a Hotel")
     st.caption("Hotel totals use the destination dates and traveller count from your trip request.")
     if hotels:
-        hotel_labels = []
-        for idx, h in enumerate(hotels):
-            hotel_labels.append(_format_hotel_option_label(h, hotels, currency, idx))
-        selected_hotel_idx = st.radio(
-            "Hotel options",
-            options=range(len(hotels)),
-            format_func=lambda i: hotel_labels[i],
-            index=0,
+        selected_hotel_idx = _render_selectable_cards(
+            selection_key="selected_hotel_option_index",
+            cards=_hotel_option_cards(hotels, currency),
         )
     else:
         if hotels_removed_by_budget:
@@ -806,6 +918,7 @@ def _render_review_actions() -> None:
         else:
             st.warning("No hotels found. Try different dates or destination.")
         selected_hotel_idx = None
+        st.session_state.pop("selected_hotel_option_index", None)
 
     # ── Budget summary ──
     if budget:

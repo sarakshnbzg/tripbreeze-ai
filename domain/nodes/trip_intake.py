@@ -28,6 +28,19 @@ _MONTH_NAME_TO_NUMBER = {
     "december": 12,
 }
 
+_NUMBER_WORD_TO_INT = {
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+}
+
 PREFERENCES_PROMPT = """You are a travel planning assistant.
 The user provided free-text special requests for their trip.
 Extract any structured filter criteria from the text.
@@ -227,22 +240,27 @@ def _extract_explicit_departure_date(query: str) -> str:
 
 
 def _extract_trip_duration_days(query: str) -> int:
-    """Extract an explicit trip duration like 'for 2 days' or '2-day trip'."""
+    """Extract an explicit trip duration like 'for 2 days' or 'one-day trip'."""
     if not query.strip():
         return 0
 
     match = re.search(
-        r"\b(?:for\s+)?(\d+)\s*[- ]?(day|days|night|nights)\b",
+        r"\b(?:for\s+)?(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*[- ]?(day|days|night|nights)\b",
         query,
         flags=re.IGNORECASE,
     )
     if not match:
+        day_trip_match = re.search(r"\b(day|night)\s+trip\b", query, flags=re.IGNORECASE)
+        if day_trip_match:
+            return 1
         return 0
 
+    raw_value = match.group(1).lower()
     try:
-        return max(0, int(match.group(1)))
+        duration = int(raw_value)
     except ValueError:
-        return 0
+        duration = _NUMBER_WORD_TO_INT.get(raw_value, 0)
+    return max(0, duration)
 
 
 def _query_mentions_one_way(query: str) -> bool:

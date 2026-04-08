@@ -144,12 +144,12 @@ class TestHitlReview:
         assert "### Budget Note" in content
         assert "You're within budget" in content
 
-    def test_next_step_always_present(self):
+    def test_does_not_duplicate_next_step_in_review_message(self):
         state = {"trip_request": {}, "flight_options": [], "hotel_options": []}
         result = hitl_review(state)
         content = result["messages"][0]["content"]
-        assert "### Next Step" in content
-        assert "approve to generate the final itinerary" in content
+        assert "### Next Step" not in content
+        assert "approve to generate the final itinerary" not in content
 
 
 # ── destination info formatting ──
