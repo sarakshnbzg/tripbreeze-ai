@@ -972,6 +972,18 @@ def _build_structured_fields_from_form(
     return fields
 
 
+def _parse_num_nights(raw_value: str) -> int | None:
+    """Parse a one-way stay length entered in the form."""
+    text = raw_value.strip()
+    if not text:
+        return None
+    try:
+        nights = int(text)
+    except ValueError:
+        return None
+    return nights if nights > 0 else None
+
+
 def _render_trip_form() -> None:
     """Render the trip request form with free-text primary input and optional structured fields."""
     saved_profiles = list_profiles()
@@ -1046,12 +1058,11 @@ def _render_trip_form() -> None:
             )
         with col4:
             if one_way:
-                num_nights = st.number_input(
+                raw_num_nights = st.text_input(
                     "Number of Nights",
-                    min_value=1,
-                    max_value=90,
-                    value=7,
-                    help="How many nights at your destination.",
+                    value="",
+                    help="Required for one-way trips so hotel search and budget can be calculated.",
+                    placeholder="e.g. 5",
                 )
             else:
                 return_date = st.date_input(
@@ -1087,6 +1098,7 @@ def _render_trip_form() -> None:
 
     if submitted:
         has_free_text = bool(free_text.strip())
+        num_nights = _parse_num_nights(raw_num_nights) if one_way else None
         fields = _build_structured_fields_from_form(
             free_text=free_text,
             origin=origin,
@@ -1112,6 +1124,9 @@ def _render_trip_form() -> None:
 
         if not one_way and return_date <= departure_date:
             st.warning("Return date must be after departure date.")
+            return
+        if one_way and num_nights is None:
+            st.warning("One-way trips require the number of nights so hotel search and budget can be calculated.")
             return
 
         # Build display message

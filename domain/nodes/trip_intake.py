@@ -431,9 +431,10 @@ def _normalise_trip_data(raw_trip_data: dict[str, Any], profile: dict[str, Any])
     if departure_date and check_out_date and check_out_date <= departure_date:
         raise ValueError(f"Check-out date ({check_out_date}) must be after departure date ({departure_date}).")
 
-    # One-way trips without a check-out date: default to 7 nights so hotel search works.
     if departure_date and not return_date and not check_out_date:
-        check_out_date = str(date.fromisoformat(departure_date) + timedelta(days=7))
+        raise ValueError(
+            "One-way trips require the number of nights or a check-out date so hotels and budget can be calculated."
+        )
 
     trip_data = {
         "origin": raw_trip_data.get("origin") or "",

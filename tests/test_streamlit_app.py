@@ -6,6 +6,7 @@ from presentation.streamlit_app import (
     _can_approve_itinerary,
     _build_structured_fields_from_form,
     _build_token_usage_label,
+    _parse_num_nights,
     _planning_progress_markdown,
     _summarise_token_usage,
     _token_usage_table_markdown,
@@ -126,6 +127,21 @@ class TestBuildStructuredFieldsFromForm:
         assert result["num_travelers"] == 2
         assert result["budget_limit"] == 1200
         assert result["currency"] == "USD"
+
+
+class TestParseNumNights:
+    def test_parses_positive_integer(self):
+        assert _parse_num_nights("5") == 5
+
+    def test_rejects_blank_value(self):
+        assert _parse_num_nights("") is None
+
+    def test_rejects_non_numeric_value(self):
+        assert _parse_num_nights("five") is None
+
+    def test_rejects_zero_or_negative_values(self):
+        assert _parse_num_nights("0") is None
+        assert _parse_num_nights("-2") is None
 
 
 class TestCanApproveItinerary:
