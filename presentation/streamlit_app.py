@@ -201,6 +201,32 @@ def _format_hotel_option_label(hotel: dict, hotels: list[dict], currency: str, i
     )
 
 
+def _budget_flight_detail(option: dict, currency: str) -> str:
+    """Explain how the selected flight total is calculated."""
+    if not option:
+        return "Selected itinerary total"
+
+    adults = max(1, int(option.get("adults", 1) or 1))
+    per_person = float(option.get("price", 0) or 0)
+    if adults > 1 and per_person > 0:
+        return f"{adults} traveller(s) × {format_currency(per_person, currency)}/person"
+    if per_person > 0 and adults == 1:
+        return f"1 traveller × {format_currency(per_person, currency)}"
+    return "Selected itinerary total"
+
+
+def _budget_hotel_detail(hotel: dict, budget: dict, currency: str) -> str:
+    """Explain how the selected hotel total is calculated."""
+    if not hotel:
+        return "Full stay for selected room/search"
+
+    price_per_night = float(hotel.get("price_per_night", 0) or 0)
+    nights = max(0, int(budget.get("daily_expense_days", 0) or 0))
+    if price_per_night > 0 and nights > 0:
+        return f"{nights} night(s) × {format_currency(price_per_night, currency)}/night"
+    return "Full stay for selected room/search"
+
+
 def _compress_star_preferences(stars: list[int]) -> list[int]:
     """Collapse expanded star lists into minimal `N-star and up` thresholds for display."""
     selected = sorted({int(star) for star in stars if star in HOTEL_STARS})
@@ -685,11 +711,12 @@ def _render_review_actions() -> None:
     # ── Budget summary ──
     if budget:
         st.subheader("💰 Budget Summary")
-        st.caption("Estimated totals for the currently selected options. Flight and daily expenses include all travellers.")
+        st.caption("Estimated totals for the currently selected options, with a simple cost breakdown for each category.")
         sel_return = return_options[selected_return_idx] if selected_return_idx is not None else {}
         sel_flight = _combine_round_trip_flight(selected_outbound, sel_return) if sel_return else selected_outbound
         sel_flight_price = sel_flight.get("total_price", sel_flight.get("price", 0)) if sel_flight else 0
-        sel_hotel_price = hotels[selected_hotel_idx]["total_price"] if selected_hotel_idx is not None else 0
+        selected_hotel = hotels[selected_hotel_idx] if selected_hotel_idx is not None else {}
+        sel_hotel_price = selected_hotel.get("total_price", 0) if selected_hotel else 0
         daily_expenses = budget.get("estimated_daily_expenses", 0)
         daily_days = budget.get("daily_expense_days", 0)
         daily_travelers = budget.get("daily_expense_travelers", 0)
@@ -703,13 +730,15 @@ def _render_review_actions() -> None:
                 f"{daily_travelers} traveller(s) × {daily_days} day(s) × "
                 f"{format_currency(daily_rate, currency)}/day"
             )
+        flight_detail = _budget_flight_detail(sel_flight, currency)
+        hotel_detail = _budget_hotel_detail(selected_hotel, budget, currency)
         total = sel_flight_price + sel_hotel_price + daily_expenses
 
         budget_md = (
             "| Category | What It Covers | Amount |\n"
             "|:---|:---|---:|\n"
-            f"| ✈️ {flight_label} | Selected itinerary total | {format_currency(sel_flight_price, currency)} |\n"
-            f"| 🏨 Hotel | Full stay for selected room/search | {format_currency(sel_hotel_price, currency)} |\n"
+            f"| ✈️ {flight_label} | {flight_detail} | {format_currency(sel_flight_price, currency)} |\n"
+            f"| 🏨 Hotel | {hotel_detail} | {format_currency(sel_hotel_price, currency)} |\n"
             f"| 🍽️ Daily expenses | {daily_expense_detail} | {format_currency(daily_expenses, currency)} |\n"
             f"| **🧳 Total** | **Selected trip estimate** | **{format_currency(total, currency)}** |"
         )
