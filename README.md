@@ -58,13 +58,17 @@ uv sync
 cp .env.example .env
 ```
 
-Add your API keys to `.env`:
+Add your API keys and Neon Postgres connection string to `.env`:
 
 ```env
 OPENAI_API_KEY=...
 GOOGLE_API_KEY=...
 SERPAPI_API_KEY=...
+DATABASE_URL=postgresql://username:password@your-neon-host/database?sslmode=require
 ```
+
+TripBreeze uses Neon Postgres for long-term profile memory. You can manage the project database from the Neon console:
+<https://console.neon.tech/app/projects/autumn-cherry-20180503/branches/br-green-morning-alh1r6cy/tables>
 
 Optional LangSmith tracing:
 
@@ -129,6 +133,8 @@ docker run --rm -p 8501:8501 --env-file .env \
 Then open `http://localhost:8501`.
 TripBreeze stores long-term profile memory in Neon Postgres using `DATABASE_URL` or `NEON_DATABASE_URL`.
 
+If you want to use the same hosted database in Docker, keep `DATABASE_URL` in `.env` and pass that file with `--env-file`.
+
 ## 🧳 Typical Flow
 
 1. Select an LLM provider and model in the sidebar.
@@ -178,5 +184,7 @@ tripbreeze-ai/
 
 - Model names, API keys, paths, and defaults are centralised in `config.py`.
 - Long-term profile memory requires `DATABASE_URL` or `NEON_DATABASE_URL`.
+- Neon Postgres is the app's long-term memory store; the current project database is managed in the Neon console:
+  <https://console.neon.tech/app/projects/autumn-cherry-20180503/branches/br-green-morning-alh1r6cy/tables>
 - If retrieval looks stale, rebuild the RAG index with `uv run python scripts/rebuild_rag.py`.
 - If commands are missing, run them through `uv run` or make sure the project's virtual environment is active.
