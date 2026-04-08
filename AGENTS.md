@@ -12,7 +12,7 @@ their responsibilities, inputs, outputs, and how they connect.
 Profile Loader                ← loads user prefs from long-term memory
   │
   ▼
-Trip Intake                   ← form fields pass through directly; LLM parses preferences only
+Trip Intake                   ← merges structured fields with free text; validates dates and defaults
   │
   ▼
 Research Orchestrator         ← LLM decides which research tools to call
@@ -51,12 +51,13 @@ Tool      Tool       Tool
 |-------|--------|
 | **File** | `domain/nodes/research_orchestrator.py` |
 | **Node name** | `research` |
+| **Implementation** | `research_orchestrator(...)` |
 | **Purpose** | Let the LLM dynamically choose which research tools to call for the current trip |
 | **LLM** | User-selected OpenAI or Google Gemini chat model with tool calling |
 | **Reads from state** | `trip_request`, `user_profile`, `llm_provider`, `llm_model` |
 | **Writes to state** | `flight_options`, `hotel_options`, `destination_info`, research summary message |
-| **Tool choices** | `search_flights`, `search_hotels`, `retrieve_knowledge` |
-| **Routing behavior** | May call any subset of tools, including skipping retrieval entirely or calling it multiple times |
+| **Tool choices** | `search_flights`, `search_hotels`, `retrieve_knowledge`, `SubmitResearchResult` |
+| **Routing behavior** | May call any subset of tools, including skipping retrieval entirely or calling it multiple times, and finishes by calling `SubmitResearchResult` |
 
 ### Flight Tool
 
@@ -116,11 +117,12 @@ Tool      Tool       Tool
 |-------|--------|
 | **File** | `domain/nodes/trip_intake.py` |
 | **Node name** | `trip_intake` |
-| **Purpose** | Build trip request from structured form fields; parse free-text preferences via LLM |
-| **LLM** | User-selected OpenAI or Google Gemini chat model with tool calling (only for preferences) |
-| **Tool schema** | `ExtractPreferences` |
+| **Purpose** | Build trip request from structured form fields and/or free text, classify out-of-domain requests, and validate trip details |
+| **LLM** | User-selected OpenAI or Google Gemini chat model with tool calling |
+| **Tool schema** | `EvaluateDomain`, `ExtractTripDetails`, `ExtractPreferences` |
 | **Reads from state** | `structured_fields` (form inputs), `user_profile` (for defaults), `llm_provider`, `llm_model` |
 | **Writes to state** | `trip_request` — dict with origin, destination, dates, class, budget, stops, max_flight_price, airlines, etc. |
+| **Behavior notes** | Free text can provide the whole trip request, structured fields take precedence when both are present, and one-way trips default to a 7-night stay if no check-out date is given |
 
 ### Budget Aggregator
 

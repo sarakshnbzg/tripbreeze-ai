@@ -9,14 +9,12 @@ from datetime import datetime
 from langgraph.graph import StateGraph, START, END
 
 from application.state import TravelState
-from domain.agents.flight_agent import search_flights
-from domain.agents.hotel_agent import search_hotels
 from domain.nodes.profile_loader import profile_loader
 from domain.nodes.trip_intake import trip_intake
 from domain.nodes.budget_aggregator import budget_aggregator
 from domain.nodes.trip_finaliser import trip_finaliser
 from domain.nodes.memory_updater import memory_updater
-from domain.nodes.research_orchestrator import destination_research
+from domain.nodes.research_orchestrator import research_orchestrator
 from infrastructure.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -145,9 +143,7 @@ def build_graph() -> StateGraph:
     # Nodes
     graph.add_node("load_profile", profile_loader)
     graph.add_node("trip_intake", trip_intake)
-    graph.add_node("flight_search", search_flights)
-    graph.add_node("hotel_search", search_hotels)
-    graph.add_node("destination_research", destination_research)
+    graph.add_node("research", research_orchestrator)
     graph.add_node("aggregate_budget", budget_aggregator)
     graph.add_node("review", hitl_review)
     graph.add_node("finalise", trip_finaliser)
@@ -159,13 +155,11 @@ def build_graph() -> StateGraph:
     graph.add_conditional_edges(
         "trip_intake",
         _route_after_intake,
-        {"continue": "destination_research", "stop": END},
+        {"continue": "research", "stop": END},
     )
 
-    # Progressive research nodes
-    graph.add_edge("destination_research", "flight_search")
-    graph.add_edge("flight_search", "hotel_search")
-    graph.add_edge("hotel_search", "aggregate_budget")
+    # Dynamic ReAct-style research
+    graph.add_edge("research", "aggregate_budget")
 
     # Budget → HITL review
     graph.add_edge("aggregate_budget", "review")

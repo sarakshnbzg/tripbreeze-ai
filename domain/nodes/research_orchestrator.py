@@ -1,4 +1,4 @@
-"""Research helpers for destination briefing and the legacy research orchestrator."""
+"""ReAct-style research orchestrator for flights, hotels, and destination briefing."""
 
 import json
 from typing import Any
@@ -51,28 +51,6 @@ field concise:
 - transport_tips: airport transfer or local transport tips when available
 - safety_notes: safety, local norms, or practical cautions when available
 - budget_tips: cost-saving or budget expectations when available
-"""
-
-DESTINATION_RESEARCH_PROMPT = """You are preparing a concise destination briefing for a travel planning app.
-
-You will receive:
-- the trip request
-- the user profile
-- retrieved knowledge-base chunks
-
-Use only the retrieved chunks as evidence. Do not invent facts.
-Call `SubmitResearchResult` exactly once.
-
-Fill the structured destination fields whenever possible:
-- destination_overview
-- entry_requirements
-- transport_tips
-- safety_notes
-- budget_tips
-
-Write a short `summary` describing whether a destination briefing was prepared.
-Use inline citations in the format "(Source: <label>)" for grounded claims.
-Leave unsupported fields empty.
 """
 
 DESTINATION_INFO_SECTIONS = (
@@ -165,15 +143,6 @@ def _build_research_summary(results: dict[str, Any], final_response: str) -> str
     return " ".join(parts)
 
 
-def _build_destination_summary(destination_info: str, rag_used: bool) -> str:
-    """Return a short user-facing status for destination briefing progress."""
-    if destination_info:
-        return "Prepared destination briefing."
-    if rag_used:
-        return "Checked the knowledge base, but no destination briefing details were available."
-    return "Skipped destination briefing because no destination details were available."
-
-
 def _format_destination_info(final_result: dict[str, Any]) -> str:
     """Format structured destination fields into a stable user-facing briefing."""
     sections = []
@@ -192,102 +161,6 @@ def _format_destination_info(final_result: dict[str, Any]) -> str:
 
     # Backward-compatible fallback for older model/tool outputs.
     return str(final_result.get("destination_briefing", "")).strip()
-
-
-def destination_research(state: dict) -> dict:
-    """Prepare destination briefing details as a dedicated graph node."""
-    trip_request = state.get("trip_request", {})
-    user_profile = state.get("user_profile", {})
-    destination = trip_request.get("destination", "")
-
-    if not destination:
-        logger.info("Destination research skipped because destination is missing")
-        return {
-            "destination_info": "",
-            "rag_used": False,
-            "rag_sources": [],
-            "messages": [{"role": "assistant", "content": "Skipped destination briefing because destination is missing."}],
-            "current_step": "destination_research_complete",
-        }
-
-    collected = {
-        "destination_info": state.get("destination_info", ""),
-        "rag_used": False,
-        "rag_sources": [],
-    }
-    token_usage: list[dict] = []
-
-    query = (
-        f"{destination} travel guide entry requirements transport safety budget tips"
-    )
-    effective_query = _enrich_retrieval_query(query, trip_request, user_profile)
-    logger.info(
-        "Destination research retrieving knowledge destination=%s query=%s effective_query=%s",
-        destination,
-        query,
-        effective_query,
-    )
-    retrieved_chunks = retrieve(effective_query, provider=state.get("llm_provider"))
-    collected["rag_used"] = True
-    collected["rag_sources"] = list(dict.fromkeys(chunk["source"] for chunk in retrieved_chunks))
-
-    if not retrieved_chunks:
-        logger.info("Destination research found no retrieved chunks for destination=%s", destination)
-        summary = _build_destination_summary("", collected["rag_used"])
-        return {
-            "destination_info": "",
-            "rag_used": collected["rag_used"],
-            "rag_sources": collected["rag_sources"],
-            "messages": [{"role": "assistant", "content": summary}],
-            "current_step": "destination_research_complete",
-        }
-
-    model = state.get("llm_model")
-    llm = create_chat_model(
-        state.get("llm_provider"),
-        model,
-        temperature=0,
-    )
-    llm_with_tools = llm.bind_tools([SubmitResearchResult])
-    response = invoke_with_retry(
-        llm_with_tools,
-        [
-            SystemMessage(content=DESTINATION_RESEARCH_PROMPT),
-            HumanMessage(
-                content=(
-                    "Prepare a destination briefing from the retrieved knowledge.\n\n"
-                    f"<trip_request>\n{json.dumps(trip_request)}\n</trip_request>\n\n"
-                    f"<user_profile>\n{json.dumps(user_profile)}\n</user_profile>\n\n"
-                    f"<retrieved_chunks>\n{json.dumps(retrieved_chunks)}\n</retrieved_chunks>"
-                )
-            ),
-        ],
-    )
-    token_usage.append(extract_token_usage(response, model=model, node="destination_research"))
-
-    final_result = {}
-    tool_calls = getattr(response, "tool_calls", []) or []
-    if tool_calls:
-        final_result = tool_calls[0].get("args", {})
-    else:
-        logger.warning("Destination research returned no structured tool call")
-
-    formatted_destination_info = _format_destination_info(final_result)
-    summary = final_result.get("summary") or _build_destination_summary(
-        formatted_destination_info,
-        collected["rag_used"],
-    )
-
-    return {
-        "destination_info": formatted_destination_info,
-        "rag_used": collected["rag_used"],
-        "rag_sources": collected["rag_sources"],
-        "token_usage": token_usage,
-        "messages": [{"role": "assistant", "content": summary}],
-        "current_step": "destination_research_complete",
-    }
-
-
 def research_orchestrator(state: dict) -> dict:
     """LangGraph node: let the LLM choose which research tools to run."""
     trip_request = state.get("trip_request", {})

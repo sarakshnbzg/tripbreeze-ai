@@ -22,7 +22,7 @@ class TestSummariseTokenUsage:
                 "cost": 0.001,
             },
             {
-                "node": "destination_research",
+                "node": "research_orchestrator",
                 "model": "gpt-4o-mini",
                 "input_tokens": 50,
                 "output_tokens": 10,

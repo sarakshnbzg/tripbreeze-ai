@@ -4,6 +4,7 @@ TripBreeze AI is an AI-powered travel planning assistant that combines live flig
 
 ## ✨ What It Does
 
+- Uses a ReAct-style research orchestrator to decide when to search flights, search hotels, and query the local knowledge base
 - ✈️ Searches flights with SerpAPI / Google Flights
 - 🏨 Searches hotels with SerpAPI / Google Hotels
 - 📚 Retrieves destination tips, visa info, and travel guidance from a local RAG knowledge base
@@ -17,7 +18,7 @@ TripBreeze AI is an AI-powered travel planning assistant that combines live flig
 ```text
 Profile Loader
   -> Trip Intake
-  -> Research Orchestrator
+  -> Research Orchestrator (dynamic tool calling for flights, hotels, and RAG)
   -> Budget Aggregator
   -> Review
   -> Finaliser
@@ -131,14 +132,19 @@ Then open `http://localhost:8501`.
 ## 🧳 Typical Flow
 
 1. Select an LLM provider and model in the sidebar.
-2. Fill in the structured trip form for origin, destination, dates, travellers, budget, and similar core fields.
-3. Add optional free-text preferences for extra constraints such as nonstop flights, airline exclusions, hotel star preferences, or max flight price.
-4. Review flight, hotel, destination, and budget results.
-5. Approve to generate the final itinerary.
+2. Describe the trip in free text, optionally refining it with structured form fields for dates, destination, travellers, budget, and similar core details.
+3. The intake step merges structured fields with free text, validates dates, and extracts travel filters such as nonstop flights, airline exclusions, hotel stars, or max flight price.
+4. The ReAct-style research orchestrator decides which tools to call for this request: flights, hotels, knowledge retrieval, or any combination of them.
+5. Review flight, hotel, destination, and budget results.
+6. Approve to generate the final itinerary.
 
-## 💬 Free-Text Preference Examples
+## 💬 Free-Text Examples
 
-Use the form for the main trip details. The optional free-text field is best for extra constraints like these:
+The free-text field can describe the whole trip or just extra constraints. For example:
+
+```text
+I want to fly from London to Tokyo from 2026-06-10 to 2026-06-17 for 2 travelers with a budget of 3000 EUR.
+```
 
 ```text
 Nonstop flights only.

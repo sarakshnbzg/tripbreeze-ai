@@ -191,9 +191,7 @@ class TestGraphConstruction:
         expected = {
             "load_profile",
             "trip_intake",
-            "flight_search",
-            "hotel_search",
-            "destination_research",
+            "research",
             "aggregate_budget",
             "review",
             "finalise",

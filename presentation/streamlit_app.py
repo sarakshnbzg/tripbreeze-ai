@@ -382,9 +382,7 @@ def _run_initial_planning(
     node_labels = {
         "load_profile": "Loading your traveler profile...",
         "trip_intake": "Understanding your trip request...",
-        "flight_search": "Searching flights...",
-        "hotel_search": "Searching hotels...",
-        "destination_research": "Preparing destination briefing...",
+        "research": "Researching flights, hotels, and destination info...",
         "aggregate_budget": "Calculating budget breakdown...",
         "review": "Preparing your trip summary...",
     }
