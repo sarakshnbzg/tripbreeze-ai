@@ -1,6 +1,7 @@
 """Trip Intake node — builds trip request from structured form fields
 and/or a free-text query, using LLM tool calling to parse user input."""
 
+import re
 from datetime import date, timedelta
 from typing import Any
 
@@ -11,6 +12,21 @@ from infrastructure.llms.model_factory import create_chat_model, extract_token_u
 from infrastructure.logging_utils import get_logger
 
 logger = get_logger(__name__)
+
+_MONTH_NAME_TO_NUMBER = {
+    "january": 1,
+    "february": 2,
+    "march": 3,
+    "april": 4,
+    "may": 5,
+    "june": 6,
+    "july": 7,
+    "august": 8,
+    "september": 9,
+    "october": 10,
+    "november": 11,
+    "december": 12,
+}
 
 PREFERENCES_PROMPT = """You are a travel planning assistant.
 The user provided free-text special requests for their trip.
@@ -146,6 +162,87 @@ class ExtractTripDetails(BaseModel):
         default="",
         description="Cabin class: ECONOMY, PREMIUM_ECONOMY, BUSINESS, or FIRST. Empty if not specified.",
     )
+
+
+def _extract_explicit_departure_date(query: str) -> str:
+    """Extract a single explicit natural-language departure date when present."""
+    if not query.strip():
+        return ""
+
+    match = re.search(
+        r"\b(?:on|from)?\s*(\d{1,2})(?:st|nd|rd|th)?\s+of\s+"
+        r"(january|february|march|april|may|june|july|august|september|october|november|december)\b",
+        query,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return ""
+
+    day = int(match.group(1))
+    month = _MONTH_NAME_TO_NUMBER[match.group(2).lower()]
+    today = date.today()
+
+    try:
+        parsed = date(today.year, month, day)
+    except ValueError:
+        return ""
+
+    if parsed < today:
+        try:
+            parsed = date(today.year + 1, month, day)
+        except ValueError:
+            return ""
+
+    return parsed.isoformat()
+
+
+def _extract_trip_duration_days(query: str) -> int:
+    """Extract an explicit trip duration like 'for 2 days' or '2-day trip'."""
+    if not query.strip():
+        return 0
+
+    match = re.search(
+        r"\b(?:for\s+)?(\d+)\s*[- ]?(day|days|night|nights)\b",
+        query,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return 0
+
+    try:
+        return max(0, int(match.group(1)))
+    except ValueError:
+        return 0
+
+
+def _apply_free_text_trip_fallbacks(
+    raw_trip_data: dict[str, Any],
+    free_text_query: str,
+    structured_fields: dict[str, Any],
+) -> dict[str, Any]:
+    """Use deterministic parsing to correct explicit dates and durations from free text."""
+    if not free_text_query.strip():
+        return raw_trip_data
+
+    trip_data = dict(raw_trip_data)
+
+    explicit_departure = _extract_explicit_departure_date(free_text_query)
+    if explicit_departure and not structured_fields.get("departure_date"):
+        trip_data["departure_date"] = explicit_departure
+
+    duration_days = _extract_trip_duration_days(free_text_query)
+    departure_date = trip_data.get("departure_date")
+    if (
+        duration_days > 0
+        and departure_date
+        and not structured_fields.get("return_date")
+        and not structured_fields.get("check_out_date")
+    ):
+        end_date = date.fromisoformat(departure_date) + timedelta(days=duration_days)
+        trip_data["return_date"] = end_date.isoformat()
+        trip_data["check_out_date"] = end_date.isoformat()
+
+    return trip_data
 
 
 def _parse_free_text(llm, query: str, model: str) -> tuple[dict[str, Any], dict | None]:
@@ -335,6 +432,12 @@ def trip_intake(state: dict) -> dict:
                 raw_trip_data["preferences"] = f"{existing_prefs}, {ft_prefs}"
             elif not existing_prefs:
                 raw_trip_data["preferences"] = ft_prefs
+
+        raw_trip_data = _apply_free_text_trip_fallbacks(
+            raw_trip_data,
+            free_text_query,
+            structured_fields,
+        )
     else:
         logger.info("Trip intake using structured fields only")
 

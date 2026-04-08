@@ -6,6 +6,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from domain.nodes.trip_intake import (
+    _apply_free_text_trip_fallbacks,
+    _extract_explicit_departure_date,
+    _extract_trip_duration_days,
     _normalise_hotel_stars,
     _normalise_trip_data,
     _parse_preferences,
@@ -78,6 +81,47 @@ class TestValidateDate:
 
 
 # ── _normalise_trip_data ──
+
+
+class TestFreeTextTripFallbacks:
+    def test_extracts_explicit_departure_date(self):
+        assert _extract_explicit_departure_date("I want to leave on 20th of April") == "2026-04-20"
+
+    def test_extracts_trip_duration_days(self):
+        assert _extract_trip_duration_days("I want to stay for 2 days") == 2
+
+    def test_duration_and_date_override_missing_or_incorrect_llm_dates(self):
+        raw = {
+            "origin": "Berlin",
+            "destination": "London",
+            "departure_date": "2026-04-22",
+            "return_date": "2026-04-29",
+        }
+
+        result = _apply_free_text_trip_fallbacks(
+            raw,
+            "I want to fly from Berlin to London for 2 day from 20th of April. Give me a plan.",
+            {},
+        )
+
+        assert result["departure_date"] == "2026-04-20"
+        assert result["return_date"] == "2026-04-22"
+        assert result["check_out_date"] == "2026-04-22"
+
+    def test_structured_dates_are_not_overridden(self):
+        raw = {
+            "departure_date": "2026-04-25",
+            "return_date": "2026-04-28",
+        }
+
+        result = _apply_free_text_trip_fallbacks(
+            raw,
+            "I want to fly from Berlin to London for 2 day from 20th of April. Give me a plan.",
+            {"departure_date": "2026-04-25", "return_date": "2026-04-28"},
+        )
+
+        assert result["departure_date"] == "2026-04-25"
+        assert result["return_date"] == "2026-04-28"
 
 
 class TestNormaliseTripData:
@@ -334,3 +378,34 @@ class TestTripIntakeNode:
         assert "messages" in result
         # Should have a user-facing message, not a raw traceback
         assert result["messages"][0]["role"] == "assistant"
+
+    def test_free_text_duration_and_explicit_date_fix_llm_misread(self):
+        mock_llm = MagicMock()
+        mock_response = MagicMock()
+        mock_response.tool_calls = [
+            {
+                "args": {
+                    "origin": "Berlin",
+                    "destination": "London",
+                    "departure_date": "2026-04-22",
+                    "return_date": "2026-04-29",
+                }
+            }
+        ]
+        mock_bound = MagicMock()
+        mock_llm.bind_tools.return_value = mock_bound
+
+        state = self._base_state(
+            structured_fields={},
+            free_text_query="I want to fly from Berlin to London for 2 day from 20th of April. Give me a plan.",
+        )
+
+        with patch("domain.nodes.trip_intake.create_chat_model", return_value=mock_llm):
+            with patch("domain.nodes.trip_intake.invoke_with_retry", return_value=mock_response):
+                with patch("domain.nodes.trip_intake.extract_token_usage", return_value=None):
+                    result = trip_intake(state)
+
+        trip = result["trip_request"]
+        assert trip["departure_date"] == "2026-04-20"
+        assert trip["return_date"] == "2026-04-22"
+        assert trip["check_out_date"] == "2026-04-22"
