@@ -54,11 +54,11 @@ field concise:
 """
 
 DESTINATION_INFO_SECTIONS = (
-    ("destination_overview", "Overview"),
-    ("entry_requirements", "Entry Requirements"),
-    ("transport_tips", "Transport"),
-    ("safety_notes", "Safety"),
-    ("budget_tips", "Budget Tips"),
+    ("destination_overview", "🌍 Overview"),
+    ("entry_requirements", "🛂 Entry Requirements"),
+    ("transport_tips", "🚇 Getting Around"),
+    ("safety_notes", "🛡️ Safety Tips"),
+    ("budget_tips", "💰 Budget Tips"),
 )
 
 
@@ -149,10 +149,15 @@ def _format_destination_info(final_result: dict[str, Any]) -> str:
     for field_name, heading in DESTINATION_INFO_SECTIONS:
         content = str(final_result.get(field_name, "")).strip()
         if content:
-            sections.append(f"**{heading}**\n{content}")
+            sections.append(f"#### {heading}\n{content}")
 
     if sections:
-        return "\n\n".join(sections)
+        return "\n\n".join(
+            [
+                "A quick travel snapshot to help you compare options and plan the stay:",
+                *sections,
+            ]
+        )
 
     # Backward-compatible fallback for older model/tool outputs.
     return str(final_result.get("destination_briefing", "")).strip()

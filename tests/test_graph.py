@@ -96,13 +96,14 @@ class TestHitlReview:
             "trip_request": {},
             "flight_options": [],
             "hotel_options": [],
-            "destination_info": "Great city to visit.",
+            "destination_info": "A quick travel snapshot to help you compare options and plan the stay:\n\n#### 🌍 Overview\nGreat city to visit.",
             "rag_used": True,
             "rag_sources": ["Destinations", "Travel Tips"],
         }
         result = hitl_review(state)
         content = result["messages"][0]["content"]
         assert "### Destination Briefing" in content
+        assert "#### 🌍 Overview" in content
         assert "Great city to visit" in content
         assert "_Source: Destinations, Travel Tips_" in content
 
@@ -152,9 +153,10 @@ class TestDestinationInfoFormatting:
             }
         )
 
-        assert "**Overview**" in result
-        assert "**Entry Requirements**" in result
-        assert "**Transport**" in result
+        assert "A quick travel snapshot" in result
+        assert "#### 🌍 Overview" in result
+        assert "#### 🛂 Entry Requirements" in result
+        assert "#### 🚇 Getting Around" in result
         assert "Tokyo is strong" in result
         assert "Check passport validity" in result
         assert "Use trains" in result
