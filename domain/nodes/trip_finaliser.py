@@ -1,6 +1,7 @@
 """Trip Finaliser node — generates the polished itinerary document."""
 
 import json
+import re
 
 from pydantic import BaseModel, Field
 
@@ -75,10 +76,45 @@ Knowledge Base Sources Used:
 Fill in every field of the requested schema. For the sources list, include an entry for each
 knowledge-base document that was referenced in the destination information. Each source must
 have the document name and a short relevant snippet from that document. Leave sources empty
-only if no knowledge-base sources were used."""
+only if no knowledge-base sources were used.
+
+Formatting requirements:
+- `flight_details` should be a short markdown bullet list, one fact per bullet
+- `hotel_details` should be a short markdown bullet list, one fact per bullet
+- Keep bullets concise and scannable"""
 
 
 # ── Helpers ───────────────────────────────────────────────────────────
+
+
+def _looks_like_structured_markdown(body: str) -> bool:
+    stripped = body.lstrip()
+    return stripped.startswith(("-", "*", "|", "1.", "###", "####"))
+
+
+def _sentence_bullets(body: str) -> str:
+    """Convert plain prose into a compact markdown bullet list."""
+    text = re.sub(r"\s+", " ", body).strip()
+    if not text:
+        return body
+
+    parts = [
+        part.strip()
+        for part in re.split(r"(?<=[.!?])\s+(?=[A-Z0-9])", text)
+        if part.strip()
+    ]
+    if len(parts) <= 1:
+        return f"- {text}"
+    return "\n".join(f"- {part}" for part in parts)
+
+
+def _render_section_body(title: str, body: str) -> str:
+    """Improve scannability for dense final-itinerary sections."""
+    if title not in {"🛫 Flight Details", "🏨 Hotel Details"}:
+        return body
+    if _looks_like_structured_markdown(body):
+        return body
+    return _sentence_bullets(body)
 
 
 def render_itinerary_markdown(itinerary: Itinerary) -> str:
@@ -92,13 +128,13 @@ def render_itinerary_markdown(itinerary: Itinerary) -> str:
         ("🛂 Visa & Entry Information", itinerary.visa_entry_info),
         ("🎒 Packing & Preparation Tips", itinerary.packing_tips),
     ]
-    parts = [f"## {title}\n{body}" for title, body in sections]
+    parts = [f"### {title}\n{_render_section_body(title, body)}" for title, body in sections]
 
     if itinerary.sources:
         source_lines = []
         for src in itinerary.sources:
             source_lines.append(f"- **{src.document}**: {src.snippet}")
-        parts.append("## 📚 Sources\n" + "\n".join(source_lines))
+        parts.append("### 📚 Sources (from Knowledge Base)\n" + "\n".join(source_lines))
 
     return "\n\n".join(parts)
 
