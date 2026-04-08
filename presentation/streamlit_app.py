@@ -50,6 +50,15 @@ SESSION_DEFAULTS = {
     "llm_model": "gpt-4o-mini",
 }
 
+MODEL_LABELS = {
+    "gpt-4o-mini": "OpenAI GPT-4o mini",
+    "gpt-4.1-mini": "OpenAI GPT-4.1 mini",
+    "gpt-4.1-nano": "OpenAI GPT-4.1 nano",
+    "gpt-3.5-turbo": "OpenAI GPT-3.5 Turbo",
+    "gemini-2.5-flash": "Google Gemini 2.5 Flash",
+    "gemini-2.5-flash-lite": "Google Gemini 2.5 Flash-Lite",
+}
+
 
 @st.cache_data(show_spinner=False, ttl=3600)
 def _get_return_flight_options(
@@ -262,6 +271,45 @@ def _init_session_state() -> None:
     st.session_state.llm_model = model
 
 
+def _token_phase(node_name: str) -> str:
+    if node_name == "trip_finaliser":
+        return "Final Itinerary"
+    return "Planning"
+
+def _summarise_token_usage(usage_list: list[dict]) -> dict[str, Any]:
+    summary = {
+        "input_tokens": sum(int(item.get("input_tokens", 0) or 0) for item in usage_list),
+        "output_tokens": sum(int(item.get("output_tokens", 0) or 0) for item in usage_list),
+        "cost": sum(float(item.get("cost", 0) or 0) for item in usage_list),
+        "by_model": {},
+        "by_phase": {},
+    }
+
+    for item in usage_list:
+        model = item.get("model", "?")
+        phase = _token_phase(str(item.get("node", "")))
+        for bucket, key in ((summary["by_model"], model), (summary["by_phase"], phase)):
+            bucket.setdefault(key, {"input_tokens": 0, "output_tokens": 0, "cost": 0.0, "calls": 0})
+            bucket[key]["input_tokens"] += int(item.get("input_tokens", 0) or 0)
+            bucket[key]["output_tokens"] += int(item.get("output_tokens", 0) or 0)
+            bucket[key]["cost"] += float(item.get("cost", 0) or 0)
+            bucket[key]["calls"] += 1
+
+    return summary
+
+
+def _render_usage_detail_list(usage_list: list[dict]) -> None:
+    st.caption("Steps")
+    for entry in usage_list:
+        label = MODEL_LABELS.get(entry.get("model", "?"), entry.get("model", "?"))
+        st.markdown(
+            f"- `{entry.get('node', '?')}` via `{label}`: "
+            f"{int(entry.get('input_tokens', 0) or 0):,} in / "
+            f"{int(entry.get('output_tokens', 0) or 0):,} out / "
+            f"${float(entry.get('cost', 0) or 0):.4f}"
+        )
+
+
 def _append_assistant_message(content: str) -> None:
     st.session_state.messages.append({"role": "assistant", "content": content})
 
@@ -404,15 +452,6 @@ def _run_finalisation(feedback: str = "") -> None:
 
 
 def _render_model_settings() -> None:
-    model_labels = {
-        "gpt-4o-mini": "OpenAI GPT-4o mini",
-        "gpt-4.1-mini": "OpenAI GPT-4.1 mini",
-        "gpt-4.1-nano": "OpenAI GPT-4.1 nano",
-        "gpt-3.5-turbo": "OpenAI GPT-3.5 Turbo",
-        "gemini-2.5-flash": "Google Gemini 2.5 Flash",
-        "gemini-2.5-flash-lite": "Google Gemini 2.5 Flash-Lite",
-    }
-
     st.header("Model Settings")
     st.caption("Choose which AI powers trip planning and itinerary generation.")
 
@@ -444,7 +483,7 @@ def _render_model_settings() -> None:
         "Model",
         options=available_models,
         index=available_models.index(st.session_state.llm_model),
-        format_func=lambda model: model_labels.get(model, model),
+        format_func=lambda model: MODEL_LABELS.get(model, model),
     )
     if selected_model != st.session_state.llm_model:
         logger.info("Switching model from %s to %s", st.session_state.llm_model, selected_model)
@@ -456,31 +495,38 @@ def _render_model_settings() -> None:
 
 
 def _render_token_usage() -> None:
-    """Display accumulated token usage and estimated cost in the sidebar."""
+    """Display token usage for the current trip in the sidebar."""
     state = st.session_state.graph_state
     if not state:
         return
     usage_list = state.get("token_usage", [])
     if not usage_list:
         return
-
-    total_input = sum(u.get("input_tokens", 0) for u in usage_list)
-    total_output = sum(u.get("output_tokens", 0) for u in usage_list)
-    total_cost = sum(u.get("cost", 0) for u in usage_list)
+    summary = _summarise_token_usage(usage_list)
 
     st.divider()
-    with st.expander(f"Token Usage — ${total_cost:.4f}", expanded=False):
-        st.caption(
-            f"**Tokens:** {total_input:,} in / {total_output:,} out\n\n"
-            f"**Est. cost (USD):** ${total_cost:.4f}"
-        )
-        for entry in usage_list:
-            st.caption(
-                f"{entry.get('node', '?')} ({entry.get('model', '?')}): "
-                f"{entry.get('input_tokens', 0):,} in / "
-                f"{entry.get('output_tokens', 0):,} out — "
-                f"${entry.get('cost', 0):.4f}"
-            )
+    with st.expander(f"Token Usage — ${summary['cost']:.4f}", expanded=False):
+        cols = st.columns(3)
+        cols[0].metric("Input", f"{summary['input_tokens']:,}")
+        cols[1].metric("Output", f"{summary['output_tokens']:,}")
+        cols[2].metric("Cost", f"${summary['cost']:.4f}")
+
+        if len(summary["by_model"]) > 1:
+            st.caption("Models used in this trip")
+            for model, values in summary["by_model"].items():
+                label = MODEL_LABELS.get(model, model)
+                st.markdown(
+                    f"- `{label}`: {values['input_tokens']:,} in / "
+                    f"{values['output_tokens']:,} out / `${values['cost']:.4f}`"
+                )
+
+        if len(summary["by_phase"]) > 1:
+            phase_parts = []
+            for phase, values in summary["by_phase"].items():
+                phase_parts.append(f"`{phase}` ${values['cost']:.4f}")
+            st.caption("Includes " + " • ".join(phase_parts))
+
+        _render_usage_detail_list(usage_list)
 
 
 def _render_profile_sidebar() -> None:
