@@ -323,6 +323,12 @@ def _can_approve_itinerary(
     return flight_ready and hotel_ready
 
 
+def _is_budget_status_note(note: str) -> bool:
+    """Detect notes that only repeat within/over-budget status already shown in the UI."""
+    lowered = note.strip().lower()
+    return "within budget" in lowered or "exceeds your budget" in lowered or "to spare" in lowered
+
+
 def _archive_current_token_usage() -> None:
     state = st.session_state.get("graph_state")
     if not state or state.get("_token_usage_archived"):
@@ -845,7 +851,7 @@ def _render_review_actions() -> None:
             else:
                 st.warning(f"Selected options are over budget by {format_currency(abs(remaining), currency)}.")
 
-        if budget.get("budget_notes"):
+        if budget.get("budget_notes") and not _is_budget_status_note(str(budget["budget_notes"])):
             st.info(f"📝 {budget['budget_notes']}")
 
     st.divider()

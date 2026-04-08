@@ -32,7 +32,7 @@ Profile Loader
 - `OpenAI` or `Google Gemini` for intake, research, and final itinerary generation
 - `SerpAPI` for live flight and hotel data
 - `ChromaDB` for local retrieval
-- JSON-based memory for user preferences
+- Neon Postgres-backed long-term memory for user preferences
 - `LangSmith` for observability and trace dashboards
 
 ## 🚀 Quick Start
@@ -118,16 +118,16 @@ Use your local `.env` file:
 docker run --rm -p 8501:8501 --env-file .env tripbreeze-ai
 ```
 
-If you want profile memory and cached RAG indexes to persist across container restarts, mount the data directories too:
+If you want cached RAG indexes to persist across container restarts, mount the Chroma directory too:
 
 ```bash
 docker run --rm -p 8501:8501 --env-file .env \
-  -v "$(pwd)/memory:/app/memory" \
   -v "$(pwd)/chroma_db:/app/chroma_db" \
   tripbreeze-ai
 ```
 
 Then open `http://localhost:8501`.
+TripBreeze stores long-term profile memory in Neon Postgres using `DATABASE_URL` or `NEON_DATABASE_URL`.
 
 ## 🧳 Typical Flow
 
@@ -169,7 +169,6 @@ tripbreeze-ai/
 ├── domain/
 ├── infrastructure/
 ├── knowledge_base/
-├── memory/
 ├── scripts/
 ├── tests/
 └── README.md
@@ -178,5 +177,6 @@ tripbreeze-ai/
 ## 📝 Notes
 
 - Model names, API keys, paths, and defaults are centralised in `config.py`.
+- Long-term profile memory requires `DATABASE_URL` or `NEON_DATABASE_URL`.
 - If retrieval looks stale, rebuild the RAG index with `uv run python scripts/rebuild_rag.py`.
 - If commands are missing, run them through `uv run` or make sure the project's virtual environment is active.

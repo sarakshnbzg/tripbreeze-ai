@@ -1,17 +1,12 @@
-"""JSON-file persistence for long-term user profiles.
-
-This is the only module that reads/writes user profile files.
-"""
+"""Postgres-backed persistence for long-term user profiles."""
 
 import json
 import re
 
-from config import MEMORY_DIR
+from config import MEMORY_DATABASE_URL
 from infrastructure.logging_utils import get_logger
 
 logger = get_logger(__name__)
-
-MEMORY_DIR.mkdir(exist_ok=True)
 
 _DEFAULT_PROFILE = {
     "preferred_airlines": [],
@@ -37,34 +32,86 @@ def _sanitise_user_id(user_id: str) -> str:
     return user_id
 
 
-def _user_file(user_id: str):
-    return MEMORY_DIR / f"{_sanitise_user_id(user_id)}.json"
+def _connect():
+    """Open the Postgres memory database and ensure schema exists."""
+    if not MEMORY_DATABASE_URL:
+        raise RuntimeError(
+            "Long-term memory requires DATABASE_URL or NEON_DATABASE_URL in your environment or Streamlit secrets."
+        )
+
+    try:
+        import psycopg
+    except ImportError as exc:
+        raise RuntimeError(
+            "Postgres memory requires the `psycopg[binary]` package. Install dependencies with `uv sync`."
+        ) from exc
+
+    connection = psycopg.connect(MEMORY_DATABASE_URL)
+    with connection.cursor() as cursor:
+        cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS profiles (
+            user_id TEXT PRIMARY KEY,
+            profile_json JSONB NOT NULL
+        )
+        """
+        )
+    connection.commit()
+    return connection
+
+
+def _load_profile_row(connection, user_id: str) -> dict | None:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT profile_json FROM profiles WHERE user_id = %s",
+            (user_id,),
+        )
+        row = cursor.fetchone()
+    if row is None:
+        return None
+    profile_json = row[0]
+    return profile_json if isinstance(profile_json, dict) else json.loads(profile_json)
 
 
 def list_profiles() -> list[str]:
     """Return available saved profile ids."""
-    profiles = sorted(path.stem for path in MEMORY_DIR.glob("*.json"))
+    with _connect() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT user_id FROM profiles ORDER BY user_id")
+            profiles = [row[0] for row in cursor.fetchall()]
     logger.info("Discovered %s saved profiles", len(profiles))
     return profiles
 
 
 def load_profile(user_id: str) -> dict:
     """Load a user's stored profile, or return defaults."""
-    path = _user_file(user_id)
-    if path.exists():
-        logger.info("Loading persisted profile from %s", path)
-        stored_profile = json.loads(path.read_text())
-        return {"user_id": user_id, **_DEFAULT_PROFILE, **stored_profile}
+    safe_user_id = _sanitise_user_id(user_id)
+    with _connect() as connection:
+        stored_profile = _load_profile_row(connection, safe_user_id)
+    if stored_profile is not None:
+        logger.info("Loading persisted profile from Postgres for user_id=%s", safe_user_id)
+        return {"user_id": safe_user_id, **_DEFAULT_PROFILE, **stored_profile}
     logger.info("No persisted profile found for user_id=%s; using defaults", user_id)
-    return {"user_id": user_id, **_DEFAULT_PROFILE}
+    return {"user_id": safe_user_id, **_DEFAULT_PROFILE}
 
 
 def save_profile(user_id: str, profile: dict) -> None:
-    """Persist the user's profile to disk."""
-    profile["user_id"] = user_id
-    path = _user_file(user_id)
-    path.write_text(json.dumps(profile, indent=2))
-    logger.info("Saved profile for user_id=%s to %s", user_id, path)
+    """Persist the user's profile to Postgres."""
+    safe_user_id = _sanitise_user_id(user_id)
+    stored_profile = dict(profile)
+    stored_profile["user_id"] = safe_user_id
+    with _connect() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+            """
+            INSERT INTO profiles (user_id, profile_json)
+            VALUES (%s, %s::jsonb)
+            ON CONFLICT(user_id) DO UPDATE SET profile_json = excluded.profile_json
+            """,
+            (safe_user_id, json.dumps(stored_profile)),
+            )
+        connection.commit()
+    logger.info("Saved profile for user_id=%s to Postgres", safe_user_id)
 
 
 def update_profile_from_trip(user_id: str, trip_data: dict) -> dict:

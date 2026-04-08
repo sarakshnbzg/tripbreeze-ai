@@ -6,6 +6,7 @@ from presentation.streamlit_app import (
     _can_approve_itinerary,
     _build_structured_fields_from_form,
     _build_token_usage_label,
+    _is_budget_status_note,
     _parse_num_nights,
     _planning_progress_markdown,
     _summarise_token_usage,
@@ -189,3 +190,16 @@ class TestCanApproveItinerary:
             selected_return_idx=None,
             selected_outbound={"return_details_available": True},
         ) is True
+
+
+class TestIsBudgetStatusNote:
+    def test_detects_redundant_within_budget_note(self):
+        assert _is_budget_status_note("You're within budget with ~EUR 120 to spare.") is True
+
+    def test_detects_redundant_over_budget_note(self):
+        assert _is_budget_status_note("Estimated total exceeds your budget by EUR 50.") is True
+
+    def test_allows_non_status_budget_guidance(self):
+        assert _is_budget_status_note(
+            "No flight and hotel combinations fit the selected budget. Try changing the dates."
+        ) is False

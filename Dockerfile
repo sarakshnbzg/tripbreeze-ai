@@ -12,13 +12,13 @@ RUN uv sync --frozen --no-dev --no-install-project
 # Copy application code
 COPY . .
 
-# Create non-root user and ensure writable dirs for runtime data
+# Create non-root user and ensure writable dirs for runtime data.
 RUN useradd --create-home appuser \
-    && mkdir -p /app/memory /app/chroma_db \
+    && mkdir -p /app/chroma_db \
     && chown -R appuser:appuser /app
 USER appuser
 
-VOLUME ["/app/memory", "/app/chroma_db"]
+VOLUME ["/app/chroma_db"]
 
 EXPOSE 8501
 

@@ -53,12 +53,12 @@ Optional task covered:
 
 ### Long-term Memory
 
-The app persists user preferences and trip history in JSON profile files and
+The app persists user preferences and trip history in a Neon/Postgres database and
 loads them at the beginning of the graph.
 
 Evidence:
 
-- `infrastructure/persistence/memory_store.py` handles profile loading, saving, listing, and updating.
+- `infrastructure/persistence/memory_store.py` handles Postgres-backed profile loading, saving, listing, and updating.
 - `domain/nodes/profile_loader.py` loads the user profile.
 - `domain/nodes/memory_updater.py` updates learned preferences after finalisation.
 - `application/graph.py` wires `load_profile` and `update_memory` into the LangGraph workflow.

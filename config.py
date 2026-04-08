@@ -9,7 +9,6 @@ from dotenv import load_dotenv
 PROJECT_ROOT = Path(__file__).parent
 KNOWLEDGE_BASE_DIR = PROJECT_ROOT / "knowledge_base"
 CHROMA_ROOT_DIR = PROJECT_ROOT / "chroma_db"
-MEMORY_DIR = PROJECT_ROOT / "memory"
 
 # Environment
 load_dotenv(PROJECT_ROOT / ".env")
@@ -35,6 +34,7 @@ def _get_config_value(name: str, default: str = "") -> str:
 OPENAI_API_KEY = _get_config_value("OPENAI_API_KEY", "")
 GOOGLE_API_KEY = _get_config_value("GOOGLE_API_KEY", "") or _get_config_value("GEMINI_API_KEY", "")
 SERPAPI_API_KEY = _get_config_value("SERPAPI_API_KEY", "")
+MEMORY_DATABASE_URL = _get_config_value("DATABASE_URL", "") or _get_config_value("NEON_DATABASE_URL", "")
 
 # Model settings
 DEFAULT_LLM_PROVIDER = "openai"

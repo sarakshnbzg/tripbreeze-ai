@@ -5,16 +5,77 @@ import json
 import pytest
 
 from infrastructure.persistence.memory_store import (
+    _DEFAULT_PROFILE,
     _sanitise_user_id,
+    list_profiles,
     load_profile,
     save_profile,
-    list_profiles,
     update_profile_from_trip,
-    _DEFAULT_PROFILE,
 )
 
 
-# ── _sanitise_user_id ──
+class FakeCursor:
+    def __init__(self, connection):
+        self.connection = connection
+        self._results = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def execute(self, query, params=None):
+        params = params or ()
+        normalised = " ".join(query.split())
+        self.connection.queries.append((normalised, params))
+
+        if "CREATE TABLE IF NOT EXISTS profiles" in normalised:
+            self._results = []
+            return
+
+        if normalised.startswith("SELECT profile_json FROM profiles WHERE user_id = %s"):
+            user_id = params[0]
+            payload = self.connection.rows.get(user_id)
+            self._results = [] if payload is None else [(payload,)]
+            return
+
+        if normalised.startswith("SELECT user_id FROM profiles ORDER BY user_id"):
+            self._results = [(user_id,) for user_id in sorted(self.connection.rows)]
+            return
+
+        if normalised.startswith("INSERT INTO profiles"):
+            user_id, payload = params
+            self.connection.rows[user_id] = json.loads(payload)
+            self._results = []
+            return
+
+        raise AssertionError(f"Unexpected query: {normalised}")
+
+    def fetchone(self):
+        return self._results[0] if self._results else None
+
+    def fetchall(self):
+        return list(self._results)
+
+
+class FakeConnection:
+    def __init__(self):
+        self.rows = {}
+        self.queries = []
+        self.commit_count = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def cursor(self):
+        return FakeCursor(self)
+
+    def commit(self):
+        self.commit_count += 1
 
 
 class TestSanitiseUserId:
@@ -45,109 +106,122 @@ class TestSanitiseUserId:
             _sanitise_user_id("user name")
 
 
-# ── load_profile / save_profile ──
-
-
 class TestLoadSaveProfile:
-    def test_load_missing_profile_returns_defaults(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("infrastructure.persistence.memory_store.MEMORY_DIR", tmp_path)
+    def test_load_missing_profile_returns_defaults(self, monkeypatch):
+        fake_connection = FakeConnection()
+        monkeypatch.setattr("infrastructure.persistence.memory_store._connect", lambda: fake_connection)
+
         profile = load_profile("new_user")
+
         assert profile["user_id"] == "new_user"
         assert profile["travel_class"] == "ECONOMY"
         assert profile["past_trips"] == []
         for key in _DEFAULT_PROFILE:
             assert key in profile
 
-    def test_save_and_load_roundtrip(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("infrastructure.persistence.memory_store.MEMORY_DIR", tmp_path)
+    def test_save_and_load_roundtrip(self, monkeypatch):
+        fake_connection = FakeConnection()
+        monkeypatch.setattr("infrastructure.persistence.memory_store._connect", lambda: fake_connection)
+
         save_profile("test_user", {"home_city": "Berlin", "travel_class": "BUSINESS"})
         profile = load_profile("test_user")
+
         assert profile["home_city"] == "Berlin"
         assert profile["travel_class"] == "BUSINESS"
         assert profile["user_id"] == "test_user"
-        # Defaults should be merged in
         assert profile["preferred_airlines"] == []
 
-    def test_save_overwrites_existing(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("infrastructure.persistence.memory_store.MEMORY_DIR", tmp_path)
+    def test_save_overwrites_existing(self, monkeypatch):
+        fake_connection = FakeConnection()
+        monkeypatch.setattr("infrastructure.persistence.memory_store._connect", lambda: fake_connection)
+
         save_profile("u1", {"home_city": "London"})
         save_profile("u1", {"home_city": "Paris"})
         profile = load_profile("u1")
+
         assert profile["home_city"] == "Paris"
 
-    def test_save_invalid_id_raises(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("infrastructure.persistence.memory_store.MEMORY_DIR", tmp_path)
+    def test_save_invalid_id_raises(self, monkeypatch):
+        fake_connection = FakeConnection()
+        monkeypatch.setattr("infrastructure.persistence.memory_store._connect", lambda: fake_connection)
+
         with pytest.raises(ValueError, match="Invalid profile ID"):
             save_profile("../bad", {})
 
 
-# ── list_profiles ──
-
-
 class TestListProfiles:
-    def test_empty_directory(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("infrastructure.persistence.memory_store.MEMORY_DIR", tmp_path)
+    def test_empty_returns_empty(self, monkeypatch):
+        fake_connection = FakeConnection()
+        monkeypatch.setattr("infrastructure.persistence.memory_store._connect", lambda: fake_connection)
+
         assert list_profiles() == []
 
-    def test_lists_saved_profiles(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("infrastructure.persistence.memory_store.MEMORY_DIR", tmp_path)
-        (tmp_path / "alice.json").write_text("{}")
-        (tmp_path / "bob.json").write_text("{}")
+    def test_lists_saved_profiles(self, monkeypatch):
+        fake_connection = FakeConnection()
+        monkeypatch.setattr("infrastructure.persistence.memory_store._connect", lambda: fake_connection)
+
+        save_profile("alice", {})
+        save_profile("bob", {})
+
         assert list_profiles() == ["alice", "bob"]
-
-    def test_ignores_non_json_files(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("infrastructure.persistence.memory_store.MEMORY_DIR", tmp_path)
-        (tmp_path / "alice.json").write_text("{}")
-        (tmp_path / "notes.txt").write_text("hi")
-        assert list_profiles() == ["alice"]
-
-
-# ── update_profile_from_trip ──
 
 
 class TestUpdateProfileFromTrip:
-    def test_adds_destination_to_past_trips(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("infrastructure.persistence.memory_store.MEMORY_DIR", tmp_path)
+    def test_adds_destination_to_past_trips(self, monkeypatch):
+        fake_connection = FakeConnection()
+        monkeypatch.setattr("infrastructure.persistence.memory_store._connect", lambda: fake_connection)
+
         save_profile("u1", {})
         trip = {"destination": "Tokyo", "departure_date": "2026-07-01", "return_date": "2026-07-10"}
         profile = update_profile_from_trip("u1", trip)
+
         assert len(profile["past_trips"]) == 1
         assert profile["past_trips"][0]["destination"] == "Tokyo"
 
-    def test_past_trips_capped_at_ten(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("infrastructure.persistence.memory_store.MEMORY_DIR", tmp_path)
+    def test_past_trips_capped_at_ten(self, monkeypatch):
+        fake_connection = FakeConnection()
+        monkeypatch.setattr("infrastructure.persistence.memory_store._connect", lambda: fake_connection)
+
         existing = [{"destination": f"City{i}", "dates": ""} for i in range(10)]
         save_profile("u1", {"past_trips": existing})
-        trip = {"destination": "New"}
-        profile = update_profile_from_trip("u1", trip)
+        profile = update_profile_from_trip("u1", {"destination": "New"})
+
         assert len(profile["past_trips"]) == 10
         assert profile["past_trips"][-1]["destination"] == "New"
 
-    def test_sets_home_city_only_if_empty(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("infrastructure.persistence.memory_store.MEMORY_DIR", tmp_path)
+    def test_sets_home_city_only_if_empty(self, monkeypatch):
+        fake_connection = FakeConnection()
+        monkeypatch.setattr("infrastructure.persistence.memory_store._connect", lambda: fake_connection)
+
         save_profile("u1", {"home_city": ""})
-        trip = {"destination": "Paris", "home_city": "London"}
-        profile = update_profile_from_trip("u1", trip)
+        profile = update_profile_from_trip("u1", {"destination": "Paris", "home_city": "London"})
+
         assert profile["home_city"] == "London"
 
-    def test_does_not_overwrite_existing_home_city(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("infrastructure.persistence.memory_store.MEMORY_DIR", tmp_path)
+    def test_does_not_overwrite_existing_home_city(self, monkeypatch):
+        fake_connection = FakeConnection()
+        monkeypatch.setattr("infrastructure.persistence.memory_store._connect", lambda: fake_connection)
+
         save_profile("u1", {"home_city": "Berlin"})
-        trip = {"destination": "Paris", "home_city": "London"}
-        profile = update_profile_from_trip("u1", trip)
+        profile = update_profile_from_trip("u1", {"destination": "Paris", "home_city": "London"})
+
         assert profile["home_city"] == "Berlin"
 
-    def test_updates_travel_class(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("infrastructure.persistence.memory_store.MEMORY_DIR", tmp_path)
+    def test_updates_travel_class(self, monkeypatch):
+        fake_connection = FakeConnection()
+        monkeypatch.setattr("infrastructure.persistence.memory_store._connect", lambda: fake_connection)
+
         save_profile("u1", {})
-        trip = {"destination": "Paris", "travel_class": "BUSINESS"}
-        profile = update_profile_from_trip("u1", trip)
+        profile = update_profile_from_trip("u1", {"destination": "Paris", "travel_class": "BUSINESS"})
+
         assert profile["travel_class"] == "BUSINESS"
 
-    def test_no_destination_skips_past_trips(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("infrastructure.persistence.memory_store.MEMORY_DIR", tmp_path)
+    def test_no_destination_skips_past_trips(self, monkeypatch):
+        fake_connection = FakeConnection()
+        monkeypatch.setattr("infrastructure.persistence.memory_store._connect", lambda: fake_connection)
+
         save_profile("u1", {"past_trips": []})
-        trip = {"destination": "", "travel_class": "FIRST"}
-        profile = update_profile_from_trip("u1", trip)
+        profile = update_profile_from_trip("u1", {"destination": "", "travel_class": "FIRST"})
+
         assert profile["past_trips"] == []
         assert profile["travel_class"] == "FIRST"
