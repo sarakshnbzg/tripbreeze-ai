@@ -392,16 +392,14 @@ def _run_initial_planning(
     try:
         _archive_current_token_usage()
         result = initial_state.copy()
-        progress_lines = ["Planning your trip..."]
         with st.chat_message("assistant"):
             progress_placeholder = st.empty()
-            progress_placeholder.markdown(_planning_progress_markdown(progress_lines))
+            progress_placeholder.markdown(_planning_progress_markdown(["Planning your trip..."]))
         with st.status("Planning your trip...", expanded=True) as status:
             for event in _get_graph().stream(initial_state):
                 for node_name, node_output in event.items():
                     label = node_labels.get(node_name, f"Running {node_name}...")
                     st.write(label)
-                    progress_lines.append(f"**{label}**")
                     if node_name != "review":
                         latest_message = next(
                             (
@@ -412,8 +410,6 @@ def _run_initial_planning(
                         )
                         if latest_message:
                             st.write(latest_message["content"])
-                            progress_lines.append(latest_message["content"])
-                    progress_placeholder.markdown(_planning_progress_markdown(progress_lines))
                     logger.info("Streaming node completed: %s", node_name)
                     result.update(node_output)
             status.update(label="Trip research complete!", state="complete", expanded=False)
@@ -551,7 +547,17 @@ def _render_token_usage() -> None:
                 "cost": f"${item['cost']:.4f}",
             })
 
-        st.markdown(_token_usage_table_markdown(rows))
+        st.dataframe(
+            rows,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "search": st.column_config.TextColumn("Search"),
+                "input": st.column_config.TextColumn("Input"),
+                "output": st.column_config.TextColumn("Output"),
+                "cost": st.column_config.TextColumn("Cost"),
+            },
+        )
 
 
 def _render_profile_sidebar() -> None:
