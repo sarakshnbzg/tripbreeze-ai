@@ -7,6 +7,7 @@ import pytest
 
 from domain.nodes.trip_intake import (
     _apply_free_text_trip_fallbacks,
+    _classify_domain,
     _extract_explicit_departure_date,
     _extract_trip_duration_days,
     _query_mentions_one_way,
@@ -145,6 +146,51 @@ class TestFreeTextTripFallbacks:
         assert result["departure_date"] == "2026-04-19"
         assert result["return_date"] == ""
         assert result["check_out_date"] == "2026-04-21"
+
+
+class TestClassifyDomain:
+    def test_empty_query_defaults_to_in_domain(self):
+        result, usage = _classify_domain(None, "", model="gpt-4o-mini")
+        assert result == {"in_domain": True, "reason": ""}
+        assert usage is None
+
+    @patch("domain.nodes.trip_intake.extract_token_usage")
+    @patch("domain.nodes.trip_intake.invoke_with_retry")
+    def test_llm_domain_tool_result_returned(self, mock_invoke_with_retry, mock_extract_token_usage):
+        mock_llm = MagicMock()
+        mock_response = MagicMock()
+        mock_response.tool_calls = [{"args": {"in_domain": False, "reason": "Unrelated to travel"}}]
+        mock_llm.bind_tools.return_value = MagicMock()
+        mock_invoke_with_retry.return_value = mock_response
+        mock_extract_token_usage.return_value = {"node": "domain_guardrail", "model": "gpt-4o-mini"}
+
+        result, usage = _classify_domain(
+            mock_llm,
+            "Explain quantum computing.",
+            model="gpt-4o-mini",
+        )
+
+        assert result == {"in_domain": False, "reason": "Unrelated to travel"}
+        assert usage == {"node": "domain_guardrail", "model": "gpt-4o-mini"}
+
+    @patch("domain.nodes.trip_intake.extract_token_usage")
+    @patch("domain.nodes.trip_intake.invoke_with_retry")
+    def test_missing_tool_call_falls_back_to_in_domain(self, mock_invoke_with_retry, mock_extract_token_usage):
+        mock_llm = MagicMock()
+        mock_response = MagicMock()
+        mock_response.tool_calls = []
+        mock_llm.bind_tools.return_value = MagicMock()
+        mock_invoke_with_retry.return_value = mock_response
+        mock_extract_token_usage.return_value = {"node": "domain_guardrail", "model": "gpt-4o-mini"}
+
+        result, usage = _classify_domain(
+            mock_llm,
+            "Plan a trip to Rome.",
+            model="gpt-4o-mini",
+        )
+
+        assert result == {"in_domain": True, "reason": ""}
+        assert usage == {"node": "domain_guardrail", "model": "gpt-4o-mini"}
 
 
 class TestNormaliseTripData:
@@ -401,6 +447,45 @@ class TestTripIntakeNode:
         assert "messages" in result
         # Should have a user-facing message, not a raw traceback
         assert result["messages"][0]["role"] == "assistant"
+
+    def test_out_of_domain_free_text_returns_guardrail_message(self):
+        mock_llm = MagicMock()
+        mock_response = MagicMock()
+        mock_response.tool_calls = [{"args": {"in_domain": False, "reason": "General knowledge request"}}]
+        mock_llm.bind_tools.return_value = MagicMock()
+
+        state = self._base_state(
+            structured_fields={},
+            free_text_query="Explain quantum computing in simple terms.",
+        )
+
+        with patch("domain.nodes.trip_intake.create_chat_model", return_value=mock_llm):
+            with patch("domain.nodes.trip_intake.invoke_with_retry", return_value=mock_response):
+                with patch("domain.nodes.trip_intake.extract_token_usage", return_value=None):
+                    result = trip_intake(state)
+
+        assert result["current_step"] == "out_of_domain"
+        assert "travel planning only" in result["messages"][0]["content"].lower()
+
+    def test_structured_trip_signal_skips_domain_guardrail(self):
+        mock_llm = MagicMock()
+        mock_response = MagicMock()
+        mock_response.tool_calls = [
+            {"args": {"origin": "Berlin", "destination": "Rome", "departure_date": _DEPARTURE}}
+        ]
+        mock_llm.bind_tools.return_value = MagicMock()
+
+        state = self._base_state(
+            structured_fields={"destination": "Rome"},
+            free_text_query="Tell me something interesting.",
+        )
+
+        with patch("domain.nodes.trip_intake.create_chat_model", return_value=mock_llm):
+            with patch("domain.nodes.trip_intake.invoke_with_retry", return_value=mock_response) as mock_invoke:
+                with patch("domain.nodes.trip_intake.extract_token_usage", return_value=None):
+                    trip_intake(state)
+
+        assert mock_invoke.call_count == 1
 
     def test_free_text_duration_and_explicit_date_fix_llm_misread(self):
         mock_llm = MagicMock()

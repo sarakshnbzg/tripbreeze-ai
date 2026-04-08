@@ -127,6 +127,14 @@ def _route_after_review(state: dict) -> str:
     return "awaiting_input"
 
 
+def _route_after_intake(state: dict) -> str:
+    current_step = state.get("current_step")
+    logger.info("Routing after intake: current_step=%s", current_step)
+    if current_step == "intake_complete":
+        return "continue"
+    return "stop"
+
+
 # ── Graph construction ──
 
 def build_graph() -> StateGraph:
@@ -148,9 +156,13 @@ def build_graph() -> StateGraph:
     # Edges: linear start
     graph.add_edge(START, "load_profile")
     graph.add_edge("load_profile", "trip_intake")
+    graph.add_conditional_edges(
+        "trip_intake",
+        _route_after_intake,
+        {"continue": "destination_research", "stop": END},
+    )
 
     # Progressive research nodes
-    graph.add_edge("trip_intake", "destination_research")
     graph.add_edge("destination_research", "flight_search")
     graph.add_edge("flight_search", "hotel_search")
     graph.add_edge("hotel_search", "aggregate_budget")

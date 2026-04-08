@@ -3,6 +3,7 @@
 from application.graph import (
     _markdown_table_value,
     _format_trip_summary,
+    _route_after_intake,
     _route_after_review,
     hitl_review,
     build_graph,
@@ -74,6 +75,17 @@ class TestRouteAfterReview:
 
     def test_missing_approval_routes_to_awaiting(self):
         assert _route_after_review({}) == "awaiting_input"
+
+
+class TestRouteAfterIntake:
+    def test_successful_intake_continues(self):
+        assert _route_after_intake({"current_step": "intake_complete"}) == "continue"
+
+    def test_out_of_domain_intake_stops(self):
+        assert _route_after_intake({"current_step": "out_of_domain"}) == "stop"
+
+    def test_validation_error_stops(self):
+        assert _route_after_intake({"current_step": "intake_error"}) == "stop"
 
 
 # ── hitl_review ──

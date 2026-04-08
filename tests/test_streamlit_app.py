@@ -5,6 +5,7 @@ from datetime import date
 from presentation.streamlit_app import (
     _build_structured_fields_from_form,
     _build_token_usage_label,
+    _planning_progress_markdown,
     _summarise_token_usage,
     _token_usage_table_markdown,
 )
@@ -69,6 +70,12 @@ class TestTokenUsageTableMarkdown:
         assert "|:---|---:|---:|---:|" in table
         assert "| London (2026-04-20) | 1,840 | 312 | $0.0005 |" in table
         assert table.count("\n") >= 2
+
+
+class TestPlanningProgressMarkdown:
+    def test_joins_updates_with_blank_lines(self):
+        content = _planning_progress_markdown(["Planning your trip...", "**Searching flights...**", "Found 5 flight options."])
+        assert content == "Planning your trip...\n\n**Searching flights...**\n\nFound 5 flight options."
 
 
 class TestBuildStructuredFieldsFromForm:

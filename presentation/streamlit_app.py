@@ -341,6 +341,11 @@ def _display_messages() -> None:
             st.markdown(message["content"])
 
 
+def _planning_progress_markdown(lines: list[str]) -> str:
+    """Render streaming planning updates as a compact assistant message."""
+    return "\n\n".join(lines)
+
+
 def _run_initial_planning(
     user_message: str,
     structured_fields: dict | None = None,
@@ -387,11 +392,16 @@ def _run_initial_planning(
     try:
         _archive_current_token_usage()
         result = initial_state.copy()
+        progress_lines = ["Planning your trip..."]
+        with st.chat_message("assistant"):
+            progress_placeholder = st.empty()
+            progress_placeholder.markdown(_planning_progress_markdown(progress_lines))
         with st.status("Planning your trip...", expanded=True) as status:
             for event in _get_graph().stream(initial_state):
                 for node_name, node_output in event.items():
                     label = node_labels.get(node_name, f"Running {node_name}...")
                     st.write(label)
+                    progress_lines.append(f"**{label}**")
                     if node_name != "review":
                         latest_message = next(
                             (
@@ -402,6 +412,8 @@ def _run_initial_planning(
                         )
                         if latest_message:
                             st.write(latest_message["content"])
+                            progress_lines.append(latest_message["content"])
+                    progress_placeholder.markdown(_planning_progress_markdown(progress_lines))
                     logger.info("Streaming node completed: %s", node_name)
                     result.update(node_output)
             status.update(label="Trip research complete!", state="complete", expanded=False)
@@ -422,7 +434,8 @@ def _run_initial_planning(
     )
     if latest_assistant_message:
         st.session_state.messages.append(latest_assistant_message)
-    st.session_state.awaiting_review = True
+        progress_placeholder.markdown(latest_assistant_message["content"])
+    st.session_state.awaiting_review = result.get("current_step") == "awaiting_review"
 
 
 def _run_finalisation(feedback: str = "") -> None:
