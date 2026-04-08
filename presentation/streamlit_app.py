@@ -43,6 +43,7 @@ st.set_page_config(page_title="TripBreeze AI", page_icon="✈️", layout="wide"
 SESSION_DEFAULTS = {
     "messages": [],
     "graph_state": None,
+    "token_usage_history": [],
     "awaiting_review": False,
     "trip_complete": False,
     "user_id": "default_user",
@@ -270,44 +271,40 @@ def _init_session_state() -> None:
     st.session_state.llm_provider = provider
     st.session_state.llm_model = model
 
-
-def _token_phase(node_name: str) -> str:
-    if node_name == "trip_finaliser":
-        return "Final Itinerary"
-    return "Planning"
-
 def _summarise_token_usage(usage_list: list[dict]) -> dict[str, Any]:
-    summary = {
+    return {
         "input_tokens": sum(int(item.get("input_tokens", 0) or 0) for item in usage_list),
         "output_tokens": sum(int(item.get("output_tokens", 0) or 0) for item in usage_list),
         "cost": sum(float(item.get("cost", 0) or 0) for item in usage_list),
-        "by_model": {},
-        "by_phase": {},
     }
 
-    for item in usage_list:
-        model = item.get("model", "?")
-        phase = _token_phase(str(item.get("node", "")))
-        for bucket, key in ((summary["by_model"], model), (summary["by_phase"], phase)):
-            bucket.setdefault(key, {"input_tokens": 0, "output_tokens": 0, "cost": 0.0, "calls": 0})
-            bucket[key]["input_tokens"] += int(item.get("input_tokens", 0) or 0)
-            bucket[key]["output_tokens"] += int(item.get("output_tokens", 0) or 0)
-            bucket[key]["cost"] += float(item.get("cost", 0) or 0)
-            bucket[key]["calls"] += 1
 
-    return summary
+def _build_token_usage_label(state: dict, index: int | None = None) -> str:
+    trip = state.get("trip_request", {})
+    destination = trip.get("destination")
+    departure = trip.get("departure_date")
+    if destination and departure:
+        return f"{destination} ({departure})"
+    if destination:
+        return destination
+    if index is not None:
+        return f"Search {index}"
+    return "Search"
 
 
-def _render_usage_detail_list(usage_list: list[dict]) -> None:
-    st.caption("Steps")
-    for entry in usage_list:
-        label = MODEL_LABELS.get(entry.get("model", "?"), entry.get("model", "?"))
-        st.markdown(
-            f"- `{entry.get('node', '?')}` via `{label}`: "
-            f"{int(entry.get('input_tokens', 0) or 0):,} in / "
-            f"{int(entry.get('output_tokens', 0) or 0):,} out / "
-            f"${float(entry.get('cost', 0) or 0):.4f}"
-        )
+def _archive_current_token_usage() -> None:
+    state = st.session_state.get("graph_state")
+    if not state or state.get("_token_usage_archived"):
+        return
+    usage_list = state.get("token_usage", [])
+    if not usage_list:
+        return
+
+    summary = _summarise_token_usage(usage_list)
+    label = _build_token_usage_label(state, index=len(st.session_state.token_usage_history) + 1)
+    st.session_state.token_usage_history.insert(0, {"label": label, **summary})
+    st.session_state.token_usage_history = st.session_state.token_usage_history[:5]
+    state["_token_usage_archived"] = True
 
 
 def _append_assistant_message(content: str) -> None:
@@ -316,6 +313,7 @@ def _append_assistant_message(content: str) -> None:
 
 def _reset_trip_flow() -> None:
     logger.info("Resetting trip flow for user_id=%s", st.session_state.user_id)
+    _archive_current_token_usage()
     st.session_state.messages = []
     st.session_state.graph_state = None
     st.session_state.awaiting_review = False
@@ -374,6 +372,7 @@ def _run_initial_planning(
     }
 
     try:
+        _archive_current_token_usage()
         result = initial_state.copy()
         with st.status("Planning your trip...", expanded=True) as status:
             for event in _get_graph().stream(initial_state):
@@ -497,36 +496,41 @@ def _render_model_settings() -> None:
 def _render_token_usage() -> None:
     """Display token usage for the current trip in the sidebar."""
     state = st.session_state.graph_state
-    if not state:
+    history = st.session_state.get("token_usage_history", [])
+    current_summary = None
+    current_label = None
+    if state and state.get("token_usage"):
+        current_summary = _summarise_token_usage(state.get("token_usage", []))
+        current_label = _build_token_usage_label(state)
+
+    if not current_summary and not history:
         return
-    usage_list = state.get("token_usage", [])
-    if not usage_list:
-        return
-    summary = _summarise_token_usage(usage_list)
 
     st.divider()
-    with st.expander(f"Token Usage — ${summary['cost']:.4f}", expanded=False):
-        cols = st.columns(3)
-        cols[0].metric("Input", f"{summary['input_tokens']:,}")
-        cols[1].metric("Output", f"{summary['output_tokens']:,}")
-        cols[2].metric("Cost", f"${summary['cost']:.4f}")
+    headline_cost = current_summary["cost"] if current_summary else history[0]["cost"]
+    with st.expander(f"Token Usage — ${headline_cost:.4f}", expanded=False):
+        rows = []
+        if current_summary:
+            rows.append({
+                "search": current_label,
+                "input": f"{current_summary['input_tokens']:,}",
+                "output": f"{current_summary['output_tokens']:,}",
+                "cost": f"${current_summary['cost']:.4f}",
+            })
+        for item in history:
+            rows.append({
+                "search": item["label"],
+                "input": f"{item['input_tokens']:,}",
+                "output": f"{item['output_tokens']:,}",
+                "cost": f"${item['cost']:.4f}",
+            })
 
-        if len(summary["by_model"]) > 1:
-            st.caption("Models used in this trip")
-            for model, values in summary["by_model"].items():
-                label = MODEL_LABELS.get(model, model)
-                st.markdown(
-                    f"- `{label}`: {values['input_tokens']:,} in / "
-                    f"{values['output_tokens']:,} out / `${values['cost']:.4f}`"
-                )
-
-        if len(summary["by_phase"]) > 1:
-            phase_parts = []
-            for phase, values in summary["by_phase"].items():
-                phase_parts.append(f"`{phase}` ${values['cost']:.4f}")
-            st.caption("Includes " + " • ".join(phase_parts))
-
-        _render_usage_detail_list(usage_list)
+        st.markdown("| Search | Input | Output | Cost |")
+        st.markdown("|:---|---:|---:|---:|")
+        for row in rows[:5]:
+            st.markdown(
+                f"| {row['search']} | {row['input']} | {row['output']} | {row['cost']} |"
+            )
 
 
 def _render_profile_sidebar() -> None:

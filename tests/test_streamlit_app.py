@@ -2,11 +2,15 @@
 
 from datetime import date
 
-from presentation.streamlit_app import _build_structured_fields_from_form, _summarise_token_usage
+from presentation.streamlit_app import (
+    _build_structured_fields_from_form,
+    _build_token_usage_label,
+    _summarise_token_usage,
+)
 
 
 class TestSummariseTokenUsage:
-    def test_groups_usage_by_model_and_phase(self):
+    def test_returns_total_input_output_and_cost(self):
         usage = [
             {
                 "node": "trip_intake",
@@ -36,10 +40,15 @@ class TestSummariseTokenUsage:
         assert summary["input_tokens"] == 350
         assert summary["output_tokens"] == 70
         assert summary["cost"] == 0.0035
-        assert summary["by_phase"]["Planning"]["input_tokens"] == 150
-        assert summary["by_phase"]["Final Itinerary"]["input_tokens"] == 200
-        assert summary["by_model"]["gpt-4o-mini"]["calls"] == 2
-        assert summary["by_model"]["gemini-2.5-flash"]["calls"] == 1
+
+
+class TestBuildTokenUsageLabel:
+    def test_uses_destination_and_departure_date(self):
+        state = {"trip_request": {"destination": "London", "departure_date": "2026-04-20"}}
+        assert _build_token_usage_label(state) == "London (2026-04-20)"
+
+    def test_falls_back_to_search_index(self):
+        assert _build_token_usage_label({}, index=2) == "Search 2"
 
 
 class TestBuildStructuredFieldsFromForm:
