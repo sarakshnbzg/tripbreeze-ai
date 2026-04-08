@@ -2,7 +2,7 @@
 
 from unittest.mock import patch, MagicMock
 
-from domain.nodes.research_orchestrator import research_orchestrator
+from domain.nodes.research_orchestrator import destination_research, research_orchestrator
 
 
 def _make_ai_message(tool_calls=None, content=""):
@@ -158,3 +158,49 @@ class TestIterationExhaustion:
                 "Research orchestrator exhausted all %s iterations without a final result",
                 6,
             )
+
+
+class TestDestinationResearch:
+    @patch("domain.nodes.research_orchestrator.retrieve")
+    @patch("domain.nodes.research_orchestrator.create_chat_model")
+    def test_prepares_destination_briefing_from_retrieved_chunks(self, mock_create, mock_retrieve):
+        mock_retrieve.return_value = [
+            {
+                "content": "Paris has strong metro coverage. (Source: Travel Tips)",
+                "source": "Travel Tips",
+            }
+        ]
+        submit_call = _make_ai_message(
+            tool_calls=[{
+                "name": "SubmitResearchResult",
+                "args": {
+                    "summary": "Prepared destination briefing.",
+                    "transport_tips": "Use the metro for most city travel. (Source: Travel Tips)",
+                },
+                "id": "call_1",
+            }]
+        )
+
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+        mock_llm.invoke.return_value = submit_call
+        mock_create.return_value = mock_llm
+
+        result = destination_research(_base_state())
+
+        assert result["current_step"] == "destination_research_complete"
+        assert result["rag_used"] is True
+        assert result["rag_sources"] == ["Travel Tips"]
+        assert "#### 🚇 Getting Around" in result["destination_info"]
+        assert "Prepared destination briefing." in result["messages"][0]["content"]
+
+    def test_skips_when_destination_missing(self):
+        state = _base_state()
+        state["trip_request"]["destination"] = ""
+
+        result = destination_research(state)
+
+        assert result["current_step"] == "destination_research_complete"
+        assert result["destination_info"] == ""
+        assert result["rag_used"] is False
+        assert "destination is missing" in result["messages"][0]["content"].lower()

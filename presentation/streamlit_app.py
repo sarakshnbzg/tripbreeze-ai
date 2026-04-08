@@ -292,7 +292,9 @@ def _run_initial_planning(
     node_labels = {
         "load_profile": "Loading your traveler profile...",
         "trip_intake": "Understanding your trip request...",
-        "research": "Researching flights, hotels, and destination info...",
+        "flight_search": "Searching flights...",
+        "hotel_search": "Searching hotels...",
+        "destination_research": "Preparing destination briefing...",
         "aggregate_budget": "Calculating budget breakdown...",
         "review": "Preparing your trip summary...",
     }
@@ -304,6 +306,16 @@ def _run_initial_planning(
                 for node_name, node_output in event.items():
                     label = node_labels.get(node_name, f"Running {node_name}...")
                     st.write(label)
+                    if node_name != "review":
+                        latest_message = next(
+                            (
+                                message for message in reversed(node_output.get("messages", []))
+                                if message.get("role") == "assistant" and message.get("content")
+                            ),
+                            None,
+                        )
+                        if latest_message:
+                            st.write(latest_message["content"])
                     logger.info("Streaming node completed: %s", node_name)
                     result.update(node_output)
             status.update(label="Trip research complete!", state="complete", expanded=False)

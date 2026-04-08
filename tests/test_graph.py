@@ -176,7 +176,17 @@ class TestGraphConstruction:
     def test_build_graph_has_expected_nodes(self):
         graph = build_graph()
         node_names = set(graph.nodes.keys())
-        expected = {"load_profile", "trip_intake", "research", "aggregate_budget", "review", "finalise", "update_memory"}
+        expected = {
+            "load_profile",
+            "trip_intake",
+            "flight_search",
+            "hotel_search",
+            "destination_research",
+            "aggregate_budget",
+            "review",
+            "finalise",
+            "update_memory",
+        }
         assert expected.issubset(node_names)
 
     def test_compile_graph_returns_runnable(self):
