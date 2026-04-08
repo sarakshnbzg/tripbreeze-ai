@@ -2,6 +2,11 @@
 
 TripBreeze AI is an AI-powered travel planning assistant that combines live flight and hotel search, destination guidance, budget checks, and itinerary generation in one streamlined workflow.
 
+## 🌐 Live Deployment
+
+TripBreeze is deployed on Streamlit Community Cloud:
+<https://tripbreeze-ai.streamlit.app/>
+
 ## ✨ What It Does
 
 - Uses a ReAct-style research orchestrator to decide when to search flights, search hotels, and query the local knowledge base
