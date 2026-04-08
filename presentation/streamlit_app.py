@@ -300,36 +300,6 @@ def _hotel_option_cards(hotels: list[dict], currency: str) -> list[dict[str, obj
     ]
 
 
-def _format_flight_option_label(
-    option: dict,
-    options: list[dict],
-    currency: str,
-    leg_label: str,
-    index: int,
-) -> str:
-    summary_key = "return_summary" if leg_label == "Return" else "outbound_summary"
-    badges = _flight_badges(options, option)
-    badge_text = f" [{_badge_line(badges)}]" if badges else ""
-    return (
-        f"Option {index + 1}: {option.get('airline', 'Unknown airline')}{badge_text} | "
-        f"{leg_label}: {option.get(summary_key, 'Details unavailable')} | "
-        f"{option.get('duration', 'Unknown duration')} | "
-        f"{_format_stops(option.get('stops', 0))} | "
-        f"{_format_option_price(option, currency)}"
-    )
-
-
-def _format_hotel_option_label(hotel: dict, hotels: list[dict], currency: str, index: int) -> str:
-    badges = _hotel_badges(hotels, hotel)
-    badge_text = f" [{_badge_line(badges)}]" if badges else ""
-    return (
-        f"Option {index + 1}: {hotel.get('name', 'Unknown Hotel')}{badge_text} | "
-        f"Rating: {hotel.get('rating', '?')} | "
-        f"{format_currency(hotel.get('price_per_night', 0), currency)}/night | "
-        f"{format_currency(hotel.get('total_price', 0), currency)} total"
-    )
-
-
 def _budget_flight_detail(option: dict, currency: str) -> str:
     """Explain how the selected flight total is calculated."""
     if not option:
@@ -409,19 +379,6 @@ def _build_token_usage_label(state: dict, index: int | None = None) -> str:
     if index is not None:
         return f"Search {index}"
     return "Search"
-
-
-def _token_usage_table_markdown(rows: list[dict[str, str]]) -> str:
-    """Render token-usage rows as a single markdown table."""
-    lines = [
-        "| Search | Input | Output | Cost |",
-        "|:---|---:|---:|---:|",
-    ]
-    for row in rows[:5]:
-        lines.append(
-            f"| {row['search']} | {row['input']} | {row['output']} | {row['cost']} |"
-        )
-    return "\n".join(lines)
 
 
 def _can_approve_itinerary(
