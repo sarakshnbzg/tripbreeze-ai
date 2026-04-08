@@ -873,6 +873,59 @@ def _build_trip_message(fields: dict) -> str:
     return ", ".join(parts) + "."
 
 
+def _build_structured_fields_from_form(
+    *,
+    free_text: str,
+    origin: str,
+    destination: str,
+    departure_date: date,
+    return_date: date | None,
+    one_way: bool,
+    num_nights: int | None,
+    num_travelers: int,
+    budget_limit: int | float,
+    currency: str,
+    preferences: str,
+    default_origin: str,
+    default_departure_date: date,
+    default_return_date: date,
+    default_currency: str,
+) -> dict[str, Any]:
+    """Build structured form fields, ignoring untouched defaults when free text is present."""
+    has_free_text = bool(free_text.strip())
+    fields: dict[str, Any] = {}
+
+    if origin and (not has_free_text or origin != default_origin):
+        fields["origin"] = origin
+    if destination:
+        fields["destination"] = destination
+    if num_travelers > 1:
+        fields["num_travelers"] = num_travelers
+    if budget_limit > 0:
+        fields["budget_limit"] = budget_limit
+    if preferences:
+        fields["preferences"] = preferences
+    if not has_free_text or currency != default_currency:
+        fields["currency"] = currency
+
+    if one_way:
+        if not has_free_text or departure_date != default_departure_date or (num_nights or 7) != 7:
+            fields["departure_date"] = str(departure_date)
+            check_out = departure_date + timedelta(days=num_nights or 7)
+            fields["check_out_date"] = str(check_out)
+    else:
+        if (
+            not has_free_text
+            or departure_date != default_departure_date
+            or return_date != default_return_date
+        ):
+            fields["departure_date"] = str(departure_date)
+            if return_date is not None:
+                fields["return_date"] = str(return_date)
+
+    return fields
+
+
 def _render_trip_form() -> None:
     """Render the trip request form with free-text primary input and optional structured fields."""
     saved_profiles = list_profiles()
@@ -907,6 +960,9 @@ def _render_trip_form() -> None:
     )
 
     # Optional structured fields for refinement
+    default_departure_date = date.today() + timedelta(days=14)
+    default_return_date = date.today() + timedelta(days=21)
+    default_currency = normalise_currency(DEFAULT_CURRENCY)
     with st.expander("Refine your search (optional)"):
         col1, col2 = st.columns(2)
         with col1:
@@ -939,7 +995,7 @@ def _render_trip_form() -> None:
         with col3:
             departure_date = st.date_input(
                 "Departure Date",
-                value=date.today() + timedelta(days=14),
+                value=default_departure_date,
                 min_value=date.today(),
             )
         with col4:
@@ -954,7 +1010,7 @@ def _render_trip_form() -> None:
             else:
                 return_date = st.date_input(
                     "Return Date",
-                    value=date.today() + timedelta(days=21),
+                    value=default_return_date,
                     min_value=date.today(),
                 )
 
@@ -968,7 +1024,6 @@ def _render_trip_form() -> None:
                 "Budget (0 = flexible)", min_value=0, max_value=100000, value=0, step=500,
             )
         with col7:
-            default_currency = normalise_currency(DEFAULT_CURRENCY)
             currency = st.selectbox(
                 "Currency",
                 options=CURRENCIES,
@@ -985,38 +1040,33 @@ def _render_trip_form() -> None:
     )
 
     if submitted:
-        # Build structured fields from the form (only include non-empty values)
-        fields: dict[str, Any] = {}
-        if origin:
-            fields["origin"] = origin
-        if destination:
-            fields["destination"] = destination
-        if num_travelers > 1:
-            fields["num_travelers"] = num_travelers
-        if budget_limit > 0:
-            fields["budget_limit"] = budget_limit
-        fields["currency"] = currency
-        if preferences:
-            fields["preferences"] = preferences
-
         has_free_text = bool(free_text.strip())
-        has_structured = bool(fields.get("origin") or fields.get("destination"))
+        fields = _build_structured_fields_from_form(
+            free_text=free_text,
+            origin=origin,
+            destination=destination,
+            departure_date=departure_date,
+            return_date=return_date if not one_way else None,
+            one_way=one_way,
+            num_nights=num_nights if one_way else None,
+            num_travelers=num_travelers,
+            budget_limit=budget_limit,
+            currency=currency,
+            preferences=preferences,
+            default_origin=default_origin,
+            default_departure_date=default_departure_date,
+            default_return_date=default_return_date,
+            default_currency=default_currency,
+        )
+        has_structured = bool(fields)
 
         if not has_free_text and not has_structured:
             st.warning("Please describe your trip or fill in at least a destination.")
             return
 
-        # Always include dates from the form (they have sensible defaults)
-        fields["departure_date"] = str(departure_date)
-        if one_way:
-            # No return flight, but compute a check-out date for hotel search
-            check_out = departure_date + timedelta(days=num_nights)
-            fields["check_out_date"] = str(check_out)
-        else:
-            fields["return_date"] = str(return_date)
-            if return_date <= departure_date:
-                st.warning("Return date must be after departure date.")
-                return
+        if not one_way and return_date <= departure_date:
+            st.warning("Return date must be after departure date.")
+            return
 
         # Build display message
         if has_free_text:
