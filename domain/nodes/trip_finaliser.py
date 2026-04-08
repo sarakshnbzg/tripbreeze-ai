@@ -128,13 +128,13 @@ def render_itinerary_markdown(itinerary: Itinerary) -> str:
         ("🛂 Visa & Entry Information", itinerary.visa_entry_info),
         ("🎒 Packing & Preparation Tips", itinerary.packing_tips),
     ]
-    parts = [f"### {title}\n{_render_section_body(title, body)}" for title, body in sections]
+    parts = [f"#### {title}\n{_render_section_body(title, body)}" for title, body in sections]
 
     if itinerary.sources:
         source_lines = []
         for src in itinerary.sources:
             source_lines.append(f"- **{src.document}**: {src.snippet}")
-        parts.append("### 📚 Sources (from Knowledge Base)\n" + "\n".join(source_lines))
+        parts.append("#### 📚 Sources (from Knowledge Base)\n" + "\n".join(source_lines))
 
     return "\n\n".join(parts)
 
