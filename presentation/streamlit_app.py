@@ -596,10 +596,9 @@ def _run_finalisation(feedback: str = "") -> None:
         st.error(f"Finalisation failed: {exc}")
         return
 
-    st.session_state.graph_state = state
     logger.info("Finalisation completed for user_id=%s", st.session_state.user_id)
-    final_state = st.session_state.graph_state or state
-    if final_state.get("final_itinerary"):
+    final_state = st.session_state.graph_state
+    if final_state and final_state.get("final_itinerary"):
         _append_assistant_message(final_state["final_itinerary"])
 
     st.session_state.awaiting_review = False
