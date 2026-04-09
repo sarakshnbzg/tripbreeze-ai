@@ -78,6 +78,16 @@ class FakeConnection:
         self.commit_count += 1
 
 
+class FakePool:
+    """Mimics psycopg_pool.ConnectionPool using a single FakeConnection."""
+
+    def __init__(self, fake_connection):
+        self._conn = fake_connection
+
+    def connection(self):
+        return self._conn
+
+
 class TestSanitiseUserId:
     def test_valid_alphanumeric(self):
         assert _sanitise_user_id("alice") == "alice"
@@ -109,7 +119,7 @@ class TestSanitiseUserId:
 class TestLoadSaveProfile:
     def test_load_missing_profile_returns_defaults(self, monkeypatch):
         fake_connection = FakeConnection()
-        monkeypatch.setattr("infrastructure.persistence.memory_store._connect", lambda: fake_connection)
+        monkeypatch.setattr("infrastructure.persistence.memory_store._get_pool", lambda: FakePool(fake_connection))
 
         profile = load_profile("new_user")
 
@@ -121,7 +131,7 @@ class TestLoadSaveProfile:
 
     def test_save_and_load_roundtrip(self, monkeypatch):
         fake_connection = FakeConnection()
-        monkeypatch.setattr("infrastructure.persistence.memory_store._connect", lambda: fake_connection)
+        monkeypatch.setattr("infrastructure.persistence.memory_store._get_pool", lambda: FakePool(fake_connection))
 
         save_profile("test_user", {"home_city": "Berlin", "travel_class": "BUSINESS"})
         profile = load_profile("test_user")
@@ -133,7 +143,7 @@ class TestLoadSaveProfile:
 
     def test_save_overwrites_existing(self, monkeypatch):
         fake_connection = FakeConnection()
-        monkeypatch.setattr("infrastructure.persistence.memory_store._connect", lambda: fake_connection)
+        monkeypatch.setattr("infrastructure.persistence.memory_store._get_pool", lambda: FakePool(fake_connection))
 
         save_profile("u1", {"home_city": "London"})
         save_profile("u1", {"home_city": "Paris"})
@@ -143,7 +153,7 @@ class TestLoadSaveProfile:
 
     def test_save_invalid_id_raises(self, monkeypatch):
         fake_connection = FakeConnection()
-        monkeypatch.setattr("infrastructure.persistence.memory_store._connect", lambda: fake_connection)
+        monkeypatch.setattr("infrastructure.persistence.memory_store._get_pool", lambda: FakePool(fake_connection))
 
         with pytest.raises(ValueError, match="Invalid profile ID"):
             save_profile("../bad", {})
@@ -152,13 +162,13 @@ class TestLoadSaveProfile:
 class TestListProfiles:
     def test_empty_returns_empty(self, monkeypatch):
         fake_connection = FakeConnection()
-        monkeypatch.setattr("infrastructure.persistence.memory_store._connect", lambda: fake_connection)
+        monkeypatch.setattr("infrastructure.persistence.memory_store._get_pool", lambda: FakePool(fake_connection))
 
         assert list_profiles() == []
 
     def test_lists_saved_profiles(self, monkeypatch):
         fake_connection = FakeConnection()
-        monkeypatch.setattr("infrastructure.persistence.memory_store._connect", lambda: fake_connection)
+        monkeypatch.setattr("infrastructure.persistence.memory_store._get_pool", lambda: FakePool(fake_connection))
 
         save_profile("alice", {})
         save_profile("bob", {})
@@ -169,7 +179,7 @@ class TestListProfiles:
 class TestUpdateProfileFromTrip:
     def test_adds_destination_to_past_trips(self, monkeypatch):
         fake_connection = FakeConnection()
-        monkeypatch.setattr("infrastructure.persistence.memory_store._connect", lambda: fake_connection)
+        monkeypatch.setattr("infrastructure.persistence.memory_store._get_pool", lambda: FakePool(fake_connection))
 
         save_profile("u1", {})
         trip = {"destination": "Tokyo", "departure_date": "2026-07-01", "return_date": "2026-07-10"}
@@ -180,7 +190,7 @@ class TestUpdateProfileFromTrip:
 
     def test_past_trips_capped_at_ten(self, monkeypatch):
         fake_connection = FakeConnection()
-        monkeypatch.setattr("infrastructure.persistence.memory_store._connect", lambda: fake_connection)
+        monkeypatch.setattr("infrastructure.persistence.memory_store._get_pool", lambda: FakePool(fake_connection))
 
         existing = [{"destination": f"City{i}", "dates": ""} for i in range(10)]
         save_profile("u1", {"past_trips": existing})
@@ -191,7 +201,7 @@ class TestUpdateProfileFromTrip:
 
     def test_sets_home_city_only_if_empty(self, monkeypatch):
         fake_connection = FakeConnection()
-        monkeypatch.setattr("infrastructure.persistence.memory_store._connect", lambda: fake_connection)
+        monkeypatch.setattr("infrastructure.persistence.memory_store._get_pool", lambda: FakePool(fake_connection))
 
         save_profile("u1", {"home_city": ""})
         profile = update_profile_from_trip("u1", {"destination": "Paris", "home_city": "London"})
@@ -200,7 +210,7 @@ class TestUpdateProfileFromTrip:
 
     def test_does_not_overwrite_existing_home_city(self, monkeypatch):
         fake_connection = FakeConnection()
-        monkeypatch.setattr("infrastructure.persistence.memory_store._connect", lambda: fake_connection)
+        monkeypatch.setattr("infrastructure.persistence.memory_store._get_pool", lambda: FakePool(fake_connection))
 
         save_profile("u1", {"home_city": "Berlin"})
         profile = update_profile_from_trip("u1", {"destination": "Paris", "home_city": "London"})
@@ -209,7 +219,7 @@ class TestUpdateProfileFromTrip:
 
     def test_updates_travel_class(self, monkeypatch):
         fake_connection = FakeConnection()
-        monkeypatch.setattr("infrastructure.persistence.memory_store._connect", lambda: fake_connection)
+        monkeypatch.setattr("infrastructure.persistence.memory_store._get_pool", lambda: FakePool(fake_connection))
 
         save_profile("u1", {})
         profile = update_profile_from_trip("u1", {"destination": "Paris", "travel_class": "BUSINESS"})
@@ -218,7 +228,7 @@ class TestUpdateProfileFromTrip:
 
     def test_no_destination_skips_past_trips(self, monkeypatch):
         fake_connection = FakeConnection()
-        monkeypatch.setattr("infrastructure.persistence.memory_store._connect", lambda: fake_connection)
+        monkeypatch.setattr("infrastructure.persistence.memory_store._get_pool", lambda: FakePool(fake_connection))
 
         save_profile("u1", {"past_trips": []})
         profile = update_profile_from_trip("u1", {"destination": "", "travel_class": "FIRST"})

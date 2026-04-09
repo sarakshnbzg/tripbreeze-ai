@@ -1,5 +1,11 @@
-"""Postgres-backed persistence for long-term user profiles."""
+"""Postgres-backed persistence for long-term user profiles.
 
+Uses a connection pool (psycopg_pool) to avoid opening a new TCP
+connection on every request.  The pool is created lazily on first
+use and reused for the lifetime of the process.
+"""
+
+import atexit
 import json
 import re
 
@@ -21,6 +27,65 @@ _DEFAULT_PROFILE = {
 
 _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
 
+# ── Connection pool (lazy singleton) ────────────────────────────────
+
+_pool = None
+
+
+def _get_pool():
+    """Return the module-level connection pool, creating it on first call."""
+    global _pool
+    if _pool is not None:
+        return _pool
+
+    if not MEMORY_DATABASE_URL:
+        raise RuntimeError(
+            "Long-term memory requires DATABASE_URL or NEON_DATABASE_URL in your environment or Streamlit secrets."
+        )
+
+    try:
+        from psycopg_pool import ConnectionPool
+    except ImportError as exc:
+        raise RuntimeError(
+            "Postgres memory requires the `psycopg[binary]` and `psycopg-pool` packages. "
+            "Install dependencies with `uv sync`."
+        ) from exc
+
+    _pool = ConnectionPool(
+        conninfo=MEMORY_DATABASE_URL,
+        min_size=1,
+        max_size=5,
+        open=True,
+    )
+    atexit.register(_pool.close)
+
+    # Ensure schema exists (runs once at pool creation)
+    with _pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS profiles (
+                    user_id TEXT PRIMARY KEY,
+                    profile_json JSONB NOT NULL
+                )
+                """
+            )
+        conn.commit()
+    logger.info("Postgres connection pool initialised (min=1, max=5)")
+    return _pool
+
+
+def close_pool() -> None:
+    """Shut down the connection pool (idempotent)."""
+    global _pool
+    if _pool is not None:
+        _pool.close()
+        _pool = None
+        logger.info("Postgres connection pool closed")
+
+
+# ── Helpers ──────────────────────────────────────────────────────────
+
 
 def _sanitise_user_id(user_id: str) -> str:
     """Validate user_id to prevent path traversal."""
@@ -30,34 +95,6 @@ def _sanitise_user_id(user_id: str) -> str:
             "Use only letters, digits, hyphens, and underscores."
         )
     return user_id
-
-
-def _connect():
-    """Open the Postgres memory database and ensure schema exists."""
-    if not MEMORY_DATABASE_URL:
-        raise RuntimeError(
-            "Long-term memory requires DATABASE_URL or NEON_DATABASE_URL in your environment or Streamlit secrets."
-        )
-
-    try:
-        import psycopg
-    except ImportError as exc:
-        raise RuntimeError(
-            "Postgres memory requires the `psycopg[binary]` package. Install dependencies with `uv sync`."
-        ) from exc
-
-    connection = psycopg.connect(MEMORY_DATABASE_URL)
-    with connection.cursor() as cursor:
-        cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS profiles (
-            user_id TEXT PRIMARY KEY,
-            profile_json JSONB NOT NULL
-        )
-        """
-        )
-    connection.commit()
-    return connection
 
 
 def _load_profile_row(connection, user_id: str) -> dict | None:
@@ -73,10 +110,13 @@ def _load_profile_row(connection, user_id: str) -> dict | None:
     return profile_json if isinstance(profile_json, dict) else json.loads(profile_json)
 
 
+# ── Public API ───────────────────────────────────────────────────────
+
+
 def list_profiles() -> list[str]:
     """Return available saved profile ids."""
-    with _connect() as connection:
-        with connection.cursor() as cursor:
+    with _get_pool().connection() as conn:
+        with conn.cursor() as cursor:
             cursor.execute("SELECT user_id FROM profiles ORDER BY user_id")
             profiles = [row[0] for row in cursor.fetchall()]
     logger.info("Discovered %s saved profiles", len(profiles))
@@ -86,8 +126,8 @@ def list_profiles() -> list[str]:
 def load_profile(user_id: str) -> dict:
     """Load a user's stored profile, or return defaults."""
     safe_user_id = _sanitise_user_id(user_id)
-    with _connect() as connection:
-        stored_profile = _load_profile_row(connection, safe_user_id)
+    with _get_pool().connection() as conn:
+        stored_profile = _load_profile_row(conn, safe_user_id)
     if stored_profile is not None:
         logger.info("Loading persisted profile from Postgres for user_id=%s", safe_user_id)
         return {"user_id": safe_user_id, **_DEFAULT_PROFILE, **stored_profile}
@@ -100,17 +140,17 @@ def save_profile(user_id: str, profile: dict) -> None:
     safe_user_id = _sanitise_user_id(user_id)
     stored_profile = dict(profile)
     stored_profile["user_id"] = safe_user_id
-    with _connect() as connection:
-        with connection.cursor() as cursor:
+    with _get_pool().connection() as conn:
+        with conn.cursor() as cursor:
             cursor.execute(
-            """
-            INSERT INTO profiles (user_id, profile_json)
-            VALUES (%s, %s::jsonb)
-            ON CONFLICT(user_id) DO UPDATE SET profile_json = excluded.profile_json
-            """,
-            (safe_user_id, json.dumps(stored_profile)),
+                """
+                INSERT INTO profiles (user_id, profile_json)
+                VALUES (%s, %s::jsonb)
+                ON CONFLICT(user_id) DO UPDATE SET profile_json = excluded.profile_json
+                """,
+                (safe_user_id, json.dumps(stored_profile)),
             )
-        connection.commit()
+        conn.commit()
     logger.info("Saved profile for user_id=%s to Postgres", safe_user_id)
 
 
