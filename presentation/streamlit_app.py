@@ -1258,6 +1258,10 @@ def _render_trip_form() -> None:
             st.warning("Please describe your trip or fill in at least a destination.")
             return
 
+        if not has_free_text and not fields.get("destination"):
+            st.warning("Please select a destination or describe your trip in the text box above.")
+            return
+
         if not one_way and return_date <= departure_date:
             st.warning("Return date must be after departure date.")
             return
