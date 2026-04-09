@@ -6,6 +6,8 @@ non-service infrastructure utilities: currency_utils, logging_utils, model_facto
 """
 
 import html
+import re
+import time
 import uuid
 import streamlit as st
 
@@ -451,6 +453,14 @@ def _planning_progress_markdown(lines: list[str]) -> str:
     return "\n\n".join(lines)
 
 
+def _stream_text(text: str, delay: float = 0.008):
+    """Yield text token-by-token with a small delay for a typewriter effect."""
+    for token in re.split(r"(\s+)", text):
+        yield token
+        if token.strip():
+            time.sleep(delay)
+
+
 def _run_initial_planning(
     user_message: str,
     structured_fields: dict | None = None,
@@ -499,9 +509,6 @@ def _run_initial_planning(
         config = {"configurable": {"thread_id": thread_id}}
         graph = _get_graph()
         result = initial_state.copy()
-        with st.chat_message("assistant"):
-            progress_placeholder = st.empty()
-            progress_placeholder.markdown(_planning_progress_markdown(["Planning your trip..."]))
         with st.status("Planning your trip...", expanded=True) as status:
             for event in graph.stream(initial_state, config):
                 for node_name, node_output in event.items():
@@ -544,7 +551,8 @@ def _run_initial_planning(
     )
     if latest_assistant_message:
         st.session_state.messages.append(latest_assistant_message)
-        progress_placeholder.markdown(latest_assistant_message["content"])
+        with st.chat_message("assistant"):
+            st.write_stream(_stream_text(latest_assistant_message["content"]))
     st.session_state.awaiting_review = result.get("current_step") == "awaiting_review"
 
 
