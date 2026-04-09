@@ -1034,6 +1034,8 @@ def _build_trip_message(fields: dict) -> str:
 
     if fields.get("preferences"):
         parts.append(f"({fields['preferences']})")
+    if fields.get("stops") == 0:
+        parts.append("(direct flights only)")
 
     return ", ".join(parts) + "."
 
@@ -1051,6 +1053,7 @@ def _build_structured_fields_from_form(
     budget_limit: int | float,
     currency: str,
     preferences: str,
+    direct_only: bool,
     default_origin: str,
     default_departure_date: date,
     default_return_date: date,
@@ -1070,6 +1073,8 @@ def _build_structured_fields_from_form(
         fields["budget_limit"] = budget_limit
     if preferences:
         fields["preferences"] = preferences
+    if direct_only:
+        fields["stops"] = 0
     if not has_free_text or currency != default_currency:
         fields["currency"] = currency
 
@@ -1159,14 +1164,21 @@ def _render_trip_form() -> None:
                 help="Leave blank to use the destination from your text above.",
             )
 
-        one_way = st.checkbox(
-            "One-way trip",
-            value=st.session_state.get("one_way_saved", False),
-            on_change=lambda: st.session_state.update(
-                one_way_saved=st.session_state["one_way_widget"]
-            ),
-            key="one_way_widget",
-        )
+        col5a, col5b = st.columns(2)
+        with col5a:
+            direct_only = st.checkbox(
+                "Direct flights only",
+                help="Only show nonstop flights.",
+            )
+        with col5b:
+            one_way = st.checkbox(
+                "One-way trip",
+                value=st.session_state.get("one_way_saved", False),
+                on_change=lambda: st.session_state.update(
+                    one_way_saved=st.session_state["one_way_widget"]
+                ),
+                key="one_way_widget",
+            )
 
         col3, col4 = st.columns(2)
         with col3:
@@ -1230,6 +1242,7 @@ def _render_trip_form() -> None:
             budget_limit=budget_limit,
             currency=currency,
             preferences=preferences,
+            direct_only=direct_only,
             default_origin=default_origin,
             default_departure_date=default_departure_date,
             default_return_date=default_return_date,

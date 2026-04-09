@@ -270,6 +270,17 @@ def _query_mentions_one_way(query: str) -> bool:
     return "one-way" in lowered or "one way" in lowered
 
 
+def _query_mentions_direct_flights(query: str) -> bool:
+    """Return true when the user explicitly requests direct / nonstop flights."""
+    return bool(
+        re.search(
+            r"\b(direct|nonstop|non-stop|no[- ]stop|no[- ]stops|no[- ]layover|no[- ]layovers|no[- ]connection|no[- ]connections)\b",
+            query,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
 def _apply_free_text_trip_fallbacks(
     raw_trip_data: dict[str, Any],
     free_text_query: str,
@@ -303,6 +314,12 @@ def _apply_free_text_trip_fallbacks(
 
     if is_one_way and not structured_fields.get("return_date"):
         trip_data["return_date"] = ""
+
+    # Deterministically set direct-only filter when the user explicitly asks for it.
+    # This acts as a reliable fallback in case the LLM misses it during extraction.
+    if _query_mentions_direct_flights(free_text_query) and structured_fields.get("stops") is None:
+        trip_data["stops"] = 0
+        logger.info("Detected direct-flight request in free text — setting stops=0")
 
     return trip_data
 
@@ -562,7 +579,10 @@ def trip_intake(state: dict) -> dict:
         for key, value in parsed_query.items():
             # stops=0 means "direct/nonstop" — treat 0 as a valid value for this field
             not_empty = value is not None and value != "" and value != [] and (value != 0 or key == "stops")
-            if not_empty and not raw_trip_data.get(key):
+            # Use explicit None check for stops so stops=0 in raw_trip_data isn't
+            # treated as "not set" (falsy) and overwritten.
+            already_set = raw_trip_data.get(key) not in (None, "", []) if key != "stops" else raw_trip_data.get(key) is not None
+            if not_empty and not already_set:
                 raw_trip_data[key] = value
 
         # If the free-text query had extra preferences, append to existing
