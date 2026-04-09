@@ -213,34 +213,6 @@ Evidence:
 - `Dockerfile` defines a non-root `appuser`, a `VOLUME ["/app/chroma_db"]` for the persisted RAG index, a `HEALTHCHECK`, and a `uv run streamlit` entrypoint on port 8501.
 - Deployment details documented in `README.md`.
 
----
 
-## Beyond the Official Task List
-
-The following features are implemented as additional improvements not listed in
-the official optional tasks.
-
-### Streaming Itinerary Generation
-
-The final itinerary is streamed token-by-token to the Streamlit UI instead of
-waiting for the full response.
-
-Evidence:
-
-- `infrastructure/llms/model_factory.py` includes `stream_with_retry` for streaming LLM calls with Tenacity retry logic.
-- `domain/nodes/trip_finaliser.py` includes `trip_finaliser_stream`, a generator that yields text chunks.
-- `application/graph.py` includes `run_finalisation_streaming` to drive the streaming node.
-- `presentation/streamlit_app.py` calls `st.write_stream(_itinerary_chunks())` to render tokens as they arrive.
-
-### Domain Guardrail
-
-The trip intake node classifies each request as in-domain or out-of-domain
-before any research is attempted, and routes out-of-domain requests directly
-to `END`.
-
-Evidence:
-
-- `domain/nodes/trip_intake.py` defines `DOMAIN_GUARDRAIL_PROMPT` and the `EvaluateDomain` Pydantic tool schema.
-- The LLM evaluates whether the request is travel-related; a negative verdict causes `_route_after_intake` to return `"stop"` → `END`.
 
 
