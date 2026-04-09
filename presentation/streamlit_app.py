@@ -505,6 +505,11 @@ def _run_initial_planning(
         with st.status("Planning your trip...", expanded=True) as status:
             for event in graph.stream(initial_state, config):
                 for node_name, node_output in event.items():
+                    # LangGraph emits internal events (e.g. "__interrupt__") whose
+                    # value is a tuple of Interrupt objects, not a node output dict.
+                    # Skip them to avoid 'tuple has no attribute get' errors.
+                    if not isinstance(node_output, dict):
+                        continue
                     label = node_labels.get(node_name, f"Running {node_name}...")
                     st.write(label)
                     if node_name != "review":
