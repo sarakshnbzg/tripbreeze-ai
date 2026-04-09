@@ -560,9 +560,10 @@ def trip_intake(state: dict) -> dict:
 
         # Free-text extracted values fill in gaps (structured fields take precedence)
         for key, value in parsed_query.items():
-            if value is not None and value != "" and value != [] and value != 0:
-                if not raw_trip_data.get(key):
-                    raw_trip_data[key] = value
+            # stops=0 means "direct/nonstop" — treat 0 as a valid value for this field
+            not_empty = value is not None and value != "" and value != [] and (value != 0 or key == "stops")
+            if not_empty and not raw_trip_data.get(key):
+                raw_trip_data[key] = value
 
         # If the free-text query had extra preferences, append to existing
         if parsed_query.get("preferences"):
