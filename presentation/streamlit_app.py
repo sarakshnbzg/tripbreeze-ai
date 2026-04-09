@@ -1236,7 +1236,7 @@ def _render_trip_form() -> None:
         if not one_way and return_date <= departure_date:
             st.warning("Return date must be after departure date.")
             return
-        if one_way and num_nights is None:
+        if one_way and num_nights is None and not has_free_text:
             st.warning("One-way trips require the number of nights so hotel search and budget can be calculated.")
             return
 
