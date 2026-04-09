@@ -6,6 +6,7 @@ means changing only this file.
 """
 
 from datetime import datetime
+import re
 
 from serpapi import GoogleSearch
 
@@ -364,9 +365,15 @@ def search_hotels(
         hotel_class = prop.get("hotel_class")
         if hotel_class is None:
             hotel_class = prop.get("extracted_hotel_class")
-        try:
-            hotel_class = int(round(float(hotel_class))) if hotel_class is not None else None
-        except (TypeError, ValueError):
+        # SerpAPI may return hotel_class as an int, a float string ("4.0"),
+        # or a string like "3-star hotel" — extract the leading digit in all cases.
+        if hotel_class is not None:
+            try:
+                hotel_class = int(round(float(hotel_class)))
+            except (TypeError, ValueError):
+                m = re.search(r"(\d+)", str(hotel_class))
+                hotel_class = int(m.group(1)) if m else None
+        if hotel_class is not None and not (1 <= hotel_class <= 5):
             hotel_class = None
 
         if hotel_stars and hotel_class is not None and hotel_class not in hotel_stars:
