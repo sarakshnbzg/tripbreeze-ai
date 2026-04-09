@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from infrastructure.currency_utils import format_currency
 from infrastructure.llms.model_factory import create_chat_model, extract_token_usage, invoke_with_retry
 from infrastructure.logging_utils import get_logger
+from config import DEFAULT_STAY_NIGHTS
 
 logger = get_logger(__name__)
 
@@ -450,8 +451,13 @@ def _normalise_trip_data(raw_trip_data: dict[str, Any], profile: dict[str, Any])
         raise ValueError(f"Check-out date ({check_out_date}) must be after departure date ({departure_date}).")
 
     if departure_date and not return_date and not check_out_date:
-        raise ValueError(
-            "One-way trips require the number of nights or a check-out date so hotels and budget can be calculated."
+        check_out_date = (
+            date.fromisoformat(departure_date) + timedelta(days=DEFAULT_STAY_NIGHTS)
+        ).isoformat()
+        logger.info(
+            "One-way trip with no check-out date — defaulting to %s-night stay: check_out_date=%s",
+            DEFAULT_STAY_NIGHTS,
+            check_out_date,
         )
 
     trip_data = {

@@ -300,12 +300,16 @@ class TestNormaliseTripData:
         result = _normalise_trip_data(self._base_raw(hotel_stars=[]), {})
         assert result["hotel_stars_user_specified"] is False
 
-    def test_one_way_without_check_out_date_raises(self):
-        with pytest.raises(ValueError, match="One-way trips require"):
-            _normalise_trip_data(
-                self._base_raw(return_date="", check_out_date=""),
-                {},
-            )
+    def test_one_way_without_check_out_date_defaults_to_seven_nights(self):
+        from datetime import date, timedelta
+        result = _normalise_trip_data(
+            self._base_raw(return_date="", check_out_date=""),
+            {},
+        )
+        departure = date.fromisoformat(result["departure_date"])
+        expected_check_out = (departure + timedelta(days=7)).isoformat()
+        assert result["check_out_date"] == expected_check_out
+        assert result["return_date"] == ""
 
 
 # ── _parse_preferences ──
@@ -451,15 +455,18 @@ class TestTripIntakeNode:
         assert "messages" in result
         assert "couldn't process" in result["messages"][0]["content"].lower()
 
-    def test_one_way_without_stay_length_returns_validation_message(self):
+    def test_one_way_without_stay_length_defaults_to_seven_nights(self):
+        from datetime import date, timedelta
         state = self._base_state()
         state["structured_fields"]["return_date"] = ""
         state["structured_fields"]["check_out_date"] = ""
 
         result = trip_intake(state)
 
-        assert result["current_step"] == "intake_error"
-        assert "number of nights or a check-out date" in result["messages"][0]["content"].lower()
+        assert result["current_step"] == "intake_complete"
+        departure = date.fromisoformat(result["trip_request"]["departure_date"])
+        expected_check_out = (departure + timedelta(days=7)).isoformat()
+        assert result["trip_request"]["check_out_date"] == expected_check_out
 
     def test_validation_error_does_not_expose_exception_type(self):
         state = self._base_state()

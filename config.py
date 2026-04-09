@@ -64,6 +64,7 @@ MAX_FLIGHT_RESULTS = 5
 RAW_FLIGHT_CANDIDATES = 15
 MAX_HOTEL_RESULTS = 5
 DEFAULT_CURRENCY = "EUR"
+DEFAULT_STAY_NIGHTS = 7  # assumed hotel stay when no return/check-out date is given for a one-way trip
 DEFAULT_DAILY_EXPENSE = 80.0  # EUR baseline — used as fallback
 DAILY_EXPENSE_BY_CURRENCY: dict[str, float] = {
     "EUR": 80.0,
