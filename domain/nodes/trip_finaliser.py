@@ -132,8 +132,11 @@ Write the itinerary as clean markdown with exactly these section headings (in th
 #### 🛂 Visa & Entry Information
 #### 🎒 Packing & Preparation Tips
 
-If knowledge-base sources were used, add a final section:
+If knowledge-base sources were used (i.e., the "Knowledge Base Sources Used" list above is not "None"),
+add a final section:
 #### 📚 Sources (from Knowledge Base)
+For each source document in the list, add one bullet in this exact format:
+- **<document name>**: <one or two sentences of relevant information drawn from that document as shown in destination_info>
 
 Formatting requirements:
 - `Flight Details` and `Hotel Details` should be short markdown bullet lists, one fact per bullet
