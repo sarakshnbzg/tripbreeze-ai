@@ -78,6 +78,37 @@ DAILY_EXPENSE_BY_CURRENCY: dict[str, float] = {
     "AED": 310.0,
     "NZD": 140.0,
 }
+# Per-destination mid-range daily expense (one adult, EUR-equivalent).
+# Matched case-insensitively against the trip's destination city.
+# Derived from "Average daily budget" entries in knowledge_base/destinations.md.
+# The budget aggregator scales these to the trip's currency via DAILY_EXPENSE_BY_CURRENCY ratios.
+DAILY_EXPENSE_BY_DESTINATION: dict[str, float] = {
+    "amsterdam": 135.0,
+    "athens": 80.0,
+    "bali": 45.0,
+    "bangkok": 55.0,
+    "barcelona": 100.0,
+    "berlin": 95.0,
+    "budapest": 80.0,
+    "copenhagen": 175.0,
+    "dubai": 165.0,
+    "dubrovnik": 115.0,
+    "edinburgh": 130.0,
+    "hong kong": 110.0,
+    "istanbul": 35.0,
+    "lisbon": 85.0,
+    "london": 165.0,
+    "new york": 180.0,
+    "paris": 110.0,
+    "prague": 80.0,
+    "reykjavik": 210.0,
+    "rome": 105.0,
+    "seoul": 85.0,
+    "singapore": 150.0,
+    "sydney": 130.0,
+    "tokyo": 95.0,
+    "vienna": 120.0,
+}
 
 # LangSmith tracing
 LANGCHAIN_TRACING_V2 = _get_config_value("LANGCHAIN_TRACING_V2", "false").lower() == "true"

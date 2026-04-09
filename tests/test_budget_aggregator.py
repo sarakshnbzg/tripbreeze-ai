@@ -2,7 +2,12 @@
 
 import pytest
 
-from domain.nodes.budget_aggregator import budget_aggregator, _filter_options_within_budget, _trip_days
+from domain.nodes.budget_aggregator import (
+    budget_aggregator,
+    _destination_daily_rate,
+    _filter_options_within_budget,
+    _trip_days,
+)
 
 
 # ── _trip_days ──
@@ -198,6 +203,80 @@ class TestBudgetAggregatorNode:
         result = budget_aggregator(state)
         # Flight cost in budget should be 300 (total), not 150 (per-person)
         assert result["budget"]["flight_cost"] == 300
+
+
+# ── _destination_daily_rate ──
+
+
+class TestDestinationDailyRate:
+    def test_known_destination_returns_scaled_rate(self):
+        # Paris → 110 EUR baseline; EUR trip → 110 × (80/80) = 110.0
+        rate = _destination_daily_rate("Paris", "EUR")
+        assert rate == 110.0
+
+    def test_known_destination_scaled_to_usd(self):
+        # Paris EUR baseline 110; USD trip baseline 85; EUR baseline 80
+        # 110 × (85 / 80) = 116.875, rounded to 2dp → 116.88
+        rate = _destination_daily_rate("Paris, France", "USD")
+        assert rate == pytest.approx(116.88)
+
+    def test_known_destination_scaled_to_jpy(self):
+        # Tokyo EUR baseline 95; JPY trip baseline 12000; EUR baseline 80
+        # 95 × (12000 / 80) = 14250
+        rate = _destination_daily_rate("Tokyo", "JPY")
+        assert rate == pytest.approx(14250.0)
+
+    def test_expensive_destination_reykjavik(self):
+        # Reykjavik EUR baseline 210; EUR trip → 210.0
+        rate = _destination_daily_rate("Reykjavik", "EUR")
+        assert rate == 210.0
+
+    def test_cheap_destination_bali(self):
+        # Bali EUR baseline 45; EUR trip → 45.0
+        rate = _destination_daily_rate("Bali, Indonesia", "EUR")
+        assert rate == 45.0
+
+    def test_unknown_destination_falls_back_to_currency_baseline(self):
+        rate = _destination_daily_rate("Timbuktu", "EUR")
+        assert rate == 80.0  # DAILY_EXPENSE_BY_CURRENCY["EUR"]
+
+    def test_empty_destination_falls_back_to_currency_baseline(self):
+        rate = _destination_daily_rate("", "JPY")
+        assert rate == 12000.0  # DAILY_EXPENSE_BY_CURRENCY["JPY"]
+
+    def test_destination_specific_rate_reflected_in_node_output(self):
+        state = {
+            "trip_request": {
+                "budget_limit": 0,
+                "currency": "EUR",
+                "destination": "Tokyo",
+                "departure_date": "2025-06-01",
+                "return_date": "2025-06-02",
+                "num_travelers": 1,
+            },
+            "flight_options": [{"price": 50000}],
+            "hotel_options": [{"total_price": 10000}],
+        }
+        result = budget_aggregator(state)
+        # 1 night × 95 EUR destination rate × 1 traveler (since EUR baseline * Tokyo/EUR factor)
+        assert result["budget"]["daily_expense_per_traveler"] == 95.0
+        assert result["budget"]["daily_expense_source"] == "tokyo"
+
+    def test_unknown_destination_source_is_default(self):
+        state = {
+            "trip_request": {
+                "budget_limit": 0,
+                "currency": "EUR",
+                "destination": "Kathmandu",
+                "departure_date": "2025-06-01",
+                "return_date": "2025-06-02",
+                "num_travelers": 1,
+            },
+            "flight_options": [{"price": 300}],
+            "hotel_options": [{"total_price": 200}],
+        }
+        result = budget_aggregator(state)
+        assert result["budget"]["daily_expense_source"] == "default"
 
     def test_flight_without_total_price_falls_back_to_price(self):
         """Flights without total_price should fall back to price field."""

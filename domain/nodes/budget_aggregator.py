@@ -2,11 +2,28 @@
 
 from datetime import datetime
 
-from config import DAILY_EXPENSE_BY_CURRENCY, DEFAULT_DAILY_EXPENSE
+from config import DAILY_EXPENSE_BY_CURRENCY, DAILY_EXPENSE_BY_DESTINATION, DEFAULT_DAILY_EXPENSE
 from infrastructure.currency_utils import currency_prefix
 from infrastructure.logging_utils import get_logger
 
 logger = get_logger(__name__)
+
+
+def _destination_daily_rate(destination: str, currency: str) -> float:
+    """Return a destination-aware daily expense estimate per adult in the trip's currency.
+
+    Looks up the city in DAILY_EXPENSE_BY_DESTINATION (EUR-equivalent mid-range baselines
+    derived from knowledge_base/destinations.md), then scales to the trip currency using
+    the ratios already encoded in DAILY_EXPENSE_BY_CURRENCY.  Falls back to the flat
+    per-currency rate if the destination is not recognised.
+    """
+    city = (destination or "").lower().strip()
+    eur_baseline = DAILY_EXPENSE_BY_CURRENCY.get("EUR", DEFAULT_DAILY_EXPENSE)
+    trip_baseline = DAILY_EXPENSE_BY_CURRENCY.get(currency, DEFAULT_DAILY_EXPENSE)
+    for keyword, eur_rate in DAILY_EXPENSE_BY_DESTINATION.items():
+        if keyword in city:
+            return round(eur_rate * (trip_baseline / eur_baseline), 2)
+    return trip_baseline
 
 
 def _trip_days(trip: dict) -> int:
@@ -63,7 +80,12 @@ def budget_aggregator(state: dict) -> dict:
 
     num_days = _trip_days(trip)
     num_travelers = max(1, int(trip.get("num_travelers", 1) or 1))
-    daily_rate = DAILY_EXPENSE_BY_CURRENCY.get(currency, DEFAULT_DAILY_EXPENSE)
+    destination = trip.get("destination", "")
+    daily_rate = _destination_daily_rate(destination, currency)
+    city = destination.lower().strip()
+    daily_expense_source = next(
+        (kw for kw in DAILY_EXPENSE_BY_DESTINATION if kw in city), "default"
+    )
     estimated_daily_total = daily_rate * num_days * num_travelers
     filtered_flights, filtered_hotels = _filter_options_within_budget(
         flights,
@@ -121,6 +143,7 @@ def budget_aggregator(state: dict) -> dict:
             "daily_expense_per_traveler": daily_rate,
             "daily_expense_days": num_days,
             "daily_expense_travelers": num_travelers,
+            "daily_expense_source": daily_expense_source,
             "total_estimated": total,
             "currency": currency,
             "within_budget": within_budget,
