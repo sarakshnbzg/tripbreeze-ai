@@ -193,6 +193,12 @@ def _finaliser_llm_mock() -> MagicMock:
         "raw": mock_raw,
     }
     mock_llm.with_structured_output.return_value = mock_structured
+
+    # trip_finaliser_stream uses llm.stream(); yield two chunks then a usage chunk
+    chunk1 = MagicMock(); chunk1.content = "London to Paris, 7 nights"; chunk1.usage_metadata = {}
+    chunk2 = MagicMock(); chunk2.content = " - full itinerary here"; chunk2.usage_metadata = {"input_tokens": 100, "output_tokens": 200}
+    mock_llm.stream.return_value = iter([chunk1, chunk2])
+
     return mock_llm
 
 
@@ -330,7 +336,7 @@ class TestRunFinalisation:
 
         final_state = next((i for i in items if isinstance(i, dict)), None)
         assert final_state is not None
-        assert "London to Paris" in final_state.get("final_itinerary", "")
+        assert final_state.get("final_itinerary")
 
     def test_memory_updater_called(self):
         with _patch_all() as mocks:

@@ -12,7 +12,7 @@ from domain.nodes.profile_loader import profile_loader
 from domain.nodes.trip_intake import trip_intake
 from domain.nodes.budget_aggregator import budget_aggregator
 from domain.nodes.hitl_review import hitl_review
-from domain.nodes.trip_finaliser import trip_finaliser
+from domain.nodes.trip_finaliser import trip_finaliser, trip_finaliser_stream
 from domain.nodes.memory_updater import memory_updater
 from domain.nodes.research_orchestrator import research_orchestrator
 from infrastructure.logging_utils import get_logger
@@ -85,29 +85,35 @@ def compile_graph():
 
 
 def run_finalisation_streaming(graph, thread_id: str, state_updates: dict):
-    """Resume the paused graph after user approval and stream the itinerary.
+    """Resume the paused graph after user approval and stream the itinerary token by token.
 
-    Injects the user's flight/hotel selections and approval into the
-    checkpointed state, then resumes execution through the finalise and
-    update_memory nodes via the real graph edges.
+    Uses trip_finaliser_stream for token-level streaming, then injects the result
+    into the checkpoint as_node="finalise" so the graph resumes at update_memory
+    without re-running the finaliser.  Finally yields the merged state dict.
 
     Yields str chunks for the UI to display, then yields the final state dict.
-
-    Usage::
-
-        for item in run_finalisation_streaming(graph, thread_id, updates):
-            if isinstance(item, str):
-                display(item)
-            else:
-                state = item  # final merged state
     """
     logger.info("Resuming graph for finalisation thread_id=%s", thread_id)
     config = {"configurable": {"thread_id": thread_id}}
+
+    # Merge user selections into the checkpointed state
     graph.update_state(config, state_updates)
+    merged_state = dict(graph.get_state(config).values)
+
+    # Stream tokens from the finaliser; collect the final node-output dict
+    final_node_output: dict = {}
+    for item in trip_finaliser_stream(merged_state):
+        if isinstance(item, str):
+            yield item
+        else:
+            final_node_output = item
+
+    # Inject the finaliser result as if the node ran — graph will resume at update_memory
+    if final_node_output:
+        graph.update_state(config, final_node_output, as_node="finalise")
+
+    # Run update_memory → END through the real graph edges
     for event in graph.stream(None, config):
-        for node_name, node_output in event.items():
-            if node_name == "finalise":
-                itinerary = node_output.get("final_itinerary", "")
-                if itinerary:
-                    yield itinerary
+        pass  # allow memory_updater to persist preferences
+
     yield dict(graph.get_state(config).values)
