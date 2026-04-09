@@ -29,6 +29,7 @@ Available tools:
 - `search_flights`: search live flights when enough trip details are available
 - `search_hotels`: search live hotels when enough trip details are available
 - `retrieve_knowledge`: search the local travel knowledge base for destination, visa, transport, safety, and budget information
+  Always include the destination city and the traveller's passport country (from user_profile) in your query so the knowledge base returns the most relevant results.
 - `SubmitResearchResult`: submit the final structured research summary and destination briefing
 
 Do not call tools that are impossible because required inputs are missing.
@@ -95,37 +96,13 @@ class SubmitResearchResult(BaseModel):
     )
 
 
-_VISA_KEYWORDS = (
-    "visa",
-    "entry",
-    "passport",
-    "immigration",
-    "etias",
-    "esta",
-    "travel document",
-    "authoris",   # authorise / authorization / authorisation
-    "authoriz",
-    "permit",
-    "border",
-    "customs",
-    "arrival card",
-    "electronic travel",
-    "tourist card",
-)
-
-
-def _query_is_visa_related(query: str) -> bool:
-    lowered = query.lower()
-    return any(keyword in lowered for keyword in _VISA_KEYWORDS)
-
-
 def _enrich_retrieval_query(query: str, trip_request: dict[str, Any], user_profile: dict[str, Any]) -> str:
-    """Inject destination and, for visa-related queries, passport country into retrieval queries."""
+    """Always inject destination and passport country into retrieval queries."""
     destination = trip_request.get("destination", "")
     passport_country = user_profile.get("passport_country", "")
 
     additions = []
-    if _query_is_visa_related(query) and passport_country:
+    if passport_country and passport_country.lower() not in query.lower():
         additions.append(f"for travelers with a passport from {passport_country}")
     if destination and destination.lower() not in query.lower():
         additions.append(f"visiting {destination}")
