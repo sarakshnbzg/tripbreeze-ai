@@ -18,8 +18,8 @@ Evidence:
 
 Optional task covered:
 
-- Provide the user with the ability to choose from a list of LLMs (Gemini, OpenAI, etc.) for this project.
-- Implement multi-model support (OpenAI, Anthropic, etc.) — OpenAI and Google Gemini are supported; Anthropic is not yet implemented.
+- **[Easy]** Provide the user with the ability to choose from a list of LLMs (Gemini, OpenAI, etc.) for this project.
+- **[Medium]** Implement multi-model support (OpenAI, Anthropic, etc.) — OpenAI and Google Gemini are supported; Anthropic is not yet implemented.
 
 ### Token Usage and Cost Display
 
@@ -35,7 +35,7 @@ Evidence:
 
 Optional task covered:
 
-- Calculate and display token usage and costs.
+- **[Medium]** Calculate and display token usage and costs.
 
 ### Retry Logic for LLM Calls
 
@@ -49,7 +49,7 @@ Evidence:
 
 Optional task covered:
 
-- Add retry logic for agents.
+- **[Medium]** Add retry logic for agents.
 
 ### Long-term Memory
 
@@ -65,7 +65,7 @@ Evidence:
 
 Optional task covered:
 
-- Implement long-term or short-term memory in LangChain/LangGraph.
+- **[Medium]** Implement long-term or short-term memory in LangChain/LangGraph.
 
 ### External API Function Tools
 
@@ -81,8 +81,8 @@ Evidence:
 
 Optional task covered:
 
-- Implement one more function tool that would call an external API.
-- Implement an agent that can integrate with external data sources to enrich its knowledge.
+- **[Medium]** Implement one more function tool that would call an external API.
+- **[Hard]** Implement an agent that can integrate with external data sources to enrich its knowledge.
 
 ### Caching Mechanism
 
@@ -97,7 +97,7 @@ Evidence:
 
 Optional task covered:
 
-- Implement a caching mechanism to store and retrieve frequently used responses.
+- **[Medium]** Implement a caching mechanism to store and retrieve frequently used responses.
 
 Note: this is implemented specifically for RAG retrieval/indexing rather than
 as a general cache for every chatbot response.
@@ -116,7 +116,7 @@ Evidence:
 
 Optional task covered:
 
-- Agentic RAG: add RAG functionality to the LangChain/LangGraph application and implement it.
+- **[Hard]** Agentic RAG: add RAG functionality to the LangChain/LangGraph application and implement it.
 
 ### LangSmith Observability
 
@@ -132,7 +132,7 @@ Evidence:
 
 Optional task covered:
 
-- Add one of these LLM observability tools: Arize Phoenix, LangSmith, Lunary, or others.
+- **[Hard]** Add one of these LLM observability tools: Arize Phoenix, LangSmith, Lunary, or others.
 
 ### Streaming Itinerary Generation
 
@@ -148,7 +148,7 @@ Evidence:
 
 Optional task covered:
 
-- Adds a streaming UX improvement beyond the core task list.
+- Adds a streaming UX improvement beyond the core task list (not part of the official difficulty tiers).
 
 ### Round-trip Return Flight Selection
 
@@ -163,7 +163,7 @@ Evidence:
 
 Optional task covered:
 
-- Extends the external API flight tool (medium task) with full round-trip support.
+- **[Medium]** Extends the external API flight tool with full round-trip support (beyond the base task scope).
 
 ### Editable Profile Manager
 
@@ -180,7 +180,7 @@ Evidence:
 
 Optional task covered:
 
-- Extends the long-term memory task with a manual preference editing UI.
+- **[Medium]** Extends the long-term memory task with a manual preference editing UI (beyond the base task scope).
 
 ### Domain Guardrail
 
@@ -195,7 +195,7 @@ Evidence:
 
 Optional task covered:
 
-- Security and robustness improvement beyond the core task list.
+- Security and robustness improvement beyond the core task list (not part of the official difficulty tiers).
 
 ### Prompt Injection Protection
 
@@ -208,7 +208,7 @@ Evidence:
 
 Optional task covered:
 
-- Security improvement; aligns with the "ask ChatGPT to critique from the security side" easy task recommendation.
+- **[Easy]** Security improvement; aligns with the "ask ChatGPT to critique from the security side" task recommendation.
 
 ### Cloud Deployment
 
@@ -223,7 +223,7 @@ Evidence:
 
 Optional task covered:
 
-- Deploy your app to the cloud with proper scaling.
+- **[Hard]** Deploy your app to the cloud with proper scaling.
 
 ---
 
@@ -242,8 +242,8 @@ Evidence:
 
 Optional task partially covered:
 
-- Implement a feedback loop where users can rate the responses, and use this feedback to improve the agent's performance.
-- Create an agent that can learn from user feedback.
+- **[Medium]** Implement a feedback loop where users can rate the responses, and use this feedback to improve the agent's performance.
+- **[Hard]** Create an agent that can learn from user feedback.
 
 Note: this is not a full learning or rating loop. The feedback affects the
 current final itinerary only.
