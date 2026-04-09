@@ -20,7 +20,7 @@ from config import (
     HOTEL_STARS,
     TRAVEL_CLASSES,
 )
-from application.graph import compile_graph as _compile_graph, run_finalisation
+from application.graph import compile_graph as _compile_graph, run_finalisation, run_finalisation_streaming
 from infrastructure.apis.serpapi_client import search_return_flights
 from infrastructure.currency_utils import format_currency, normalise_currency
 from infrastructure.logging_utils import get_logger
@@ -263,8 +263,9 @@ def _render_selectable_cards(
                     type="primary" if is_selected else "secondary",
                     use_container_width=True,
                 ):
-                    selected_index = index
-                    st.session_state[selection_key] = index
+                    if index != selected_index:
+                        st.session_state[selection_key] = index
+                        st.rerun()
 
     return selected_index
 
@@ -553,8 +554,13 @@ def _run_finalisation(feedback: str = "") -> None:
     state["llm_model"] = st.session_state.llm_model
 
     try:
-        with st.spinner("Generating your final itinerary..."):
-            state = run_finalisation(state)
+        def _itinerary_chunks():
+            for item in run_finalisation_streaming(state):
+                if isinstance(item, str):
+                    yield item
+                # dict items update state in-place via _merge_node_output
+
+        st.write_stream(_itinerary_chunks())
     except Exception as exc:
         logger.exception("Finalisation failed")
         _append_assistant_message(f"I hit an error while generating the itinerary: {exc}")

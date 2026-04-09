@@ -12,7 +12,7 @@ from application.state import TravelState
 from domain.nodes.profile_loader import profile_loader
 from domain.nodes.trip_intake import trip_intake
 from domain.nodes.budget_aggregator import budget_aggregator
-from domain.nodes.trip_finaliser import trip_finaliser
+from domain.nodes.trip_finaliser import trip_finaliser, trip_finaliser_stream
 from domain.nodes.memory_updater import memory_updater
 from domain.nodes.research_orchestrator import research_orchestrator
 from infrastructure.logging_utils import get_logger
@@ -202,3 +202,28 @@ def run_finalisation(state: dict) -> dict:
     _merge_node_output(state, trip_finaliser(state))
     _merge_node_output(state, memory_updater(state))
     return state
+
+
+def run_finalisation_streaming(state: dict):
+    """Generator: yield markdown chunks, then run memory updater.
+
+    Yields str chunks for the UI to display progressively. After the
+    stream finishes, runs memory_updater and yields the final state dict.
+
+    Usage::
+
+        for item in run_finalisation_streaming(state):
+            if isinstance(item, str):
+                display(item)
+            else:
+                state = item  # final merged state
+    """
+    logger.info("Running streaming finalisation for user_id=%s", state.get("user_id"))
+    for item in trip_finaliser_stream(state):
+        if isinstance(item, str):
+            yield item
+        else:
+            _merge_node_output(state, item)
+
+    _merge_node_output(state, memory_updater(state))
+    yield state
