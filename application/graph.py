@@ -5,13 +5,14 @@ This module only imports from the domain layer (nodes & agents).
 """
 
 from langgraph.graph import StateGraph, START, END
+from langgraph.checkpoint.memory import MemorySaver
 
 from application.state import TravelState
 from domain.nodes.profile_loader import profile_loader
 from domain.nodes.trip_intake import trip_intake
 from domain.nodes.budget_aggregator import budget_aggregator
 from domain.nodes.hitl_review import hitl_review
-from domain.nodes.trip_finaliser import trip_finaliser, trip_finaliser_stream
+from domain.nodes.trip_finaliser import trip_finaliser
 from domain.nodes.memory_updater import memory_updater
 from domain.nodes.research_orchestrator import research_orchestrator
 from infrastructure.logging_utils import get_logger
@@ -20,13 +21,6 @@ logger = get_logger(__name__)
 
 
 # ── Routing ──
-
-def _route_after_review(state: dict) -> str:
-    logger.info("Routing after review: user_approved=%s", state.get("user_approved", False))
-    if state.get("user_approved"):
-        return "finalise"
-    return "awaiting_input"
-
 
 def _route_after_intake(state: dict) -> str:
     current_step = state.get("current_step")
@@ -67,12 +61,9 @@ def build_graph() -> StateGraph:
     # Budget → HITL review
     graph.add_edge("aggregate_budget", "review")
 
-    # Conditional: approve → finalise, else → END (wait for more input)
-    graph.add_conditional_edges(
-        "review",
-        _route_after_review,
-        {"finalise": "finalise", "awaiting_input": END},
-    )
+    # review always proceeds to finalise; the checkpointer's interrupt_before
+    # pauses execution here so the user can review and approve first
+    graph.add_edge("review", "finalise")
 
     # Finalise → memory → END
     graph.add_edge("finalise", "update_memory")
@@ -82,56 +73,41 @@ def build_graph() -> StateGraph:
 
 
 def compile_graph():
-    """Compile the graph for execution."""
-    logger.info("Compiling travel planning graph")
-    return build_graph().compile()
+    """Compile the graph with a MemorySaver checkpointer.
 
-
-_APPEND_KEYS = {"messages", "token_usage"}
-
-
-def _merge_node_output(state: dict, output: dict) -> None:
-    """Merge a node's output into state, appending list-valued keys instead of overwriting."""
-    for key, value in output.items():
-        if key in _APPEND_KEYS and isinstance(value, list):
-            state.setdefault(key, [])
-            state[key].extend(value)
-        else:
-            state[key] = value
-
-
-def run_finalisation(state: dict) -> dict:
-    """Run the finalise and memory-update nodes outside the graph.
-
-    Called by the presentation layer after the user approves their
-    selections, keeping domain imports out of the UI module.
+    interrupt_before=["finalise"] makes the graph pause before the finalise
+    node so the user can review options and approve.  Execution resumes when
+    the caller updates state with user selections and calls graph.stream again.
     """
-    logger.info("Running finalisation for user_id=%s", state.get("user_id"))
-    _merge_node_output(state, trip_finaliser(state))
-    _merge_node_output(state, memory_updater(state))
-    return state
+    logger.info("Compiling travel planning graph with MemorySaver checkpointer")
+    checkpointer = MemorySaver()
+    return build_graph().compile(checkpointer=checkpointer, interrupt_before=["finalise"])
 
 
-def run_finalisation_streaming(state: dict):
-    """Generator: yield markdown chunks, then run memory updater.
+def run_finalisation_streaming(graph, thread_id: str, state_updates: dict):
+    """Resume the paused graph after user approval and stream the itinerary.
 
-    Yields str chunks for the UI to display progressively. After the
-    stream finishes, runs memory_updater and yields the final state dict.
+    Injects the user's flight/hotel selections and approval into the
+    checkpointed state, then resumes execution through the finalise and
+    update_memory nodes via the real graph edges.
+
+    Yields str chunks for the UI to display, then yields the final state dict.
 
     Usage::
 
-        for item in run_finalisation_streaming(state):
+        for item in run_finalisation_streaming(graph, thread_id, updates):
             if isinstance(item, str):
                 display(item)
             else:
                 state = item  # final merged state
     """
-    logger.info("Running streaming finalisation for user_id=%s", state.get("user_id"))
-    for item in trip_finaliser_stream(state):
-        if isinstance(item, str):
-            yield item
-        else:
-            _merge_node_output(state, item)
-
-    _merge_node_output(state, memory_updater(state))
-    yield state
+    logger.info("Resuming graph for finalisation thread_id=%s", thread_id)
+    config = {"configurable": {"thread_id": thread_id}}
+    graph.update_state(config, state_updates)
+    for event in graph.stream(None, config):
+        for node_name, node_output in event.items():
+            if node_name == "finalise":
+                itinerary = node_output.get("final_itinerary", "")
+                if itinerary:
+                    yield itinerary
+    yield dict(graph.get_state(config).values)

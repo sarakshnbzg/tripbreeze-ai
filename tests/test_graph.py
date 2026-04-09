@@ -1,14 +1,15 @@
 """Tests for application/graph.py — HITL review, routing, and graph structure."""
 
 from application.graph import (
-    _markdown_table_value,
-    _format_trip_summary,
     _route_after_intake,
-    _route_after_review,
-    hitl_review,
     build_graph,
     compile_graph,
-    run_finalisation,
+    run_finalisation_streaming,
+)
+from domain.nodes.hitl_review import (
+    _markdown_table_value,
+    _format_trip_summary,
+    hitl_review,
 )
 from domain.nodes.research_orchestrator import _format_destination_info
 
@@ -63,18 +64,14 @@ class TestFormatTripSummary:
         assert _markdown_table_value("Paris | Tokyo") == "Paris \\| Tokyo"
 
 
-# ── _route_after_review ──
+# ── _route_after_review / interrupt behavior ──
 
 
-class TestRouteAfterReview:
-    def test_approved_routes_to_finalise(self):
-        assert _route_after_review({"user_approved": True}) == "finalise"
-
-    def test_not_approved_routes_to_awaiting(self):
-        assert _route_after_review({"user_approved": False}) == "awaiting_input"
-
-    def test_missing_approval_routes_to_awaiting(self):
-        assert _route_after_review({}) == "awaiting_input"
+class TestGraphInterrupt:
+    def test_compiled_graph_has_interrupt_before_finalise(self):
+        """The compiled graph must pause before 'finalise' so HITL review can happen."""
+        compiled = compile_graph()
+        assert "finalise" in compiled.interrupt_before_nodes
 
 
 class TestRouteAfterIntake:
@@ -205,27 +202,13 @@ class TestGraphConstruction:
         assert hasattr(compiled, "invoke")
 
 
-# ── run_finalisation ──
+# ── run_finalisation_streaming ──
 
 
-class TestRunFinalisation:
-    def test_calls_finaliser_and_memory_updater(self, monkeypatch):
-        calls = []
-
-        def fake_finaliser(state):
-            calls.append("finaliser")
-            return {"final_itinerary": "Your trip is ready."}
-
-        def fake_updater(state):
-            calls.append("updater")
-            return {"current_step": "done"}
-
-        monkeypatch.setattr("application.graph.trip_finaliser", fake_finaliser)
-        monkeypatch.setattr("application.graph.memory_updater", fake_updater)
-
-        state = {"user_id": "test", "trip_request": {}}
-        result = run_finalisation(state)
-
-        assert calls == ["finaliser", "updater"]
-        assert result["final_itinerary"] == "Your trip is ready."
-        assert result["current_step"] == "done"
+class TestRunFinalisationStreaming:
+    def test_callable_with_correct_signature(self):
+        """run_finalisation_streaming must accept (graph, thread_id, state_updates)."""
+        import inspect
+        sig = inspect.signature(run_finalisation_streaming)
+        params = list(sig.parameters)
+        assert params == ["graph", "thread_id", "state_updates"]

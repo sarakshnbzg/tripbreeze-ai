@@ -12,9 +12,11 @@ from datetime import date, timedelta
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import uuid
+
 import pytest
 
-from application.graph import compile_graph, run_finalisation
+from application.graph import compile_graph, run_finalisation_streaming
 from domain.nodes.trip_finaliser import Itinerary
 
 
@@ -140,6 +142,11 @@ def _base_initial_state(**overrides: Any) -> dict[str, Any]:
     return state
 
 
+
+def _make_config() -> dict:
+    """Return a LangGraph config with a unique thread_id (required by MemorySaver)."""
+    return {"configurable": {"thread_id": str(uuid.uuid4())}}
+
 # ── Mock builders ────────────────────────────────────────────────────
 
 
@@ -244,14 +251,14 @@ class TestFullPipelineToReview:
     def test_reaches_awaiting_review(self):
         with _patch_all() as mocks:
             graph = compile_graph()
-            result = graph.invoke(_base_initial_state())
+            result = graph.invoke(_base_initial_state(), _make_config())
 
         assert result["current_step"] == "awaiting_review"
 
     def test_trip_request_populated(self):
         with _patch_all() as mocks:
             graph = compile_graph()
-            result = graph.invoke(_base_initial_state())
+            result = graph.invoke(_base_initial_state(), _make_config())
 
         trip = result["trip_request"]
         assert trip["origin"] == "London"
@@ -264,7 +271,7 @@ class TestFullPipelineToReview:
     def test_flight_and_hotel_options_present(self):
         with _patch_all() as mocks:
             graph = compile_graph()
-            result = graph.invoke(_base_initial_state())
+            result = graph.invoke(_base_initial_state(), _make_config())
 
         assert len(result["flight_options"]) > 0
         assert len(result["hotel_options"]) > 0
@@ -272,7 +279,7 @@ class TestFullPipelineToReview:
     def test_budget_computed(self):
         with _patch_all() as mocks:
             graph = compile_graph()
-            result = graph.invoke(_base_initial_state())
+            result = graph.invoke(_base_initial_state(), _make_config())
 
         budget = result["budget"]
         assert "within_budget" in budget
@@ -283,7 +290,7 @@ class TestFullPipelineToReview:
     def test_user_profile_loaded(self):
         with _patch_all() as mocks:
             graph = compile_graph()
-            result = graph.invoke(_base_initial_state())
+            result = graph.invoke(_base_initial_state(), _make_config())
 
         assert result["user_profile"]["home_city"] == "Berlin"
         mocks["load_profile"].assert_called_once_with("test_user")
@@ -291,66 +298,83 @@ class TestFullPipelineToReview:
     def test_messages_accumulated(self):
         with _patch_all() as mocks:
             graph = compile_graph()
-            result = graph.invoke(_base_initial_state())
+            result = graph.invoke(_base_initial_state(), _make_config())
 
         assert len(result["messages"]) >= 3  # profile + intake + research + budget + review
 
     def test_finaliser_not_called(self):
         with _patch_all() as mocks:
             graph = compile_graph()
-            result = graph.invoke(_base_initial_state())
+            result = graph.invoke(_base_initial_state(), _make_config())
 
         mocks["finaliser_llm"].assert_not_called()
         mocks["memory"].assert_not_called()
 
 
 class TestRunFinalisation:
-    """After user approves, run_finalisation executes finaliser + memory_updater."""
+    """After user approves, run_finalisation_streaming resumes the graph through finalise + memory."""
 
     def test_produces_final_itinerary(self):
         with _patch_all() as mocks:
             graph = compile_graph()
-            result = graph.invoke(_base_initial_state())
-            assert result["current_step"] == "awaiting_review"
+            thread_id = "test-finalisation-itinerary"
+            config = {"configurable": {"thread_id": thread_id}}
+            graph.invoke(_base_initial_state(), config)
 
-            # Simulate user approval
-            result["user_approved"] = True
-            result["selected_flight"] = _fake_flights()[0]
-            result["selected_hotel"] = _fake_hotels()[0]
-            result = run_finalisation(result)
+            state_updates = {
+                "user_approved": True,
+                "selected_flight": _fake_flights()[0],
+                "selected_hotel": _fake_hotels()[0],
+            }
+            items = list(run_finalisation_streaming(graph, thread_id, state_updates))
 
-        assert result["current_step"] == "done"
-        assert "London to Paris" in result["final_itinerary"]
+        final_state = next((i for i in items if isinstance(i, dict)), None)
+        assert final_state is not None
+        assert "London to Paris" in final_state.get("final_itinerary", "")
 
     def test_memory_updater_called(self):
         with _patch_all() as mocks:
             graph = compile_graph()
-            result = graph.invoke(_base_initial_state())
-            result["user_approved"] = True
-            result["selected_flight"] = _fake_flights()[0]
-            result["selected_hotel"] = _fake_hotels()[0]
-            run_finalisation(result)
+            thread_id = "test-finalisation-memory"
+            config = {"configurable": {"thread_id": thread_id}}
+            graph.invoke(_base_initial_state(), config)
+
+            state_updates = {
+                "user_approved": True,
+                "selected_flight": _fake_flights()[0],
+                "selected_hotel": _fake_hotels()[0],
+            }
+            list(run_finalisation_streaming(graph, thread_id, state_updates))
 
         mocks["memory"].assert_called_once()
         call_args = mocks["memory"].call_args
-        assert call_args[0][0] == "test_user"  # user_id
+        assert call_args[0][0] == "test_user"
 
 
 class TestFullPipelineWithApproval:
-    """Graph invoked with user_approved=True goes all the way through finalise + memory."""
+    """Full pipeline: initial planning pauses at interrupt, then resumes via run_finalisation_streaming."""
 
-    def test_reaches_done(self):
+    def test_reaches_finalised(self):
         with _patch_all() as mocks:
             graph = compile_graph()
-            state = _base_initial_state(
-                user_approved=True,
-                selected_flight=_fake_flights()[0],
-                selected_hotel=_fake_hotels()[0],
-            )
-            result = graph.invoke(state)
+            thread_id = "test-full-approval"
+            config = {"configurable": {"thread_id": thread_id}}
 
-        assert result["current_step"] == "done"
-        assert result.get("final_itinerary")
+            # Phase 1: planning runs to HITL interrupt
+            result = graph.invoke(_base_initial_state(), config)
+            assert result["current_step"] == "awaiting_review"
+
+            # Phase 2: user approves; graph resumes through finalise + memory_updater
+            state_updates = {
+                "user_approved": True,
+                "selected_flight": _fake_flights()[0],
+                "selected_hotel": _fake_hotels()[0],
+            }
+            items = list(run_finalisation_streaming(graph, thread_id, state_updates))
+
+        final_state = next((i for i in items if isinstance(i, dict)), None)
+        assert final_state is not None
+        assert final_state.get("final_itinerary")
         mocks["memory"].assert_called_once()
 
 
@@ -364,29 +388,30 @@ class TestIntakeValidationStopsGraph:
         )
         with _patch_all() as mocks:
             graph = compile_graph()
-            result = graph.invoke(_base_initial_state(structured_fields=fields))
+            result = graph.invoke(_base_initial_state(structured_fields=fields), _make_config())
 
         assert result["current_step"] == "intake_error"
         assert "Return date" in result["error"] or "after departure" in result["error"]
         mocks["api_flights"].assert_not_called()
         mocks["api_hotels"].assert_not_called()
 
-    def test_one_way_without_checkout(self):
+    def test_one_way_without_checkout_defaults_to_seven_nights(self):
         fields = _base_structured_fields(return_date="", check_out_date="")
         with _patch_all() as mocks:
             graph = compile_graph()
-            result = graph.invoke(_base_initial_state(structured_fields=fields))
+            result = graph.invoke(_base_initial_state(structured_fields=fields), _make_config())
 
-        assert result["current_step"] == "intake_error"
-        assert "nights" in result["error"].lower() or "check-out" in result["error"].lower()
-        mocks["api_flights"].assert_not_called()
+        # One-way trips without a check-out date now default to a 7-night stay
+        assert result["current_step"] == "awaiting_review"
+        assert result["trip_request"]["check_out_date"] != ""
+        mocks["api_flights"].assert_called_once()
 
     def test_past_departure_date(self):
         yesterday = (_TODAY - timedelta(days=1)).isoformat()
         fields = _base_structured_fields(departure_date=yesterday)
         with _patch_all() as mocks:
             graph = compile_graph()
-            result = graph.invoke(_base_initial_state(structured_fields=fields))
+            result = graph.invoke(_base_initial_state(structured_fields=fields), _make_config())
 
         assert result["current_step"] == "intake_error"
         assert "past" in result["error"].lower()
@@ -412,7 +437,7 @@ class TestOutOfDomainGuardrail:
                 structured_fields={},
                 free_text_query="Explain quantum physics to me",
             )
-            result = graph.invoke(state)
+            result = graph.invoke(state, _make_config())
 
         assert result["current_step"] == "out_of_domain"
         mocks["api_flights"].assert_not_called()
@@ -426,7 +451,7 @@ class TestSerpAPIFailure:
         with _patch_all() as mocks:
             mocks["api_flights"].side_effect = RuntimeError("SerpAPI unavailable")
             graph = compile_graph()
-            result = graph.invoke(_base_initial_state())
+            result = graph.invoke(_base_initial_state(), _make_config())
 
         # Pipeline should not crash — flight_agent catches the exception
         assert result["current_step"] == "awaiting_review"
@@ -439,7 +464,7 @@ class TestSerpAPIFailure:
         with _patch_all() as mocks:
             mocks["api_hotels"].side_effect = RuntimeError("SerpAPI unavailable")
             graph = compile_graph()
-            result = graph.invoke(_base_initial_state())
+            result = graph.invoke(_base_initial_state(), _make_config())
 
         assert result["current_step"] == "awaiting_review"
         assert result["budget"]["hotels_before_budget_filter"] == 0
@@ -458,7 +483,7 @@ class TestBudgetFiltering:
             state = _base_initial_state(
                 structured_fields=_base_structured_fields(budget_limit=100),
             )
-            result = graph.invoke(state)
+            result = graph.invoke(state, _make_config())
 
         assert result["current_step"] == "awaiting_review"
         assert result["flight_options"] == []
@@ -471,7 +496,7 @@ class TestBudgetFiltering:
             state = _base_initial_state(
                 structured_fields=_base_structured_fields(budget_limit=50000),
             )
-            result = graph.invoke(state)
+            result = graph.invoke(state, _make_config())
 
         assert result["current_step"] == "awaiting_review"
         assert len(result["flight_options"]) > 0
@@ -484,7 +509,7 @@ class TestBudgetFiltering:
             state = _base_initial_state(
                 structured_fields=_base_structured_fields(budget_limit=0),
             )
-            result = graph.invoke(state)
+            result = graph.invoke(state, _make_config())
 
         assert result["current_step"] == "awaiting_review"
         assert len(result["flight_options"]) > 0
@@ -498,7 +523,7 @@ class TestProfileDefaults:
         fields = _base_structured_fields(origin="")
         with _patch_all(profile=_fake_profile(home_city="Munich")) as mocks:
             graph = compile_graph()
-            result = graph.invoke(_base_initial_state(structured_fields=fields))
+            result = graph.invoke(_base_initial_state(structured_fields=fields), _make_config())
 
         assert result["trip_request"]["origin"] == "Munich"
 
@@ -506,7 +531,7 @@ class TestProfileDefaults:
         fields = _base_structured_fields(travel_class="")
         with _patch_all(profile=_fake_profile(travel_class="BUSINESS")) as mocks:
             graph = compile_graph()
-            result = graph.invoke(_base_initial_state(structured_fields=fields))
+            result = graph.invoke(_base_initial_state(structured_fields=fields), _make_config())
 
         assert result["trip_request"]["travel_class"] == "BUSINESS"
 
@@ -543,7 +568,7 @@ class TestRAGIntegration:
         with _patch_all(research_llm=research_llm) as mocks:
             mocks["rag"].return_value = rag_results
             graph = compile_graph()
-            result = graph.invoke(_base_initial_state())
+            result = graph.invoke(_base_initial_state(), _make_config())
 
         assert result["rag_used"] is True
         assert "destinations.md" in result["rag_sources"]

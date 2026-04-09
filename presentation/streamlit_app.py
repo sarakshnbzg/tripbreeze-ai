@@ -6,6 +6,7 @@ non-service infrastructure utilities: currency_utils, logging_utils, model_facto
 """
 
 import html
+import uuid
 import streamlit as st
 
 from datetime import date, timedelta
@@ -21,7 +22,7 @@ from config import (
     HOTEL_STARS,
     TRAVEL_CLASSES,
 )
-from application.graph import compile_graph as _compile_graph, run_finalisation, run_finalisation_streaming
+from application.graph import compile_graph as _compile_graph, run_finalisation_streaming
 from domain.agents.flight_agent import fetch_return_flights as search_return_flights
 from infrastructure.currency_utils import format_currency, normalise_currency
 from infrastructure.logging_utils import get_logger
@@ -51,6 +52,7 @@ SESSION_DEFAULTS = {
     "user_id": "default_user",
     "llm_provider": "openai",
     "llm_model": "gpt-4o-mini",
+    "thread_id": "",
 }
 
 MODEL_LABELS = {
@@ -433,6 +435,7 @@ def _reset_trip_flow() -> None:
     st.session_state.graph_state = None
     st.session_state.awaiting_review = False
     st.session_state.trip_complete = False
+    st.session_state.thread_id = ""
 
 
 def _display_messages() -> None:
@@ -491,12 +494,16 @@ def _run_initial_planning(
 
     try:
         _archive_current_token_usage()
+        thread_id = str(uuid.uuid4())
+        st.session_state.thread_id = thread_id
+        config = {"configurable": {"thread_id": thread_id}}
+        graph = _get_graph()
         result = initial_state.copy()
         with st.chat_message("assistant"):
             progress_placeholder = st.empty()
             progress_placeholder.markdown(_planning_progress_markdown(["Planning your trip..."]))
         with st.status("Planning your trip...", expanded=True) as status:
-            for event in _get_graph().stream(initial_state):
+            for event in graph.stream(initial_state, config):
                 for node_name, node_output in event.items():
                     label = node_labels.get(node_name, f"Running {node_name}...")
                     st.write(label)
@@ -512,6 +519,8 @@ def _run_initial_planning(
                             st.write(latest_message["content"])
                     logger.info("Streaming node completed: %s", node_name)
                     result.update(node_output)
+            # Use the checkpointer's authoritative merged state
+            result = dict(graph.get_state(config).values)
             status.update(label="Trip research complete!", state="complete", expanded=False)
     except Exception as exc:
         logger.exception("Initial planning failed")
@@ -554,12 +563,26 @@ def _run_finalisation(feedback: str = "") -> None:
     state["llm_provider"] = st.session_state.llm_provider
     state["llm_model"] = st.session_state.llm_model
 
+    state_updates = {
+        "user_approved": True,
+        "user_feedback": feedback,
+        "selected_flight": state.get("selected_flight", {}),
+        "selected_hotel": state.get("selected_hotel", {}),
+        "llm_provider": st.session_state.llm_provider,
+        "llm_model": st.session_state.llm_model,
+    }
+
     try:
         def _itinerary_chunks():
-            for item in run_finalisation_streaming(state):
+            for item in run_finalisation_streaming(
+                _get_graph(),
+                st.session_state.thread_id,
+                state_updates,
+            ):
                 if isinstance(item, str):
                     yield item
-                # dict items update state in-place via _merge_node_output
+                else:
+                    st.session_state.graph_state = item
 
         st.write_stream(_itinerary_chunks())
     except Exception as exc:
@@ -570,8 +593,9 @@ def _run_finalisation(feedback: str = "") -> None:
 
     st.session_state.graph_state = state
     logger.info("Finalisation completed for user_id=%s", st.session_state.user_id)
-    if state.get("final_itinerary"):
-        _append_assistant_message(state["final_itinerary"])
+    final_state = st.session_state.graph_state or state
+    if final_state.get("final_itinerary"):
+        _append_assistant_message(final_state["final_itinerary"])
 
     st.session_state.awaiting_review = False
     st.session_state.trip_complete = True
