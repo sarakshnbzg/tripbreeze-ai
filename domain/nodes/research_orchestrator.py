@@ -95,24 +95,39 @@ class SubmitResearchResult(BaseModel):
     )
 
 
+_VISA_KEYWORDS = (
+    "visa",
+    "entry",
+    "passport",
+    "immigration",
+    "etias",
+    "esta",
+    "travel document",
+    "authoris",   # authorise / authorization / authorisation
+    "authoriz",
+    "permit",
+    "border",
+    "customs",
+    "arrival card",
+    "electronic travel",
+    "tourist card",
+)
+
+
 def _query_is_visa_related(query: str) -> bool:
     lowered = query.lower()
-    keywords = ("visa", "entry", "passport", "immigration", "etias", "esta")
-    return any(keyword in lowered for keyword in keywords)
+    return any(keyword in lowered for keyword in _VISA_KEYWORDS)
 
 
 def _enrich_retrieval_query(query: str, trip_request: dict[str, Any], user_profile: dict[str, Any]) -> str:
-    """Inject saved profile context into visa-related knowledge queries."""
-    if not _query_is_visa_related(query):
-        return query
-
+    """Inject destination and, for visa-related queries, passport country into retrieval queries."""
     destination = trip_request.get("destination", "")
     passport_country = user_profile.get("passport_country", "")
 
     additions = []
-    if passport_country:
+    if _query_is_visa_related(query) and passport_country:
         additions.append(f"for travelers with a passport from {passport_country}")
-    if destination:
+    if destination and destination.lower() not in query.lower():
         additions.append(f"visiting {destination}")
 
     if not additions:
