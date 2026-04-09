@@ -270,17 +270,6 @@ def _query_mentions_one_way(query: str) -> bool:
     return "one-way" in lowered or "one way" in lowered
 
 
-def _query_mentions_direct_flights(query: str) -> bool:
-    """Return true when the user explicitly requests direct / nonstop flights."""
-    return bool(
-        re.search(
-            r"\b(direct|nonstop|non-stop|no[- ]stop|no[- ]stops|no[- ]layover|no[- ]layovers|no[- ]connection|no[- ]connections)\b",
-            query,
-            flags=re.IGNORECASE,
-        )
-    )
-
-
 def _apply_free_text_trip_fallbacks(
     raw_trip_data: dict[str, Any],
     free_text_query: str,
@@ -314,12 +303,6 @@ def _apply_free_text_trip_fallbacks(
 
     if is_one_way and not structured_fields.get("return_date"):
         trip_data["return_date"] = ""
-
-    # Deterministically set direct-only filter when the user explicitly asks for it.
-    # This acts as a reliable fallback in case the LLM misses it during extraction.
-    if _query_mentions_direct_flights(free_text_query) and structured_fields.get("stops") is None:
-        trip_data["stops"] = 0
-        logger.info("Detected direct-flight request in free text — setting stops=0")
 
     return trip_data
 
