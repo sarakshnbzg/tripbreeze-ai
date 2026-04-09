@@ -292,18 +292,22 @@ def _flight_option_cards(options: list[dict], currency: str, leg_label: str) -> 
 
 
 def _hotel_option_cards(hotels: list[dict], currency: str) -> list[dict[str, object]]:
-    return [
-        {
+    cards = []
+    for index, hotel in enumerate(hotels):
+        hotel_class = hotel.get("hotel_class")
+        stars_str = ("⭐" * hotel_class) if hotel_class else None
+        details = []
+        if stars_str:
+            details.append(f"Stars: {stars_str} ({hotel_class}-star)")
+        details.append(f"Rating: {hotel.get('rating', '?')}")
+        details.append(f"Per night: {format_currency(hotel.get('price_per_night', 0), currency)}")
+        details.append(f"Total: {format_currency(hotel.get('total_price', 0), currency)}")
+        cards.append({
             "title": f"Option {index + 1}: {hotel.get('name', 'Unknown Hotel')}",
             "badges": _hotel_badges(hotels, hotel),
-            "details": [
-                f"Rating: {hotel.get('rating', '?')}",
-                f"Per night: {format_currency(hotel.get('price_per_night', 0), currency)}",
-                f"Total: {format_currency(hotel.get('total_price', 0), currency)}",
-            ],
-        }
-        for index, hotel in enumerate(hotels)
-    ]
+            "details": details,
+        })
+    return cards
 
 
 def _budget_flight_detail(option: dict, currency: str) -> str:
