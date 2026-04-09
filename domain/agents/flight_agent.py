@@ -1,7 +1,7 @@
 """Flight Agent — searches for flights and formats results for the graph state."""
 
 from config import MAX_FLIGHT_RESULTS
-from infrastructure.apis.serpapi_client import search_flights as api_search_flights
+from infrastructure.apis.serpapi_client import search_flights as api_search_flights, search_return_flights as api_search_return_flights
 from infrastructure.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -158,3 +158,28 @@ def search_flights(state: dict) -> dict:
             "flight_options": [],
             "messages": [{"role": "assistant", "content": f"Flight search failed: {e}"}],
         }
+
+
+def fetch_return_flights(
+    origin: str,
+    destination: str,
+    departure_date: str,
+    return_date: str,
+    departure_token: str,
+    adults: int = 1,
+    travel_class: str = "ECONOMY",
+    currency: str = "EUR",
+    return_time_window: tuple[int, int] | None = None,
+) -> list[dict]:
+    """Fetch return flight options for a chosen outbound departure token."""
+    return api_search_return_flights(
+        origin=origin,
+        destination=destination,
+        departure_date=departure_date,
+        return_date=return_date,
+        departure_token=departure_token,
+        adults=adults,
+        travel_class=travel_class,
+        currency=currency,
+        return_time_window=return_time_window,
+    )

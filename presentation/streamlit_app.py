@@ -1,7 +1,8 @@
 """Streamlit UI for TripBreeze AI.
 
 Dependency direction: presentation -> application -> domain -> infrastructure
-This module only imports from the application and infrastructure layers.
+This module only imports from the application and domain layers (plus
+non-service infrastructure utilities: currency_utils, logging_utils, model_factory).
 """
 
 import html
@@ -21,7 +22,7 @@ from config import (
     TRAVEL_CLASSES,
 )
 from application.graph import compile_graph as _compile_graph, run_finalisation, run_finalisation_streaming
-from infrastructure.apis.serpapi_client import search_return_flights
+from domain.agents.flight_agent import fetch_return_flights as search_return_flights
 from infrastructure.currency_utils import format_currency, normalise_currency
 from infrastructure.logging_utils import get_logger
 from infrastructure.llms.model_factory import (
