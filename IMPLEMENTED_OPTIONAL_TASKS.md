@@ -210,6 +210,21 @@ Optional task covered:
 
 - Security improvement; aligns with the "ask ChatGPT to critique from the security side" easy task recommendation.
 
+### Cloud Deployment
+
+The app is deployed on Streamlit Community Cloud and publicly accessible. A
+production-ready `Dockerfile` is also provided for self-hosted deployments.
+
+Evidence:
+
+- Live app: <https://tripbreeze-ai.streamlit.app/>
+- `Dockerfile` defines a non-root `appuser`, a `VOLUME ["/app/chroma_db"]` for the persisted RAG index, a `HEALTHCHECK`, and a `uv run streamlit` entrypoint on port 8501.
+- Deployment details documented in `README.md`.
+
+Optional task covered:
+
+- Deploy your app to the cloud with proper scaling.
+
 ---
 
 ## Partially Implemented
@@ -233,15 +248,4 @@ Optional task partially covered:
 Note: this is not a full learning or rating loop. The feedback affects the
 current final itinerary only.
 
-### Docker Containerisation
 
-A production-ready `Dockerfile` is present, but cloud deployment with autoscaling
-has not been confirmed.
-
-Evidence:
-
-- `Dockerfile` defines a non-root `appuser`, a `VOLUME ["/app/chroma_db"]` for the persisted RAG index, a `HEALTHCHECK`, and a `uv run streamlit` entrypoint on port 8501.
-
-Optional task partially covered:
-
-- Deploy your app to the cloud with proper scaling — containerisation is ready; cloud deployment is not yet confirmed.
