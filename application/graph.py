@@ -5,9 +5,9 @@ This module only imports from the domain layer (nodes & agents).
 """
 
 from langgraph.graph import StateGraph, START, END
-from langgraph.checkpoint.memory import MemorySaver
 
 from application.state import TravelState
+from infrastructure.persistence.checkpointer import get_checkpointer
 from domain.nodes.profile_loader import profile_loader
 from domain.nodes.trip_intake import trip_intake
 from domain.nodes.budget_aggregator import budget_aggregator
@@ -73,15 +73,21 @@ def build_graph() -> StateGraph:
 
 
 def compile_graph():
-    """Compile the graph with a MemorySaver checkpointer.
+    """Compile the graph with a persistent checkpointer.
 
     interrupt_before=["finalise"] makes the graph pause before the finalise
     node so the user can review options and approve.  Execution resumes when
     the caller updates state with user selections and calls graph.stream again.
+
+    Uses PostgresSaver (Neon) when DATABASE_URL is configured so HITL review
+    state survives Streamlit server restarts; falls back to MemorySaver
+    otherwise.
     """
-    logger.info("Compiling travel planning graph with MemorySaver checkpointer")
-    checkpointer = MemorySaver()
-    return build_graph().compile(checkpointer=checkpointer, interrupt_before=["finalise"])
+    logger.info("Compiling travel planning graph")
+    return build_graph().compile(
+        checkpointer=get_checkpointer(),
+        interrupt_before=["finalise"],
+    )
 
 
 def run_finalisation_streaming(graph, thread_id: str, state_updates: dict):
