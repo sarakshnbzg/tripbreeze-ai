@@ -289,7 +289,11 @@ def research_orchestrator(state: dict) -> dict:
                     tool_call_id=tool_call["id"],
                 ))
                 continue
-            tool_result = tools_by_name[tool_name].invoke(tool_call.get("args", {}))
+            try:
+                tool_result = tools_by_name[tool_name].invoke(tool_call.get("args", {}))
+            except Exception as exc:
+                logger.exception("Research orchestrator tool %s failed", tool_name)
+                tool_result = json.dumps({"error": str(exc)})
             messages.append(ToolMessage(content=tool_result, tool_call_id=tool_call["id"]))
         if final_result:
             break
