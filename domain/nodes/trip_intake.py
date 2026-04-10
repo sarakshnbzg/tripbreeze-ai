@@ -521,12 +521,13 @@ def trip_intake(state: dict) -> dict:
     token_usage: list[dict] = []
     model = state.get("llm_model")
     provider = state.get("llm_provider")
+    temperature = float(state.get("llm_temperature", 0))
 
     # Start with structured fields as the base
     raw_trip_data = dict(structured_fields)
 
     if free_text_query.strip() and not _has_structured_trip_signal(structured_fields):
-        llm = create_chat_model(provider, model, temperature=0)
+        llm = create_chat_model(provider, model, temperature=temperature)
         domain_result, usage = _classify_domain(llm, free_text_query, model=model)
         if usage:
             token_usage.append(usage)
@@ -553,7 +554,7 @@ def trip_intake(state: dict) -> dict:
     # If there's a free-text query, extract trip details from it
     if free_text_query.strip():
         logger.info("Trip intake parsing free-text query")
-        llm = create_chat_model(provider, model, temperature=0)
+        llm = create_chat_model(provider, model, temperature=temperature)
         parsed_query, usage = _parse_free_text(llm, free_text_query, model=model)
         if usage:
             token_usage.append(usage)
@@ -590,7 +591,7 @@ def trip_intake(state: dict) -> dict:
     if preferences.strip() and not free_text_query.strip():
         # Only run separate preferences parsing if we didn't already parse free text
         # (free text parsing already extracts filter criteria)
-        llm = create_chat_model(provider, model, temperature=0)
+        llm = create_chat_model(provider, model, temperature=temperature)
         parsed, usage = _parse_preferences(llm, preferences, model=model)
         if usage:
             token_usage.append(usage)

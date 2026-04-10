@@ -239,7 +239,7 @@ def trip_finaliser(state: dict) -> dict:
     llm = create_chat_model(
         state.get("llm_provider"),
         model,
-        temperature=0.5,
+        temperature=float(state.get("llm_temperature", 0.5)),
     )
     structured_llm = llm.with_structured_output(Itinerary, include_raw=True)
     prompt = FINALISER_PROMPT.format(
@@ -304,7 +304,7 @@ def trip_finaliser_stream(state: dict):
     llm = create_chat_model(
         state.get("llm_provider"),
         model,
-        temperature=0.5,
+        temperature=float(state.get("llm_temperature", 0.5)),
     )
     prompt = _build_finaliser_prompt(state)
     logger.info("Finaliser streaming started")

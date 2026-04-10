@@ -17,6 +17,7 @@ class TravelState(TypedDict, total=False):
     # Runtime model selection
     llm_provider: str
     llm_model: str
+    llm_temperature: float
 
     # Profile (from long-term memory)
     user_profile: dict[str, Any]

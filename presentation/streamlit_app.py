@@ -54,6 +54,7 @@ SESSION_DEFAULTS = {
     "user_id": "default_user",
     "llm_provider": "openai",
     "llm_model": "gpt-4o-mini",
+    "llm_temperature": 0.3,
     "thread_id": "",
 }
 
@@ -489,6 +490,7 @@ def _run_initial_planning(
         "user_id": st.session_state.user_id,
         "llm_provider": st.session_state.llm_provider,
         "llm_model": st.session_state.llm_model,
+        "llm_temperature": st.session_state.llm_temperature,
         "messages": [{"role": "user", "content": user_message}],
         "user_approved": False,
         "user_feedback": "",
@@ -579,6 +581,7 @@ def _run_finalisation(feedback: str = "") -> None:
     state["user_feedback"] = feedback
     state["llm_provider"] = st.session_state.llm_provider
     state["llm_model"] = st.session_state.llm_model
+    state["llm_temperature"] = st.session_state.llm_temperature
 
     state_updates = {
         "user_approved": True,
@@ -587,6 +590,7 @@ def _run_finalisation(feedback: str = "") -> None:
         "selected_hotel": state.get("selected_hotel", {}),
         "llm_provider": st.session_state.llm_provider,
         "llm_model": st.session_state.llm_model,
+        "llm_temperature": st.session_state.llm_temperature,
     }
 
     try:
@@ -654,6 +658,26 @@ def _render_model_settings() -> None:
     if selected_model != st.session_state.llm_model:
         logger.info("Switching model from %s to %s", st.session_state.llm_model, selected_model)
         st.session_state.llm_model = selected_model
+
+    selected_temperature = st.slider(
+        "Temperature",
+        min_value=0.0,
+        max_value=1.0,
+        value=float(st.session_state.llm_temperature),
+        step=0.1,
+        help=(
+            "Controls creativity. Lower values (0.0) give deterministic, focused outputs "
+            "suited to structured extraction; higher values (1.0) produce more varied, "
+            "creative itineraries."
+        ),
+    )
+    if selected_temperature != st.session_state.llm_temperature:
+        logger.info(
+            "Switching temperature from %s to %s",
+            st.session_state.llm_temperature,
+            selected_temperature,
+        )
+        st.session_state.llm_temperature = selected_temperature
 
     provider_ready, provider_message = get_provider_status(st.session_state.llm_provider)
     if not provider_ready:

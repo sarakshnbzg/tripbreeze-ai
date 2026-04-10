@@ -233,7 +233,7 @@ def research_orchestrator(state: dict) -> dict:
     llm = create_chat_model(
         state.get("llm_provider"),
         model,
-        temperature=0,
+        temperature=float(state.get("llm_temperature", 0)),
     )
     llm_with_tools = llm.bind_tools(
         [search_flights_tool, search_hotels_tool, retrieve_knowledge_tool, SubmitResearchResult]
