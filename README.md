@@ -185,6 +185,28 @@ tripbreeze-ai/
 └── README.md
 ```
 
+## 🔜 What To Do Next
+
+- Expand RAG visa information with more countries, clearer passport-specific rules, and source freshness checks.
+- Generate fuller itineraries with day-to-day plans, activities, meals, transport notes, and timing guidance.
+- Add export options for PDF downloads and email sharing.
+- Support multi-city travel planning with multiple destinations, legs, stays, and budget breakdowns.
+- Add user profile management so travellers can view and update saved preferences directly.
+- Add links from each user profile to previously generated travel plans.
+- Improve the review step so users can revise specific flight, hotel, or itinerary preferences without restarting the whole workflow.
+- Add clearer fallback behavior when live search APIs return incomplete or unavailable results.
+
+## ⚠️ Limitations
+
+- Flight and hotel results depend on SerpAPI and may vary based on provider availability, rate limits, and search result freshness.
+- Destination guidance is limited to the local RAG knowledge base, so it should be expanded and rebuilt whenever new travel content is added.
+- The app does not complete bookings; it only researches options and generates an itinerary for review.
+- Budget estimates are approximate and combine live prices with a configurable daily expense estimate.
+- Long-term memory requires a configured Neon Postgres database and is scoped to the saved user profile fields currently supported by the app.
+- Some LLM settings are currently hardcoded and are not yet configurable from the UI.
+- Multi-user access is limited by the current profile and memory design.
+- The app currently focuses on flights and hotels, not activities, restaurants, local transport bookings, travel insurance, or car rentals.
+
 ## 📝 Notes
 
 - Model names, API keys, paths, and defaults are centralised in `config.py`.
