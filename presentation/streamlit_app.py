@@ -1123,31 +1123,22 @@ def _render_trip_form() -> None:
 
     st.subheader("Plan Your Trip")
 
-    # Primary input: free-text query
-    col1, col2 = st.columns([0.85, 0.15])
+    # Primary input: free-text query + mic button on the right
+    from presentation.mic_button import mic_button
+    text_col, mic_col = st.columns([0.9, 0.1], vertical_alignment="bottom")
 
-    with col1:
+    with text_col:
         free_text = st.text_area(
             "Describe your trip",
             value=st.session_state.get("trip_description", ""),
             placeholder="e.g. I want to fly from London to Tokyo, June 10-17, budget $3000, direct flights only",
-            help="Type your trip request in plain English, or use voice input below.",
+            help="Type your trip request in plain English, or click the mic to use voice input.",
             height=100,
-            on_change=lambda: st.session_state.update({"trip_description": st.session_state.get("_text_area_value", "")}),
         )
-        # Sync the text_area value back to session state
         st.session_state["trip_description"] = free_text
 
-    with col2:
-        st.write("")  # spacing
-        st.write("")  # spacing
-        if st.button("Clear", use_container_width=True):
-            st.session_state["trip_description"] = ""
-            st.rerun()
-
-    # Voice input: record to replace or append to the text
-    from presentation.mic_button import mic_button
-    mic_button()
+    with mic_col:
+        mic_button()
 
     # Optional structured fields for refinement
     default_departure_date = date.today() + timedelta(days=14)

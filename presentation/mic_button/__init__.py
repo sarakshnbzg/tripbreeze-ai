@@ -13,74 +13,26 @@ logger = get_logger(__name__)
 
 
 def _handle_audio_change():
-    """Callback triggered when audio is recorded. Transcribes and updates session state."""
-    audio_bytes = st.session_state.get("_audio_input")
+    """Callback triggered when audio is recorded. Transcribes and replaces trip text."""
+    key = f"_audio_input_{st.session_state.get('_mic_generation', 0)}"
+    audio_bytes = st.session_state.get(key)
     if audio_bytes:
         try:
             transcript = api_client.transcribe_audio(audio_bytes.read())
-            current_text = st.session_state.get("trip_description", "")
-
-            # Show replace/append options if there's existing text
-            if current_text.strip():
-                st.session_state["_pending_transcript"] = transcript
-                st.session_state["_show_transcript_options"] = True
-            else:
-                # No existing text, just use the transcript
-                st.session_state["trip_description"] = transcript
-
-            # Mark that transcription is done (hide audio widget)
-            st.session_state["_transcription_done"] = True
+            st.session_state["trip_description"] = transcript
         except Exception as exc:
             logger.warning("Voice transcription failed: %s", exc)
-            st.warning(f"Could not transcribe audio: {exc}")
+        # Bump generation to recreate the widget fresh (no playback UI)
+        st.session_state["_mic_generation"] = st.session_state.get("_mic_generation", 0) + 1
 
 
 def mic_button() -> None:
-    """Render a mic recording widget or "Record again" button.
-
-    After transcription, hides the audio widget and shows "Record again" button
-    to avoid making users feel like their voice is being stored/replayed.
-    """
-
-    # Show record button if no transcription has happened yet
-    if not st.session_state.get("_transcription_done"):
-        st.audio_input(
-            "Record your trip description",
-            label_visibility="collapsed",
-            key="_audio_input",
-            on_change=_handle_audio_change,
-        )
-    else:
-        # After transcription, show "Record again" button instead of audio widget
-        if st.button("🎤 Record again", use_container_width=False):
-            st.session_state["_transcription_done"] = False
-            st.session_state["_show_transcript_options"] = False
-            st.rerun()
-
-    # Show replace/append buttons if pending transcript
-    if st.session_state.get("_show_transcript_options"):
-        pending = st.session_state.get("_pending_transcript", "")
-        current = st.session_state.get("trip_description", "")
-
-        st.write("Apply to text:")
-        col_replace, col_append, col_cancel = st.columns(3)
-
-        with col_replace:
-            if st.button("Replace", use_container_width=True):
-                st.session_state["trip_description"] = pending
-                st.session_state["_show_transcript_options"] = False
-                st.session_state["_transcription_done"] = False
-                st.rerun()
-        with col_append:
-            if st.button("Append", use_container_width=True):
-                st.session_state["trip_description"] = f"{current} {pending}".strip()
-                st.session_state["_show_transcript_options"] = False
-                st.session_state["_transcription_done"] = False
-                st.rerun()
-        with col_cancel:
-            if st.button("Discard", use_container_width=True):
-                st.session_state["_show_transcript_options"] = False
-                st.rerun()
-
-
-
+    """Render a mic recording widget. Records audio, transcribes it,
+    and replaces the trip description text."""
+    generation = st.session_state.get("_mic_generation", 0)
+    st.audio_input(
+        "Voice input",
+        help="Click to describe your trip by voice. The recording will be transcribed into the text field.",
+        key=f"_audio_input_{generation}",
+        on_change=_handle_audio_change,
+    )
