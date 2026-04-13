@@ -1130,11 +1130,13 @@ def _render_trip_form() -> None:
         free_text = st.text_area(
             "Describe your trip",
             value=st.session_state.get("trip_description", ""),
-            key="trip_description",
             placeholder="e.g. I want to fly from London to Tokyo, June 10-17, budget $3000, direct flights only",
             help="Type your trip request in plain English, or use voice input below.",
             height=100,
+            on_change=lambda: st.session_state.update({"trip_description": st.session_state.get("_text_area_value", "")}),
         )
+        # Sync the text_area value back to session state
+        st.session_state["trip_description"] = free_text
 
     with col2:
         st.write("")  # spacing
