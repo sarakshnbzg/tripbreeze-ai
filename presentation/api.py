@@ -15,6 +15,8 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from langgraph.types import Command
+
 from application.graph import compile_graph, run_finalisation_streaming
 from domain.agents.flight_agent import fetch_return_flights
 from infrastructure.logging_utils import get_logger
@@ -75,6 +77,10 @@ class ApproveRequest(BaseModel):
     llm_temperature: float = 0.3
 
 
+class ClarifyRequest(BaseModel):
+    answer: str
+
+
 class ReturnFlightRequest(BaseModel):
     origin: str
     destination: str
@@ -116,10 +122,28 @@ def _run_planning_sync(q: queue.Queue, initial_state: dict, config: dict) -> Non
                         }))
                 result.update(node_output)
 
-        # Authoritative merged state from checkpointer
-        merged = dict(graph.get_state(config).values)
-        merged["thread_id"] = config["configurable"]["thread_id"]
-        q.put(_sse_event("state", merged))
+        # Check if the graph paused for a clarification interrupt
+        state_snapshot = graph.get_state(config)
+        has_interrupt = False
+        for task in (state_snapshot.tasks or []):
+            for intr in (task.interrupts or []):
+                intr_value = intr.value if hasattr(intr, "value") else intr
+                if isinstance(intr_value, dict) and intr_value.get("type") == "clarification":
+                    q.put(_sse_event("clarification", {
+                        "thread_id": config["configurable"]["thread_id"],
+                        "question": intr_value.get("question", ""),
+                        "missing_fields": intr_value.get("missing_fields", []),
+                    }))
+                    has_interrupt = True
+                    break
+            if has_interrupt:
+                break
+
+        if not has_interrupt:
+            # Authoritative merged state from checkpointer
+            merged = dict(state_snapshot.values)
+            merged["thread_id"] = config["configurable"]["thread_id"]
+            q.put(_sse_event("state", merged))
     except Exception as exc:
         logger.exception("Planning stream failed")
         q.put(_sse_event("error", {"detail": str(exc)}))
@@ -140,6 +164,62 @@ def _run_finalisation_sync(q: queue.Queue, thread_id: str, state_updates: dict) 
                 q.put(_sse_event("state", item))
     except Exception as exc:
         logger.exception("Finalisation stream failed")
+        q.put(_sse_event("error", {"detail": str(exc)}))
+    finally:
+        q.put(_SENTINEL)
+
+
+def _run_clarification_sync(q: queue.Queue, thread_id: str, answer: str) -> None:
+    """Resume the graph after a clarification interrupt, pushing SSE events to a queue."""
+    try:
+        graph = _get_graph()
+        config = {"configurable": {"thread_id": thread_id}}
+        result: dict = {}
+        for event in graph.stream(Command(resume=answer), config):
+            for node_name, node_output in event.items():
+                if not isinstance(node_output, dict):
+                    continue
+                label = NODE_LABELS.get(node_name, f"Running {node_name}...")
+                q.put(_sse_event("node_start", {"node": node_name, "label": label}))
+
+                if node_name != "review":
+                    latest_message = next(
+                        (
+                            m for m in reversed(node_output.get("messages", []))
+                            if m.get("role") == "assistant" and m.get("content")
+                        ),
+                        None,
+                    )
+                    if latest_message:
+                        q.put(_sse_event("node_message", {
+                            "node": node_name,
+                            "content": latest_message["content"],
+                        }))
+                result.update(node_output)
+
+        # Check if there's another clarification interrupt (still missing fields)
+        state_snapshot = graph.get_state(config)
+        has_interrupt = False
+        for task in (state_snapshot.tasks or []):
+            for intr in (task.interrupts or []):
+                intr_value = intr.value if hasattr(intr, "value") else intr
+                if isinstance(intr_value, dict) and intr_value.get("type") == "clarification":
+                    q.put(_sse_event("clarification", {
+                        "thread_id": thread_id,
+                        "question": intr_value.get("question", ""),
+                        "missing_fields": intr_value.get("missing_fields", []),
+                    }))
+                    has_interrupt = True
+                    break
+            if has_interrupt:
+                break
+
+        if not has_interrupt:
+            merged = dict(state_snapshot.values)
+            merged["thread_id"] = thread_id
+            q.put(_sse_event("state", merged))
+    except Exception as exc:
+        logger.exception("Clarification stream failed")
         q.put(_sse_event("error", {"detail": str(exc)}))
     finally:
         q.put(_SENTINEL)
@@ -246,6 +326,23 @@ async def return_flights(thread_id: str, req: ReturnFlightRequest):
         ),
     )
     return results
+
+
+@app.post("/api/search/{thread_id}/clarify")
+async def clarify(thread_id: str, req: ClarifyRequest):
+    """Resume trip planning after the user answers a clarification question. Returns an SSE stream."""
+    if not req.answer.strip():
+        raise HTTPException(status_code=400, detail="Answer cannot be empty")
+
+    q: queue.Queue = queue.Queue()
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(_executor, _run_clarification_sync, q, thread_id, req.answer.strip())
+
+    return StreamingResponse(
+        _queue_to_sse(q),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.post("/api/search/{thread_id}/approve")

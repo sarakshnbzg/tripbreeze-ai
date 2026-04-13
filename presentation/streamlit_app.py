@@ -48,6 +48,8 @@ SESSION_DEFAULTS = {
     "graph_state": None,
     "token_usage_history": [],
     "awaiting_review": False,
+    "awaiting_clarification": False,
+    "clarification_question": "",
     "trip_complete": False,
     "user_id": "default_user",
     "authenticated": False,
@@ -485,6 +487,8 @@ def _reset_trip_flow() -> None:
     st.session_state.messages = []
     st.session_state.graph_state = None
     st.session_state.awaiting_review = False
+    st.session_state.awaiting_clarification = False
+    st.session_state.clarification_question = ""
     st.session_state.trip_complete = False
     st.session_state.thread_id = ""
 
@@ -544,26 +548,100 @@ def _run_initial_planning(
     try:
         _archive_current_token_usage()
         result: dict = {}
+        clarification: dict = {}
         with st.status("Planning your trip...", expanded=True) as status:
             for event_type, data in api_client.stream_search(request):
                 if event_type == "node_start":
                     st.write(data.get("label", ""))
                 elif event_type == "node_message":
                     st.write(data.get("content", ""))
+                elif event_type == "clarification":
+                    clarification = data
+                    st.session_state.thread_id = data.get("thread_id", "")
                 elif event_type == "state":
                     result = data
                     st.session_state.thread_id = data.get("thread_id", "")
                 elif event_type == "error":
                     raise RuntimeError(data.get("detail", "Unknown error"))
-            status.update(label="Trip research complete!", state="complete", expanded=False)
+            if clarification:
+                status.update(label="Need a bit more info...", state="complete", expanded=False)
+            else:
+                status.update(label="Trip research complete!", state="complete", expanded=False)
     except Exception as exc:
         logger.exception("Initial planning failed")
         _append_assistant_message(f"I hit an error while planning your trip: {exc}")
         st.error(f"Planning failed: {exc}")
         return
 
+    if clarification:
+        question = clarification.get("question", "Could you provide more details?")
+        st.session_state.awaiting_clarification = True
+        st.session_state.clarification_question = question
+        st.session_state.messages.append({"role": "assistant", "content": question})
+        with st.chat_message("assistant"):
+            st.write_stream(_stream_text(question))
+        return
+
     st.session_state.graph_state = result
     logger.info("Initial planning completed current_step=%s", result.get("current_step"))
+    latest_assistant_message = next(
+        (
+            message for message in reversed(result.get("messages", []))
+            if message.get("role") == "assistant" and message.get("content")
+        ),
+        None,
+    )
+    if latest_assistant_message:
+        st.session_state.messages.append(latest_assistant_message)
+        with st.chat_message("assistant"):
+            st.write_stream(_stream_text(latest_assistant_message["content"]))
+    st.session_state.awaiting_review = result.get("current_step") == "awaiting_review"
+
+
+def _run_clarification(answer: str) -> None:
+    """Send the user's clarification answer and resume planning."""
+    logger.info("Sending clarification answer for thread_id=%s", st.session_state.thread_id)
+    st.session_state.awaiting_clarification = False
+    st.session_state.clarification_question = ""
+
+    try:
+        result: dict = {}
+        clarification: dict = {}
+        with st.status("Continuing trip planning...", expanded=True) as status:
+            for event_type, data in api_client.stream_clarify(
+                st.session_state.thread_id, answer,
+            ):
+                if event_type == "node_start":
+                    st.write(data.get("label", ""))
+                elif event_type == "node_message":
+                    st.write(data.get("content", ""))
+                elif event_type == "clarification":
+                    clarification = data
+                elif event_type == "state":
+                    result = data
+                elif event_type == "error":
+                    raise RuntimeError(data.get("detail", "Unknown error"))
+            if clarification:
+                status.update(label="Need a bit more info...", state="complete", expanded=False)
+            else:
+                status.update(label="Trip research complete!", state="complete", expanded=False)
+    except Exception as exc:
+        logger.exception("Clarification failed")
+        _append_assistant_message(f"I hit an error while planning your trip: {exc}")
+        st.error(f"Planning failed: {exc}")
+        return
+
+    if clarification:
+        question = clarification.get("question", "Could you provide more details?")
+        st.session_state.awaiting_clarification = True
+        st.session_state.clarification_question = question
+        st.session_state.messages.append({"role": "assistant", "content": question})
+        with st.chat_message("assistant"):
+            st.write_stream(_stream_text(question))
+        return
+
+    st.session_state.graph_state = result
+    logger.info("Clarification resumed, current_step=%s", result.get("current_step"))
     latest_assistant_message = next(
         (
             message for message in reversed(result.get("messages", []))
@@ -1289,6 +1367,17 @@ def _render_trip_form() -> None:
         st.rerun()
 
 
+def _render_clarification_input() -> None:
+    """Render a chat input for the user to answer a clarification question."""
+    answer = st.chat_input("Type your answer...")
+    if answer:
+        st.session_state.messages.append({"role": "user", "content": answer})
+        with st.chat_message("user"):
+            st.markdown(answer)
+        _run_clarification(answer)
+        st.rerun()
+
+
 def _render_main_area() -> None:
     st.title("TripBreeze AI")
     st.caption(
@@ -1302,6 +1391,10 @@ def _render_main_area() -> None:
 
     if st.session_state.awaiting_review:
         _render_review_actions()
+        return
+
+    if st.session_state.awaiting_clarification:
+        _render_clarification_input()
         return
 
     _render_trip_form()

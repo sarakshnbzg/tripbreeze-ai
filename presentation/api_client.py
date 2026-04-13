@@ -80,6 +80,18 @@ def fetch_return_flights(thread_id: str, params: dict[str, Any]) -> list[dict]:
         return resp.json()
 
 
+def stream_clarify(thread_id: str, answer: str) -> Generator[tuple[str, dict], None, None]:
+    """POST to /api/search/{thread_id}/clarify, yield parsed SSE events."""
+    with httpx.Client(timeout=_STREAM_TIMEOUT) as client:
+        with client.stream(
+            "POST",
+            f"{API_BASE}/api/search/{thread_id}/clarify",
+            json={"answer": answer},
+        ) as resp:
+            resp.raise_for_status()
+            yield from _parse_sse_lines(resp.iter_lines())
+
+
 def stream_approve(thread_id: str, request: dict[str, Any]) -> Generator[tuple[str, dict], None, None]:
     """POST to /api/search/{thread_id}/approve, yield parsed SSE events."""
     with httpx.Client(timeout=_STREAM_TIMEOUT) as client:

@@ -5,6 +5,7 @@ import re
 from datetime import date, timedelta
 from typing import Any
 
+from langgraph.types import interrupt
 from pydantic import BaseModel, Field
 
 from infrastructure.currency_utils import format_currency
@@ -425,6 +426,27 @@ def _normalise_hotel_stars(raw_hotel_stars: Any, profile: dict[str, Any]) -> lis
     return sorted(normalised)
 
 
+def _build_clarification_question(missing_fields: list[str], profile: dict[str, Any]) -> str:
+    """Build a natural follow-up question asking for missing required fields."""
+    parts: list[str] = []
+    for field in missing_fields:
+        if field == "destination":
+            parts.append("where you'd like to go")
+        elif field == "departure_date":
+            parts.append("when you'd like to depart")
+        elif field == "return_date":
+            parts.append("when you'd like to return (or if this is a one-way trip)")
+        elif field == "origin":
+            parts.append("where you're flying from")
+    if len(parts) == 1:
+        question = f"Could you tell me {parts[0]}?"
+    elif len(parts) == 2:
+        question = f"Could you tell me {parts[0]} and {parts[1]}?"
+    else:
+        question = f"Could you tell me {', '.join(parts[:-1])}, and {parts[-1]}?"
+    return f"I'd love to help plan your trip! {question}"
+
+
 def _validate_date(value: str, field_name: str) -> str:
     """Validate a date string is YYYY-MM-DD format and not in the past. Returns the validated string or empty."""
     if not value:
@@ -585,6 +607,60 @@ def trip_intake(state: dict) -> dict:
         )
     else:
         logger.info("Trip intake using structured fields only")
+
+    # ── Check for missing required fields and ask the user ──
+    # Only ask for clarification when the user provided free text without structured
+    # form fields (the UI already validates structured submissions). Uses a loop so
+    # that if the user's answer still leaves gaps, we ask again. LangGraph replays
+    # answered interrupts on re-run, so each iteration's interrupt() returns the
+    # previously supplied answer automatically.
+    # all_user_text accumulates the original query + all clarification answers so
+    # that helpers like _query_mentions_one_way detect intent from any round.
+    if free_text_query.strip() and not _has_structured_trip_signal(structured_fields):
+        all_user_text = free_text_query
+        while True:
+            missing_fields: list[str] = []
+            if not raw_trip_data.get("destination"):
+                missing_fields.append("destination")
+            if not raw_trip_data.get("origin"):
+                missing_fields.append("origin")
+            if not raw_trip_data.get("departure_date"):
+                missing_fields.append("departure_date")
+            if (
+                not raw_trip_data.get("return_date")
+                and not raw_trip_data.get("check_out_date")
+                and not _query_mentions_one_way(all_user_text)
+            ):
+                missing_fields.append("return_date")
+
+            if not missing_fields:
+                break
+
+            question = _build_clarification_question(missing_fields, profile)
+            logger.info("Missing fields %s — interrupting for clarification", missing_fields)
+            clarification_answer = interrupt({
+                "type": "clarification",
+                "question": question,
+                "missing_fields": missing_fields,
+            })
+            # On resume: parse the user's answer and merge into raw_trip_data
+            if not clarification_answer:
+                break  # empty answer — proceed with what we have
+            logger.info("Clarification answer received: %s", clarification_answer)
+            all_user_text = f"{all_user_text} {clarification_answer}".strip()
+            llm = create_chat_model(provider, model, temperature=temperature)
+            parsed_answer, usage = _parse_free_text(llm, clarification_answer, model=model)
+            if usage:
+                token_usage.append(usage)
+            for key, value in parsed_answer.items():
+                not_empty = value is not None and value != "" and value != [] and (value != 0 or key == "stops")
+                already_set = raw_trip_data.get(key) not in (None, "", []) if key != "stops" else raw_trip_data.get(key) is not None
+                if not_empty and not already_set:
+                    raw_trip_data[key] = value
+            # Re-apply free-text fallbacks for the combined input
+            raw_trip_data = _apply_free_text_trip_fallbacks(
+                raw_trip_data, all_user_text, structured_fields,
+            )
 
     # Parse any remaining free-text preferences into filter criteria
     preferences = raw_trip_data.get("preferences", "")
