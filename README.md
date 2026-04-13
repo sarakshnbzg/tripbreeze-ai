@@ -10,6 +10,7 @@ TripBreeze is deployed on Streamlit Community Cloud:
 ## ✨ What It Does
 
 - Uses a ReAct-style research orchestrator to decide when to search flights, search hotels, and query the local knowledge base
+- 🎙️ Accepts voice input — describe your trip by speaking and it's transcribed via OpenAI Whisper
 - ✈️ Searches flights with SerpAPI / Google Flights
 - 🏨 Searches hotels with SerpAPI / Google Hotels
 - 📚 Retrieves destination tips, visa info, and travel guidance from a local RAG knowledge base
@@ -30,11 +31,30 @@ Profile Loader
   -> Memory Updater
 ```
 
+## 🏗️ Architecture
+
+TripBreeze uses a two-layer architecture running in a single process:
+
+```text
+Streamlit (UI client, port 8501)
+    │ httpx
+FastAPI (backend API, port 8100 — background thread)
+    ├── POST /api/transcribe           → OpenAI Whisper → text
+    ├── POST /api/search               → LangGraph pipeline → SSE stream
+    ├── GET  /api/search/{thread}/state → current graph state for HITL review
+    ├── POST /api/search/{thread}/return-flights → return flight lookup
+    └── POST /api/search/{thread}/approve → resume + SSE finalisation stream
+```
+
+Streamlit is a thin UI client. All LangGraph orchestration, LLM calls, and API interactions run behind FastAPI, which streams progress and results back via Server-Sent Events (SSE). This separation allows the backend to be deployed independently for multi-user scaling.
+
 ## 🛠️ Stack
 
+- `FastAPI` + `uvicorn` for the backend API (SSE streaming)
 - `LangGraph` for workflow orchestration
 - `Streamlit` for the UI
 - `OpenAI` or `Google Gemini` for intake, research, and final itinerary generation
+- `OpenAI Whisper` for voice-to-text transcription
 - `SerpAPI` for live flight and hotel data
 - `ChromaDB` for local retrieval
 - Neon Postgres-backed long-term memory for user preferences
@@ -109,7 +129,7 @@ TripBreeze stores these separately under `chroma_db/openai` and `chroma_db/googl
 uv run streamlit run app.py
 ```
 
-Then open `http://localhost:8501`.
+This starts both the Streamlit UI on `http://localhost:8501` and the FastAPI backend on `http://localhost:8100` (background thread). The FastAPI interactive docs are available at `http://localhost:8100/docs`.
 
 ## 🐳 Docker Setup
 
@@ -124,13 +144,13 @@ docker build -t tripbreeze-ai .
 Use your local `.env` file:
 
 ```bash
-docker run --rm -p 8501:8501 --env-file .env tripbreeze-ai
+docker run --rm -p 8501:8501 -p 8100:8100 --env-file .env tripbreeze-ai
 ```
 
 If you want cached RAG indexes to persist across container restarts, mount the Chroma directory too:
 
 ```bash
-docker run --rm -p 8501:8501 --env-file .env \
+docker run --rm -p 8501:8501 -p 8100:8100 --env-file .env \
   -v "$(pwd)/chroma_db:/app/chroma_db" \
   tripbreeze-ai
 ```
@@ -143,7 +163,7 @@ If you want to use the same hosted database in Docker, keep `DATABASE_URL` in `.
 ## 🧳 Typical Flow
 
 1. Select an LLM provider and model in the sidebar.
-2. Describe the trip in free text, optionally refining it with structured form fields for dates, destination, travellers, budget, and similar core details.
+2. Describe the trip in free text or by voice, optionally refining it with structured form fields for dates, destination, travellers, budget, and similar core details.
 3. The intake step merges structured fields with free text, validates dates, and extracts travel filters such as nonstop flights, airline exclusions, hotel stars, or max flight price.
 4. The ReAct-style research orchestrator decides which tools to call for this request: flights, hotels, knowledge retrieval, or any combination of them.
 5. Review flight, hotel, destination, and budget results.
@@ -173,12 +193,17 @@ Business class, exclude Ryanair, and keep the flight under 10 hours.
 
 ```text
 tripbreeze-ai/
-├── app.py
-├── config.py
+├── app.py                        # Entry point — starts FastAPI + Streamlit
+├── config.py                     # Centralised settings
 ├── presentation/
+│   ├── api.py                    # FastAPI backend (SSE endpoints)
+│   ├── api_client.py             # httpx client for Streamlit → FastAPI
+│   └── streamlit_app.py          # Streamlit UI (thin client)
 ├── application/
-├── domain/
-├── infrastructure/
+│   ├── graph.py                  # LangGraph workflow
+│   └── state.py                  # Graph state schema
+├── domain/                       # Agents and nodes
+├── infrastructure/               # APIs, LLMs, persistence, RAG
 ├── knowledge_base/
 ├── scripts/
 ├── tests/

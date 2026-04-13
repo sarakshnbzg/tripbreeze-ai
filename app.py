@@ -1,9 +1,11 @@
-"""Entry point — thin wrapper that bootstraps config and launches the UI.
+"""Entry point — bootstraps config, starts the FastAPI backend in a background
+thread, then launches the Streamlit UI.
 
 Run with:  streamlit run app.py
 """
 
 import sys
+import threading
 from pathlib import Path
 
 # Ensure project root is on the Python path so layered imports work.
@@ -13,8 +15,25 @@ sys.path.insert(0, str(Path(__file__).parent))
 import config  # noqa: F401
 
 from infrastructure.logging_utils import configure_logging
-from presentation.streamlit_app import main
-
 
 configure_logging()
+
+# Start the FastAPI backend on a background daemon thread so it lives
+# inside the same process as Streamlit and dies when the process exits.
+import uvicorn
+from presentation.api import app as fastapi_app
+
+threading.Thread(
+    target=uvicorn.run,
+    kwargs={
+        "app": fastapi_app,
+        "host": "127.0.0.1",
+        "port": 8100,
+        "log_level": "warning",
+    },
+    daemon=True,
+).start()
+
+from presentation.streamlit_app import main
+
 main()

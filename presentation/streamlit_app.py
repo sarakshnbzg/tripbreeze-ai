@@ -1,14 +1,13 @@
 """Streamlit UI for TripBreeze AI.
 
 Dependency direction: presentation -> application -> domain -> infrastructure
-This module only imports from the application and domain layers (plus
-non-service infrastructure utilities: currency_utils, logging_utils, model_factory).
+This module is a thin UI client that calls the FastAPI backend via api_client.
+It does not import graph or domain-layer code directly.
 """
 
 import html
 import re
 import time
-import uuid
 import streamlit as st
 
 from datetime import date, timedelta
@@ -24,8 +23,7 @@ from config import (
     HOTEL_STARS,
     TRAVEL_CLASSES,
 )
-from application.graph import compile_graph as _compile_graph, run_finalisation_streaming
-from domain.agents.flight_agent import fetch_return_flights as search_return_flights
+from presentation import api_client
 from infrastructure.currency_utils import format_currency, normalise_currency
 from infrastructure.logging_utils import get_logger
 from infrastructure.llms.model_factory import (
@@ -34,11 +32,6 @@ from infrastructure.llms.model_factory import (
     normalise_llm_selection,
 )
 from infrastructure.persistence.memory_store import load_profile, save_profile, list_profiles
-
-
-@st.cache_resource
-def _get_graph():
-    return _compile_graph()
 
 logger = get_logger(__name__)
 
@@ -80,16 +73,19 @@ def _get_return_flight_options(
     currency: str,
     return_time_window: tuple[int, int] | None,
 ) -> list[dict]:
-    return search_return_flights(
-        origin=origin,
-        destination=destination,
-        departure_date=departure_date,
-        return_date=return_date,
-        departure_token=departure_token,
-        adults=adults,
-        travel_class=travel_class,
-        currency=currency,
-        return_time_window=return_time_window,
+    return api_client.fetch_return_flights(
+        thread_id=st.session_state.get("thread_id", ""),
+        params={
+            "origin": origin,
+            "destination": destination,
+            "departure_date": departure_date,
+            "return_date": return_date,
+            "departure_token": departure_token,
+            "adults": adults,
+            "travel_class": travel_class,
+            "currency": currency,
+            "return_time_window": list(return_time_window) if return_time_window else None,
+        },
     )
 
 
@@ -486,59 +482,31 @@ def _run_initial_planning(
         st.error(provider_message)
         return
 
-    initial_state = {
+    request: dict = {
         "user_id": st.session_state.user_id,
         "llm_provider": st.session_state.llm_provider,
         "llm_model": st.session_state.llm_model,
         "llm_temperature": st.session_state.llm_temperature,
-        "messages": [{"role": "user", "content": user_message}],
-        "user_approved": False,
-        "user_feedback": "",
     }
     if structured_fields is not None:
-        initial_state["structured_fields"] = structured_fields
+        request["structured_fields"] = structured_fields
     if free_text_query:
-        initial_state["free_text_query"] = free_text_query
-
-    node_labels = {
-        "load_profile": "Loading your traveler profile...",
-        "trip_intake": "Understanding your trip request...",
-        "research": "Researching flights, hotels, and destination info...",
-        "aggregate_budget": "Calculating budget breakdown...",
-        "review": "Preparing your trip summary...",
-    }
+        request["free_text_query"] = free_text_query
 
     try:
         _archive_current_token_usage()
-        thread_id = str(uuid.uuid4())
-        st.session_state.thread_id = thread_id
-        config = {"configurable": {"thread_id": thread_id}}
-        graph = _get_graph()
-        result = initial_state.copy()
+        result: dict = {}
         with st.status("Planning your trip...", expanded=True) as status:
-            for event in graph.stream(initial_state, config):
-                for node_name, node_output in event.items():
-                    # LangGraph emits internal events (e.g. "__interrupt__") whose
-                    # value is a tuple of Interrupt objects, not a node output dict.
-                    # Skip them to avoid 'tuple has no attribute get' errors.
-                    if not isinstance(node_output, dict):
-                        continue
-                    label = node_labels.get(node_name, f"Running {node_name}...")
-                    st.write(label)
-                    if node_name != "review":
-                        latest_message = next(
-                            (
-                                message for message in reversed(node_output.get("messages", []))
-                                if message.get("role") == "assistant" and message.get("content")
-                            ),
-                            None,
-                        )
-                        if latest_message:
-                            st.write(latest_message["content"])
-                    logger.info("Streaming node completed: %s", node_name)
-                    result.update(node_output)
-            # Use the checkpointer's authoritative merged state
-            result = dict(graph.get_state(config).values)
+            for event_type, data in api_client.stream_search(request):
+                if event_type == "node_start":
+                    st.write(data.get("label", ""))
+                elif event_type == "node_message":
+                    st.write(data.get("content", ""))
+                elif event_type == "state":
+                    result = data
+                    st.session_state.thread_id = data.get("thread_id", "")
+                elif event_type == "error":
+                    raise RuntimeError(data.get("detail", "Unknown error"))
             status.update(label="Trip research complete!", state="complete", expanded=False)
     except Exception as exc:
         logger.exception("Initial planning failed")
@@ -577,14 +545,7 @@ def _run_finalisation(feedback: str = "") -> None:
         st.error(provider_message)
         return
 
-    state["user_approved"] = True
-    state["user_feedback"] = feedback
-    state["llm_provider"] = st.session_state.llm_provider
-    state["llm_model"] = st.session_state.llm_model
-    state["llm_temperature"] = st.session_state.llm_temperature
-
-    state_updates = {
-        "user_approved": True,
+    approve_request = {
         "user_feedback": feedback,
         "selected_flight": state.get("selected_flight", {}),
         "selected_hotel": state.get("selected_hotel", {}),
@@ -595,15 +556,16 @@ def _run_finalisation(feedback: str = "") -> None:
 
     try:
         def _itinerary_chunks():
-            for item in run_finalisation_streaming(
-                _get_graph(),
+            for event_type, data in api_client.stream_approve(
                 st.session_state.thread_id,
-                state_updates,
+                approve_request,
             ):
-                if isinstance(item, str):
-                    yield item
-                else:
-                    st.session_state.graph_state = item
+                if event_type == "token":
+                    yield data.get("content", "")
+                elif event_type == "state":
+                    st.session_state.graph_state = data
+                elif event_type == "error":
+                    raise RuntimeError(data.get("detail", "Unknown error"))
 
         st.write_stream(_itinerary_chunks())
     except Exception as exc:
@@ -1164,10 +1126,15 @@ def _render_trip_form() -> None:
     # Primary input: free-text query
     free_text = st.text_area(
         "Describe your trip",
+        value=st.session_state.get("voice_transcript", ""),
         placeholder="e.g. I want to fly from London to Tokyo, June 10-17, budget $3000, direct flights only",
-        help="Type your trip request in plain English. You can also use the fields below to be more specific.",
+        help="Type your trip request in plain English, or click the mic below to use voice input.",
         height=100,
     )
+
+    # Voice input: custom mic button (click to record, click again to stop)
+    from presentation.mic_button import mic_button
+    mic_button()
 
     # Optional structured fields for refinement
     default_departure_date = date.today() + timedelta(days=14)
