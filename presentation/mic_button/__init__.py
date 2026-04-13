@@ -36,16 +36,16 @@ def _handle_audio_change():
 def mic_button() -> None:
     """Render a mic recording widget with replace/append options.
 
-    After transcription, hides the audio playback and shows action buttons.
+    User can record multiple times. After each transcription, they see
+    Replace/Append/Discard options if there's existing text, or the text
+    is applied directly if the field is empty.
     """
-    # Only show the record button if no successful recording yet
-    if not st.session_state.get("_audio_recorded"):
-        st.audio_input(
-            "Record your trip description",
-            label_visibility="collapsed",
-            key="_audio_input",
-            on_change=_handle_audio_change,
-        )
+    st.audio_input(
+        "Record your trip description",
+        label_visibility="collapsed",
+        key="_audio_input",
+        on_change=_handle_audio_change,
+    )
 
     # Show replace/append buttons if pending transcript
     if st.session_state.get("_show_transcript_options"):
@@ -68,7 +68,6 @@ def mic_button() -> None:
         with col_cancel:
             if st.button("Discard", use_container_width=True):
                 st.session_state["_show_transcript_options"] = False
-                st.session_state["_audio_recorded"] = False
                 st.rerun()
 
 
