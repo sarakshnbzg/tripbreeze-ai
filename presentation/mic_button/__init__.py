@@ -12,29 +12,28 @@ from infrastructure.logging_utils import get_logger
 logger = get_logger(__name__)
 
 
+def _handle_audio_change():
+    """Callback triggered when audio is recorded. Transcribes and updates session state."""
+    audio_bytes = st.session_state.get("_audio_input")
+    if audio_bytes:
+        try:
+            transcript = api_client.transcribe_audio(audio_bytes.read())
+            st.session_state["voice_transcript"] = transcript
+        except Exception as exc:
+            logger.warning("Voice transcription failed: %s", exc)
+            st.warning(f"Could not transcribe audio: {exc}")
+
+
 def mic_button() -> None:
     """Render a mic recording widget below the trip text area.
 
-    When audio is recorded, it's sent to the FastAPI /api/transcribe endpoint.
-    The transcript is stored in st.session_state['voice_transcript'] and the
-    page reruns so the text area picks it up. After the text area displays it,
-    streamlit_app clears it to prevent re-transcription on subsequent reruns.
+    When audio recording stops, it's automatically sent to /api/transcribe.
+    The transcript is stored in session state and displayed in the text area.
     """
-    audio = st.audio_input(
+    st.audio_input(
         "Record your trip description",
         label_visibility="collapsed",
+        key="_audio_input",
+        on_change=_handle_audio_change,
     )
-    if audio:
-        audio_bytes = audio.read()
-        # Only transcribe if this is a new recording (different from the last one).
-        last_audio = st.session_state.get("_last_audio_bytes")
-        if audio_bytes != last_audio:
-            with st.spinner("Transcribing your voice..."):
-                try:
-                    transcript = api_client.transcribe_audio(audio_bytes)
-                    st.session_state["voice_transcript"] = transcript
-                    st.session_state["_last_audio_bytes"] = audio_bytes
-                    st.rerun()
-                except Exception as exc:
-                    logger.warning("Voice transcription failed: %s", exc)
-                    st.warning(f"Could not transcribe audio: {exc}")
+
