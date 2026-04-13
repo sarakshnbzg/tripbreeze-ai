@@ -1132,6 +1132,11 @@ def _render_trip_form() -> None:
         height=100,
     )
 
+    # Clear voice transcript after it's been displayed, so mic_button doesn't
+    # re-transcribe the same audio on the next rerun.
+    if "voice_transcript" in st.session_state:
+        del st.session_state["voice_transcript"]
+
     # Voice input: custom mic button (click to record, click again to stop)
     from presentation.mic_button import mic_button
     mic_button()
