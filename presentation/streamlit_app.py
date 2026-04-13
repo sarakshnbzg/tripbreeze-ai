@@ -31,7 +31,12 @@ from infrastructure.llms.model_factory import (
     get_provider_status,
     normalise_llm_selection,
 )
-from infrastructure.persistence.memory_store import load_profile, save_profile, list_profiles
+from infrastructure.persistence.memory_store import (
+    load_profile,
+    save_profile,
+    register_user,
+    verify_user,
+)
 
 logger = get_logger(__name__)
 
@@ -45,6 +50,7 @@ SESSION_DEFAULTS = {
     "awaiting_review": False,
     "trip_complete": False,
     "user_id": "default_user",
+    "authenticated": False,
     "llm_provider": "openai",
     "llm_model": "gpt-4o-mini",
     "llm_temperature": 0.3,
@@ -366,6 +372,48 @@ def _init_session_state() -> None:
     )
     st.session_state.llm_provider = provider
     st.session_state.llm_model = model
+
+def _render_login_screen() -> None:
+    """Show a login / register form and block until the user authenticates."""
+    st.title("Welcome to TripBreeze AI")
+
+    login_tab, register_tab = st.tabs(["Log In", "Register"])
+
+    with login_tab:
+        with st.form("login_form"):
+            login_id = st.text_input("Username").strip()
+            login_pw = st.text_input("Password", type="password")
+            login_submitted = st.form_submit_button("Log In")
+        if login_submitted:
+            if not login_id or not login_pw:
+                st.warning("Please enter both username and password.")
+            elif verify_user(login_id, login_pw):
+                st.session_state.user_id = login_id
+                st.session_state.authenticated = True
+                st.rerun()
+            else:
+                st.error("Invalid username or password.")
+
+    with register_tab:
+        with st.form("register_form"):
+            reg_id = st.text_input("Choose a Username").strip()
+            reg_pw = st.text_input("Choose a Password", type="password")
+            reg_pw2 = st.text_input("Confirm Password", type="password")
+            reg_submitted = st.form_submit_button("Register")
+        if reg_submitted:
+            if not reg_id or not reg_pw:
+                st.warning("Please fill in all fields.")
+            elif reg_pw != reg_pw2:
+                st.error("Passwords do not match.")
+            elif len(reg_pw) < 4:
+                st.error("Password must be at least 4 characters.")
+            elif register_user(reg_id, reg_pw):
+                st.session_state.user_id = reg_id
+                st.session_state.authenticated = True
+                st.rerun()
+            else:
+                st.error(f"Username `{reg_id}` is already taken.")
+
 
 def _summarise_token_usage(usage_list: list[dict]) -> dict[str, Any]:
     return {
@@ -693,29 +741,9 @@ def _render_token_usage() -> None:
 
 def _render_profile_sidebar() -> None:
     st.divider()
-    st.header("Profile Manager")
-
-    with st.expander("Create Profile", expanded=False):
-        with st.form("profile_create_form"):
-            new_user_id = st.text_input(
-                "New Profile ID",
-                value="",
-                help="Create a new traveler profile saved under this id.",
-            ).strip()
-            create_submitted = st.form_submit_button("Create Profile")
-
-        if create_submitted:
-            if not new_user_id:
-                st.warning("Enter a profile id to create.")
-            else:
-                save_profile(new_user_id, load_profile(new_user_id))
-                st.session_state.user_id = new_user_id
-                st.success(f"Profile `{new_user_id}` is ready.")
-                st.rerun()
+    st.header("My Profile")
 
     profile = load_profile(st.session_state.user_id)
-
-    st.caption(f"Editing profile `{st.session_state.user_id}`.")
 
     with st.expander("Edit Profile", expanded=False):
         with st.form("profile_form"):
@@ -1100,26 +1128,8 @@ def _parse_num_nights(raw_value: str) -> int | None:
 
 def _render_trip_form() -> None:
     """Render the trip request form with free-text primary input and optional structured fields."""
-    saved_profiles = list_profiles()
-    if not saved_profiles:
-        saved_profiles = [st.session_state.user_id]
-    if st.session_state.user_id not in saved_profiles:
-        saved_profiles = [st.session_state.user_id, *saved_profiles]
-
-    selected_user_id = st.selectbox(
-        "Traveler Profile",
-        options=saved_profiles,
-        index=saved_profiles.index(st.session_state.user_id),
-        help="Choose which saved profile to use for this search.",
-    )
-    if selected_user_id != st.session_state.user_id:
-        st.session_state.user_id = selected_user_id
-        st.rerun()
-
     profile = load_profile(st.session_state.user_id)
     default_origin = profile.get("home_city", "")
-
-    st.caption(f"Planning this trip with profile `{st.session_state.user_id}`.")
 
     st.subheader("Plan Your Trip")
 
@@ -1297,10 +1307,24 @@ def _render_main_area() -> None:
     _render_trip_form()
 
 
+def _logout() -> None:
+    st.session_state.authenticated = False
+    st.session_state.user_id = "default_user"
+    _reset_trip_flow()
+
+
 def main() -> None:
     _init_session_state()
 
+    if not st.session_state.authenticated:
+        _render_login_screen()
+        return
+
     with st.sidebar:
+        st.caption(f"Logged in as **{st.session_state.user_id}**")
+        if st.button("Log Out"):
+            _logout()
+            st.rerun()
         _render_model_settings()
         _render_token_usage()
         _render_profile_sidebar()

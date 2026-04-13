@@ -6,7 +6,9 @@ use and reused for the lifetime of the process.
 """
 
 import atexit
+import hashlib
 import json
+import os
 import re
 
 from config import MEMORY_DATABASE_URL
@@ -67,6 +69,15 @@ def _get_pool():
                 CREATE TABLE IF NOT EXISTS profiles (
                     user_id TEXT PRIMARY KEY,
                     profile_json JSONB NOT NULL
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_credentials (
+                    user_id TEXT PRIMARY KEY,
+                    password_hash TEXT NOT NULL,
+                    salt TEXT NOT NULL
                 )
                 """
             )
@@ -177,3 +188,47 @@ def update_profile_from_trip(user_id: str, trip_data: dict) -> dict:
 
     save_profile(user_id, profile)
     return profile
+
+
+# ── Authentication ────────────────────────────────────────────────
+
+
+def _hash_password(password: str, salt: str) -> str:
+    return hashlib.sha256((salt + password).encode()).hexdigest()
+
+
+def register_user(user_id: str, password: str) -> bool:
+    """Create credentials for a new user. Returns False if user_id already exists."""
+    safe_user_id = _sanitise_user_id(user_id)
+    salt = os.urandom(16).hex()
+    password_hash = _hash_password(password, salt)
+    with _get_pool().connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM user_credentials WHERE user_id = %s", (safe_user_id,))
+            if cur.fetchone() is not None:
+                return False
+            cur.execute(
+                "INSERT INTO user_credentials (user_id, password_hash, salt) VALUES (%s, %s, %s)",
+                (safe_user_id, password_hash, salt),
+            )
+        conn.commit()
+    # Ensure a profile row exists for the new user.
+    save_profile(safe_user_id, load_profile(safe_user_id))
+    logger.info("Registered new user user_id=%s", safe_user_id)
+    return True
+
+
+def verify_user(user_id: str, password: str) -> bool:
+    """Check credentials. Returns True on success."""
+    safe_user_id = _sanitise_user_id(user_id)
+    with _get_pool().connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT password_hash, salt FROM user_credentials WHERE user_id = %s",
+                (safe_user_id,),
+            )
+            row = cur.fetchone()
+    if row is None:
+        return False
+    stored_hash, salt = row
+    return _hash_password(password, salt) == stored_hash
