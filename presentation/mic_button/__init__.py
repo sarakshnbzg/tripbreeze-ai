@@ -18,22 +18,49 @@ def _handle_audio_change():
     if audio_bytes:
         try:
             transcript = api_client.transcribe_audio(audio_bytes.read())
-            st.session_state["voice_transcript"] = transcript
+            current_text = st.session_state.get("trip_description", "")
+
+            # Show replace/append options if there's existing text
+            if current_text.strip():
+                st.session_state["_pending_transcript"] = transcript
+                st.session_state["_show_transcript_options"] = True
+            else:
+                # No existing text, just use the transcript
+                st.session_state["trip_description"] = transcript
         except Exception as exc:
             logger.warning("Voice transcription failed: %s", exc)
             st.warning(f"Could not transcribe audio: {exc}")
 
 
 def mic_button() -> None:
-    """Render a mic recording widget below the trip text area.
+    """Render a mic recording widget with options to replace or append transcribed text."""
+    col1, col2 = st.columns([0.7, 0.3])
 
-    When audio recording stops, it's automatically sent to /api/transcribe.
-    The transcript is stored in session state and displayed in the text area.
-    """
-    st.audio_input(
-        "Record your trip description",
-        label_visibility="collapsed",
-        key="_audio_input",
-        on_change=_handle_audio_change,
-    )
+    with col1:
+        st.audio_input(
+            "Record your trip description",
+            label_visibility="collapsed",
+            key="_audio_input",
+            on_change=_handle_audio_change,
+        )
+
+    # Show replace/append buttons if pending transcript
+    if st.session_state.get("_show_transcript_options"):
+        pending = st.session_state.get("_pending_transcript", "")
+        current = st.session_state.get("trip_description", "")
+
+        with col2:
+            st.write("Apply to:")
+            col_replace, col_append = st.columns(2)
+            with col_replace:
+                if st.button("Replace", use_container_width=True):
+                    st.session_state["trip_description"] = pending
+                    st.session_state["_show_transcript_options"] = False
+                    st.rerun()
+            with col_append:
+                if st.button("Append", use_container_width=True):
+                    st.session_state["trip_description"] = f"{current} {pending}".strip()
+                    st.session_state["_show_transcript_options"] = False
+                    st.rerun()
+
 

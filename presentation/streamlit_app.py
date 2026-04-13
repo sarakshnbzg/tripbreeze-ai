@@ -1124,15 +1124,26 @@ def _render_trip_form() -> None:
     st.subheader("Plan Your Trip")
 
     # Primary input: free-text query
-    free_text = st.text_area(
-        "Describe your trip",
-        value=st.session_state.get("voice_transcript", ""),
-        placeholder="e.g. I want to fly from London to Tokyo, June 10-17, budget $3000, direct flights only",
-        help="Type your trip request in plain English, or click the mic below to use voice input.",
-        height=100,
-    )
+    col1, col2 = st.columns([0.85, 0.15])
 
-    # Voice input: custom mic button (click to record, click again to stop)
+    with col1:
+        free_text = st.text_area(
+            "Describe your trip",
+            value=st.session_state.get("trip_description", ""),
+            key="trip_description",
+            placeholder="e.g. I want to fly from London to Tokyo, June 10-17, budget $3000, direct flights only",
+            help="Type your trip request in plain English, or use voice input below.",
+            height=100,
+        )
+
+    with col2:
+        st.write("")  # spacing
+        st.write("")  # spacing
+        if st.button("Clear", use_container_width=True):
+            st.session_state["trip_description"] = ""
+            st.rerun()
+
+    # Voice input: record to replace or append to the text
     from presentation.mic_button import mic_button
     mic_button()
 
