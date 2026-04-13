@@ -58,6 +58,7 @@ def _get_pool():
         min_size=1,
         max_size=5,
         open=True,
+        check=ConnectionPool.check_connection,
     )
     atexit.register(_pool.close)
 
