@@ -17,6 +17,8 @@ TripBreeze is deployed on Streamlit Community Cloud:
 - 💸 Tracks budget against the trip request
 - ✅ Lets the user review results before finalising
 - 🧠 Remembers preferences such as home airport, class, and trip history
+- 📄 Exports final itinerary as a downloadable PDF
+- 📧 Sends itinerary via email with PDF attachment (requires SMTP configuration)
 - 📈 Supports LangSmith tracing for LLM observability
 
 ## 🧭 Workflow
@@ -106,6 +108,16 @@ LANGCHAIN_API_KEY=...
 LangSmith dashboard:
 <https://smith.langchain.com/o/877c675a-ba6b-46dd-8d36-826feba406a5/dashboards/projects/ba117436-e649-43df-bd87-4ebf4e8c22c8>
 
+Optional SMTP configuration for email delivery (see [SMTP_SETUP.md](SMTP_SETUP.md) for details):
+
+```env
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SENDER_EMAIL=your-email@gmail.com
+SMTP_SENDER_PASSWORD=your-app-password
+SMTP_USE_TLS=true
+```
+
 ### 3. Build the knowledge base
 
 Run this once on first setup, and again after editing files in `knowledge_base/`:
@@ -168,6 +180,7 @@ If you want to use the same hosted database in Docker, keep `DATABASE_URL` in `.
 4. The ReAct-style research orchestrator decides which tools to call for this request: flights, hotels, knowledge retrieval, or any combination of them.
 5. Review flight, hotel, destination, and budget results.
 6. Approve to generate the final itinerary.
+7. Download the itinerary as a PDF or email it directly to yourself.
 
 ## 💬 Free-Text Examples
 
@@ -203,10 +216,14 @@ tripbreeze-ai/
 │   ├── graph.py                  # LangGraph workflow
 │   └── state.py                  # Graph state schema
 ├── domain/                       # Agents and nodes
-├── infrastructure/               # APIs, LLMs, persistence, RAG
+├── infrastructure/
+│   ├── pdf_generator.py          # PDF export using reportlab
+│   ├── email_sender.py           # SMTP email delivery
+│   └── ...                       # APIs, LLMs, persistence, RAG
 ├── knowledge_base/
 ├── scripts/
 ├── tests/
+├── SMTP_SETUP.md                 # Email configuration guide
 └── README.md
 ```
 
