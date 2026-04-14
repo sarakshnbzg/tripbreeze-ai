@@ -14,6 +14,7 @@ TripBreeze is deployed on Streamlit Community Cloud:
 - ✈️ Searches flights with SerpAPI / Google Flights
 - 🏨 Searches hotels with SerpAPI / Google Hotels
 - 📚 Retrieves destination tips, visa info, and travel guidance from a local RAG knowledge base
+- 🌤️ Shows weather forecasts for each day of the trip (via Open-Meteo, no API key needed)
 - 💸 Tracks budget against the trip request
 - ✅ Lets the user review results before finalising
 - 🧠 Remembers preferences such as home airport, class, and trip history

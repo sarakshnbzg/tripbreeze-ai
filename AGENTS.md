@@ -163,6 +163,7 @@ Tool      Tool       Tool
 | **Reads from state** | `trip_request`, `selected_flight`, `selected_hotel`, `destination_info`, `budget`, `user_feedback`, `attraction_candidates`, `rag_sources`, `llm_provider`, `llm_model` |
 | **Writes to state** | `final_itinerary` — complete markdown itinerary, `itinerary_data` — structured data, `rag_sources` — updated with any new sources |
 | **Behavior** | Can call RAG to get grounded transport/safety/budget tips before generating the final itinerary; submits via `Itinerary` tool call |
+| **Weather** | After LLM generates the itinerary, enriches each daily plan with weather forecasts from Open-Meteo (forecasts up to 16 days, historical data for dates beyond) |
 
 ### Memory Updater
 
