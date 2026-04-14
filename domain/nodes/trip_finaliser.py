@@ -9,6 +9,7 @@ from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
 from infrastructure.apis.serpapi_client import fetch_hotel_address
+from infrastructure.apis.weather_client import fetch_weather_for_trip
 from infrastructure.llms.model_factory import (
     create_chat_model,
     extract_token_usage,
@@ -41,6 +42,16 @@ class Activity(BaseModel):
     )
 
 
+class DayWeatherInfo(BaseModel):
+    """Weather information for a single day."""
+
+    temp_min: float = Field(description="Minimum temperature in Celsius")
+    temp_max: float = Field(description="Maximum temperature in Celsius")
+    condition: str = Field(description="Weather condition description")
+    precipitation_chance: int = Field(description="Chance of precipitation (0-100%)")
+    is_historical: bool = Field(default=False, description="True if based on historical data")
+
+
 class DayPlan(BaseModel):
     """Plan for a single day of the trip."""
 
@@ -48,6 +59,7 @@ class DayPlan(BaseModel):
     date: str = Field(default="", description="ISO date (YYYY-MM-DD) for this day if known.")
     theme: str = Field(default="", description="Short theme for the day, e.g. 'Historic centre'.")
     activities: list[Activity] = Field(default_factory=list)
+    weather: DayWeatherInfo | None = Field(default=None, description="Weather forecast for this day")
 
 
 class Itinerary(BaseModel):
@@ -289,6 +301,15 @@ def _render_daily_plans(daily_plans: list[DayPlan]) -> str:
         if day.date:
             heading += f"  _({day.date})_"
         lines = [heading]
+        # Add weather info if available
+        if day.weather:
+            w = day.weather
+            weather_line = f"🌡️ {w.temp_min:.0f}–{w.temp_max:.0f}°C, {w.condition}"
+            if w.precipitation_chance > 0:
+                weather_line += f", {w.precipitation_chance}% chance of rain"
+            if w.is_historical:
+                weather_line += " _(typical for this time of year)_"
+            lines.append(weather_line)
         for act in day.activities:
             time_of_day = (act.time_of_day or "").strip().lower() or "anytime"
             note = f": {act.notes}" if act.notes else ""
@@ -440,6 +461,23 @@ def trip_finaliser(state: dict) -> dict:
 
     itinerary = Itinerary(**final_result)
     logger.info("Finaliser completed itinerary generation")
+
+    # Enrich daily plans with weather data
+    destination = trip_request.get("destination", "")
+    day_dates = [day.date for day in itinerary.daily_plans if day.date]
+    if destination and day_dates:
+        weather_data = fetch_weather_for_trip(destination, day_dates)
+        for day in itinerary.daily_plans:
+            if day.date and day.date in weather_data:
+                w = weather_data[day.date]
+                day.weather = DayWeatherInfo(
+                    temp_min=w.temp_min,
+                    temp_max=w.temp_max,
+                    condition=w.condition,
+                    precipitation_chance=w.precipitation_chance,
+                    is_historical=w.is_historical,
+                )
+        logger.info("Enriched %d daily plans with weather data", len(weather_data))
 
     markdown = render_itinerary_markdown(itinerary)
 
