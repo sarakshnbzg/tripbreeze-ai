@@ -5,6 +5,7 @@ import re
 
 from pydantic import BaseModel, Field
 
+from infrastructure.apis.serpapi_client import fetch_hotel_address
 from infrastructure.llms.model_factory import (
     create_chat_model,
     extract_token_usage,
@@ -177,6 +178,25 @@ def _render_section_body(title: str, body: str) -> str:
     return _sentence_bullets(body)
 
 
+def _enrich_hotel_address(selected_hotel: dict, trip_request: dict) -> None:
+    """Resolve the selected hotel's street address via SerpAPI (in-place)."""
+    if not selected_hotel or selected_hotel.get("address"):
+        return
+    property_token = selected_hotel.get("property_token")
+    if not property_token:
+        return
+    address = fetch_hotel_address(
+        property_token=property_token,
+        check_in=selected_hotel.get("check_in", trip_request.get("departure_date", "")),
+        check_out=selected_hotel.get("check_out", trip_request.get("return_date", "")),
+        adults=trip_request.get("num_travelers", 1),
+        currency=selected_hotel.get("currency", trip_request.get("currency", "EUR")),
+    )
+    if address:
+        selected_hotel["address"] = address
+        logger.info("Resolved hotel address via property_token")
+
+
 def _selected_flight_context(selected_flight: dict, trip_request: dict) -> str:
     """Build a stable finaliser prompt block that clearly shows outbound and return legs."""
     if not selected_flight:
@@ -228,6 +248,7 @@ def trip_finaliser(state: dict) -> dict:
     """LangGraph node: generate the final trip itinerary."""
     selected_flight = state.get("selected_flight", {})
     selected_hotel = state.get("selected_hotel", {})
+    _enrich_hotel_address(selected_hotel, state.get("trip_request", {}))
     logger.info(
         "Finaliser started with selected_flight=%s, selected_hotel=%s, destination_info_present=%s, feedback_present=%s",
         bool(selected_flight),
@@ -276,6 +297,7 @@ def _build_finaliser_prompt(state: dict) -> str:
     """Build the prompt string shared by both streaming and non-streaming paths."""
     selected_flight = state.get("selected_flight", {})
     selected_hotel = state.get("selected_hotel", {})
+    _enrich_hotel_address(selected_hotel, state.get("trip_request", {}))
     return STREAMING_PROMPT.format(
         currency=state.get("trip_request", {}).get("currency", "EUR"),
         trip_request=json.dumps(state.get("trip_request", {}), indent=2),

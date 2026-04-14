@@ -420,7 +420,8 @@ def search_hotels(
 
         hotels.append({
             "name": hotel_name,
-            "address": prop.get("description", ""),
+            "description": prop.get("description", ""),
+            "property_token": prop.get("property_token", ""),
             "hotel_class": hotel_class,
             "rating": prop.get("overall_rating", 0),
             "price_per_night": round(total_price / nights, 2) if nights else total_price,
@@ -436,3 +437,38 @@ def search_hotels(
 
     logger.info("Normalised %s hotel options", len(hotels))
     return hotels
+
+
+def fetch_hotel_address(
+    property_token: str,
+    check_in: str,
+    check_out: str,
+    adults: int = 1,
+    currency: str = "EUR",
+) -> str:
+    """Look up a hotel's street address via the Google Hotels property-details endpoint.
+
+    Returns an empty string if the lookup fails or no address is present.
+    """
+    if not SERPAPI_API_KEY or not property_token:
+        return ""
+
+    params = {
+        "engine": "google_hotels",
+        "property_token": property_token,
+        "check_in_date": check_in,
+        "check_out_date": check_out,
+        "adults": min(adults, 9),
+        "currency": currency,
+        "hl": "en",
+        "gl": "us",
+        "api_key": SERPAPI_API_KEY,
+    }
+
+    try:
+        details = GoogleSearch(params).get_dict()
+    except Exception as exc:
+        logger.error("SerpAPI hotel details lookup failed: %s", exc)
+        return ""
+
+    return details.get("address", "") or ""

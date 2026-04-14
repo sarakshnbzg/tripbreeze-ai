@@ -80,7 +80,7 @@ def _fake_hotels() -> list[dict]:
     return [
         {
             "name": "Hotel Le Marais",
-            "address": "12 Rue de Rivoli, Paris",
+            "description": "12 Rue de Rivoli, Paris",
             "hotel_class": 4,
             "rating": 8.5,
             "price_per_night": 120.0,
@@ -91,7 +91,7 @@ def _fake_hotels() -> list[dict]:
         },
         {
             "name": "Ibis Budget Paris",
-            "address": "5 Rue Voltaire, Paris",
+            "description": "5 Rue Voltaire, Paris",
             "hotel_class": 2,
             "rating": 7.0,
             "price_per_night": 65.0,

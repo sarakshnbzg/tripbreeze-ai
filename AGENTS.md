@@ -80,7 +80,7 @@ Tool      Tool       Tool
 | **Purpose** | Search real hotels in the destination city |
 | **Infrastructure** | `infrastructure/apis/serpapi_client.search_hotels` (Google Hotels) |
 | **Reads from state** | `trip_request` (destination, check-in/out, star rating, travellers, currency) |
-| **Writes to state** | `hotel_options` — list of dicts with name, address, rating, price, amenities |
+| **Writes to state** | `hotel_options` — list of dicts with name, description, rating, price, amenities |
 | **Error handling** | Returns empty list + status message on missing inputs or API failure |
 
 ### Knowledge Retrieval Tool
