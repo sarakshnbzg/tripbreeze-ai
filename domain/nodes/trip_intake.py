@@ -30,6 +30,40 @@ _MONTH_NAME_TO_NUMBER = {
     "december": 12,
 }
 
+VALID_INTERESTS = {
+    "food",
+    "history",
+    "nature",
+    "art",
+    "nightlife",
+    "shopping",
+    "outdoors",
+    "family",
+}
+
+VALID_PACES = {"relaxed", "moderate", "packed"}
+
+
+def _normalise_interests(raw: object) -> list[str]:
+    if not raw:
+        return []
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    for item in raw:
+        key = str(item).strip().lower()
+        if key in VALID_INTERESTS and key not in out:
+            out.append(key)
+    return out
+
+
+def _normalise_pace(raw: object) -> str:
+    key = str(raw or "").strip().lower()
+    return key if key in VALID_PACES else ""
+
+
 _NUMBER_WORD_TO_INT = {
     "one": 1,
     "two": 2,
@@ -141,6 +175,17 @@ class ExtractPreferences(BaseModel):
         default="",
         description="Cabin class if mentioned: ECONOMY, PREMIUM_ECONOMY, BUSINESS, or FIRST. Empty if not specified.",
     )
+    interests: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Types of attractions the user enjoys. Use any of: food, history, nature, art, "
+            "nightlife, shopping, outdoors, family. Empty list if not specified."
+        ),
+    )
+    pace: str = Field(
+        default="",
+        description="Preferred daily pace: relaxed, moderate, or packed. Empty if not specified.",
+    )
 
 
 class ExtractTripDetails(BaseModel):
@@ -194,6 +239,17 @@ class ExtractTripDetails(BaseModel):
     travel_class: str = Field(
         default="",
         description="Cabin class: ECONOMY, PREMIUM_ECONOMY, BUSINESS, or FIRST. Empty if not specified.",
+    )
+    interests: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Types of attractions the user enjoys. Use any of: food, history, nature, art, "
+            "nightlife, shopping, outdoors, family. Empty list if not specified."
+        ),
+    )
+    pace: str = Field(
+        default="",
+        description="Preferred daily pace: relaxed, moderate, or packed. Empty if not specified.",
     )
 
 
@@ -378,6 +434,53 @@ def _parse_free_text(llm, query: str, model: str) -> tuple[dict[str, Any], dict 
     return tool_calls[0].get("args", {}), usage
 
 
+def _parse_clarification(
+    llm,
+    answer: str,
+    missing_fields: list[str],
+    question: str,
+    model: str,
+) -> tuple[dict[str, Any], dict | None]:
+    """Parse a clarification answer, telling the LLM which fields it is filling.
+
+    Without this hint, a bare answer like "Berlin" tends to be extracted as
+    `destination` (and silently dropped if destination was already set),
+    causing the clarification loop to ask the same question forever.
+    """
+    if not answer.strip():
+        return {}, None
+
+    logger.info(
+        "Parsing clarification via LLM: fields=%s answer=%s",
+        missing_fields,
+        answer,
+    )
+    llm_with_tools = llm.bind_tools([ExtractTripDetails])
+    prompt = (
+        f"{FREE_TEXT_PROMPT.format(today=date.today().isoformat())}\n\n"
+        "The user was previously asked this clarification question and their answer "
+        "is below. Populate ONLY the fields listed in `target_fields` from the answer; "
+        "leave every other field at its default. Do not reinterpret the answer as "
+        "belonging to a different field.\n\n"
+        f"<clarification_question>\n{question}\n</clarification_question>\n"
+        f"<target_fields>\n{', '.join(missing_fields)}\n</target_fields>\n"
+        f"<user_answer>\n{answer}\n</user_answer>"
+    )
+    response = invoke_with_retry(llm_with_tools, prompt)
+
+    usage = extract_token_usage(response, model=model, node="trip_intake")
+
+    tool_calls = getattr(response, "tool_calls", []) or []
+    if not tool_calls:
+        logger.warning("Clarification extraction returned no tool calls")
+        return {}, usage
+
+    parsed = tool_calls[0].get("args", {}) or {}
+    # Keep only the requested target fields — guard against the LLM filling others.
+    filtered = {k: v for k, v in parsed.items() if k in missing_fields}
+    return filtered, usage
+
+
 def _parse_preferences(llm, preferences: str, model: str) -> tuple[dict[str, Any], dict | None]:
     """Use LLM tool calling to extract structured filters from free-text preferences.
 
@@ -504,6 +607,8 @@ def _normalise_trip_data(raw_trip_data: dict[str, Any], profile: dict[str, Any])
         "layover_duration_max": raw_trip_data.get("layover_duration_max") or 0,
         "include_airlines": raw_trip_data.get("include_airlines") or [],
         "exclude_airlines": raw_trip_data.get("exclude_airlines") or [],
+        "interests": _normalise_interests(raw_trip_data.get("interests")),
+        "pace": _normalise_pace(raw_trip_data.get("pace")) or "moderate",
     }
 
     if not trip_data["origin"] and profile.get("home_city"):
@@ -649,7 +754,13 @@ def trip_intake(state: dict) -> dict:
             logger.info("Clarification answer received: %s", clarification_answer)
             all_user_text = f"{all_user_text} {clarification_answer}".strip()
             llm = create_chat_model(provider, model, temperature=temperature)
-            parsed_answer, usage = _parse_free_text(llm, clarification_answer, model=model)
+            parsed_answer, usage = _parse_clarification(
+                llm,
+                clarification_answer,
+                missing_fields,
+                question,
+                model=model,
+            )
             if usage:
                 token_usage.append(usage)
             for key, value in parsed_answer.items():
@@ -676,6 +787,7 @@ def trip_intake(state: dict) -> dict:
             "layover_duration_min", "layover_duration_max",
             "include_airlines", "exclude_airlines",
             "hotel_stars", "travel_class",
+            "interests", "pace",
         ):
             value = parsed.get(key)
             if value is not None and value != "" and value != []:

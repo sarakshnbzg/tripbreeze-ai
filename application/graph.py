@@ -104,6 +104,13 @@ def run_finalisation_streaming(graph, thread_id: str, state_updates: dict):
 
     # Merge user selections into the checkpointed state
     graph.update_state(config, state_updates)
+
+    # Fetch attraction candidates based on the user's review-time interests.
+    # This runs only here (not during planning) so it uses the final preferences.
+    from domain.nodes.attractions_research import attractions_research
+    refreshed = attractions_research(dict(graph.get_state(config).values))
+    graph.update_state(config, refreshed)
+
     merged_state = dict(graph.get_state(config).values)
 
     # Stream tokens from the finaliser; collect the final node-output dict

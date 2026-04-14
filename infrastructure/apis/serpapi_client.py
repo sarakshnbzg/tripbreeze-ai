@@ -472,3 +472,96 @@ def fetch_hotel_address(
         return ""
 
     return details.get("address", "") or ""
+
+
+# ── Attractions / places search ──
+
+INTEREST_QUERIES: dict[str, list[str]] = {
+    "food": ["top restaurants", "local food"],
+    "history": ["historical landmarks", "museums"],
+    "nature": ["parks and gardens", "scenic viewpoints"],
+    "art": ["art museums", "galleries"],
+    "nightlife": ["bars and clubs"],
+    "shopping": ["shopping areas", "markets"],
+    "outdoors": ["outdoor activities", "hikes"],
+    "family": ["family attractions", "kid-friendly activities"],
+}
+
+
+def search_attractions(
+    destination: str,
+    interests: list[str] | None = None,
+    max_per_query: int = 6,
+    max_total: int = 24,
+) -> list[dict]:
+    """Search Google Maps via SerpAPI for attractions matching the user's interests.
+
+    Falls back to a generic "top attractions" query if no interests are provided.
+    Returns a deduplicated list of {name, category, address, rating, reviews}.
+    """
+    if not SERPAPI_API_KEY:
+        logger.warning("search_attractions skipped — no SERPAPI_API_KEY configured")
+        return []
+    if not destination:
+        return []
+
+    interests = [i for i in (interests or []) if i in INTEREST_QUERIES]
+    if interests:
+        queries: list[tuple[str, str]] = []
+        for interest in interests:
+            for sub in INTEREST_QUERIES[interest]:
+                queries.append((interest, sub))
+    else:
+        queries = [("general", "top attractions")]
+
+    logger.info(
+        "SerpAPI attractions request destination=%s interests=%s queries=%s",
+        destination,
+        interests,
+        [q for _, q in queries],
+    )
+
+    seen_names: set[str] = set()
+    results: list[dict] = []
+
+    for category, sub_query in queries:
+        params = {
+            "engine": "google_maps",
+            "q": f"{sub_query} in {destination}",
+            "type": "search",
+            "hl": "en",
+            "api_key": SERPAPI_API_KEY,
+        }
+        try:
+            payload = GoogleSearch(params).get_dict()
+        except Exception as exc:
+            logger.error("SerpAPI attractions search failed for '%s': %s", sub_query, exc)
+            continue
+
+        local_results = payload.get("local_results") or []
+        if isinstance(local_results, dict):
+            local_results = local_results.get("places", []) or []
+
+        for place in local_results[:max_per_query]:
+            name = place.get("title") or place.get("name")
+            if not name:
+                continue
+            key = name.lower().strip()
+            if key in seen_names:
+                continue
+            seen_names.add(key)
+            results.append({
+                "name": name,
+                "category": category,
+                "address": place.get("address", ""),
+                "rating": place.get("rating"),
+                "reviews": place.get("reviews"),
+                "description": place.get("description", "") or place.get("type", ""),
+            })
+            if len(results) >= max_total:
+                break
+        if len(results) >= max_total:
+            break
+
+    logger.info("Normalised %s attraction candidates", len(results))
+    return results

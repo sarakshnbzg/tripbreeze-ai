@@ -72,6 +72,7 @@ class ApproveRequest(BaseModel):
     user_feedback: str = ""
     selected_flight: dict[str, Any] = {}
     selected_hotel: dict[str, Any] = {}
+    trip_request: dict[str, Any] | None = None
     llm_provider: str = "openai"
     llm_model: str = "gpt-4o-mini"
     llm_temperature: float = 0.3
@@ -361,6 +362,8 @@ async def approve(thread_id: str, req: ApproveRequest):
         "llm_model": req.llm_model,
         "llm_temperature": req.llm_temperature,
     }
+    if req.trip_request:
+        state_updates["trip_request"] = req.trip_request
 
     q: queue.Queue = queue.Queue()
     loop = asyncio.get_event_loop()

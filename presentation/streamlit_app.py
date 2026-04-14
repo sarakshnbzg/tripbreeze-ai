@@ -719,6 +719,7 @@ def _run_finalisation(feedback: str = "") -> None:
         "user_feedback": feedback,
         "selected_flight": state.get("selected_flight", {}),
         "selected_hotel": state.get("selected_hotel", {}),
+        "trip_request": state.get("trip_request", {}),
         "llm_provider": st.session_state.llm_provider,
         "llm_model": st.session_state.llm_model,
         "llm_temperature": st.session_state.llm_temperature,
@@ -1115,6 +1116,27 @@ def _render_review_actions() -> None:
     st.divider()
 
     # ── Actions ──
+    st.markdown("#### 🎯 Your day-by-day plan")
+    st.caption("Pick the activities you enjoy and your daily pace — we'll build the itinerary around them.")
+    existing_interests = trip_request.get("interests", []) or []
+    existing_pace = trip_request.get("pace") or "moderate"
+    interest_options = ["food", "history", "nature", "art", "nightlife", "shopping", "outdoors", "family"]
+    review_interests = st.multiselect(
+        "What do you enjoy while travelling?",
+        options=interest_options,
+        default=[i for i in existing_interests if i in interest_options],
+        key="review_interests",
+    )
+    pace_options = ["relaxed", "moderate", "packed"]
+    review_pace = st.radio(
+        "Daily pace",
+        options=pace_options,
+        index=pace_options.index(existing_pace) if existing_pace in pace_options else 1,
+        horizontal=True,
+        key="review_pace",
+        help="Relaxed ≈ 2 activities/day · Moderate ≈ 3 · Packed ≈ 4+",
+    )
+
     feedback = st.text_input(
         "Final itinerary notes (optional)",
         placeholder="e.g. Make it relaxed, add vegetarian tips, mention window seat preference",
@@ -1149,6 +1171,12 @@ def _render_review_actions() -> None:
         else:
             state["selected_flight"] = {}
         state["selected_hotel"] = hotels[selected_hotel_idx] if selected_hotel_idx is not None else {}
+        # Merge review-time interest/pace choices back into trip_request so the
+        # finaliser's day-by-day plan matches the user's latest preferences.
+        updated_trip = dict(trip_request)
+        updated_trip["interests"] = list(review_interests)
+        updated_trip["pace"] = review_pace
+        state["trip_request"] = updated_trip
         st.session_state.graph_state = state
         st.session_state.messages.append(
             {"role": "user", "content": "Approved! Please generate my final itinerary."}
