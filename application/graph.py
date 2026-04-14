@@ -12,7 +12,7 @@ from domain.nodes.profile_loader import profile_loader
 from domain.nodes.trip_intake import trip_intake
 from domain.nodes.budget_aggregator import budget_aggregator
 from domain.nodes.hitl_review import hitl_review
-from domain.nodes.trip_finaliser import trip_finaliser, trip_finaliser_stream
+from domain.nodes.trip_finaliser import trip_finaliser
 from domain.nodes.memory_updater import memory_updater
 from domain.nodes.research_orchestrator import research_orchestrator
 from infrastructure.logging_utils import get_logger
@@ -91,13 +91,13 @@ def compile_graph():
 
 
 def run_finalisation_streaming(graph, thread_id: str, state_updates: dict):
-    """Resume the paused graph after user approval and stream the itinerary token by token.
+    """Resume the paused graph after user approval and generate the itinerary.
 
-    Uses trip_finaliser_stream for token-level streaming, then injects the result
+    Runs the trip_finaliser (which may call RAG tools), then injects the result
     into the checkpoint as_node="finalise" so the graph resumes at update_memory
-    without re-running the finaliser.  Finally yields the merged state dict.
+    without re-running the finaliser.
 
-    Yields str chunks for the UI to display, then yields the final state dict.
+    Yields the final state dict (no longer streams token by token).
     """
     logger.info("Resuming graph for finalisation thread_id=%s", thread_id)
     config = {"configurable": {"thread_id": thread_id}}
@@ -113,13 +113,8 @@ def run_finalisation_streaming(graph, thread_id: str, state_updates: dict):
 
     merged_state = dict(graph.get_state(config).values)
 
-    # Stream tokens from the finaliser; collect the final node-output dict
-    final_node_output: dict = {}
-    for item in trip_finaliser_stream(merged_state):
-        if isinstance(item, str):
-            yield item
-        else:
-            final_node_output = item
+    # Run the finaliser (ReAct-style with RAG tool access)
+    final_node_output = trip_finaliser(merged_state)
 
     # Inject the finaliser result as if the node ran — graph will resume at update_memory
     if final_node_output:

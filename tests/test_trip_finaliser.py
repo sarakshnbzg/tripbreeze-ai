@@ -1,13 +1,10 @@
 """Tests for domain/nodes/trip_finaliser.py."""
 
-from unittest.mock import MagicMock, patch
-
 from domain.nodes.trip_finaliser import (
     render_itinerary_markdown,
     Itinerary,
     Source,
     _selected_flight_context,
-    trip_finaliser_stream,
 )
 
 
@@ -142,71 +139,3 @@ class TestSelectedFlightContext:
         )
         assert "Outbound flight summary:" in context
         assert "Return flight summary:" not in context
-
-
-class TestTripFinaliserStream:
-    def _base_state(self):
-        return {
-            "llm_provider": "openai",
-            "llm_model": "gpt-4o-mini",
-            "trip_request": {
-                "origin": "London",
-                "destination": "Paris",
-                "departure_date": "2026-07-01",
-                "return_date": "2026-07-08",
-                "currency": "EUR",
-            },
-            "selected_flight": {"airline": "Air France", "outbound_summary": "LHR -> CDG"},
-            "selected_hotel": {"name": "Hotel Le Marais"},
-            "destination_info": "Paris is lovely.",
-            "rag_sources": [],
-            "budget": {"total_estimated": 1500},
-            "user_feedback": "",
-        }
-
-    @patch("domain.nodes.trip_finaliser.create_chat_model")
-    def test_yields_string_chunks_then_final_dict(self, mock_create):
-        chunk1 = MagicMock()
-        chunk1.content = "#### ✈️ Trip Overview\n"
-        chunk1.usage_metadata = {"input_tokens": 50, "output_tokens": 10}
-
-        chunk2 = MagicMock()
-        chunk2.content = "London to Paris, 7 nights"
-        chunk2.usage_metadata = {"input_tokens": 0, "output_tokens": 8}
-
-        mock_llm = MagicMock()
-        mock_llm.stream.return_value = iter([chunk1, chunk2])
-        mock_create.return_value = mock_llm
-
-        items = list(trip_finaliser_stream(self._base_state()))
-
-        # First items are string chunks
-        string_chunks = [i for i in items if isinstance(i, str)]
-        assert len(string_chunks) == 2
-        assert "Trip Overview" in string_chunks[0]
-
-        # Last item is the final state dict
-        final = items[-1]
-        assert isinstance(final, dict)
-        assert "Trip Overview" in final["final_itinerary"]
-        assert final["current_step"] == "finalised"
-        assert final["token_usage"][0]["input_tokens"] == 50
-        assert final["token_usage"][0]["output_tokens"] == 18
-
-    @patch("domain.nodes.trip_finaliser.create_chat_model")
-    def test_empty_content_chunks_are_skipped(self, mock_create):
-        chunk_empty = MagicMock()
-        chunk_empty.content = ""
-        chunk_empty.usage_metadata = {}
-
-        chunk_real = MagicMock()
-        chunk_real.content = "Hello"
-        chunk_real.usage_metadata = {"input_tokens": 10, "output_tokens": 5}
-
-        mock_llm = MagicMock()
-        mock_llm.stream.return_value = iter([chunk_empty, chunk_real])
-        mock_create.return_value = mock_llm
-
-        items = list(trip_finaliser_stream(self._base_state()))
-        string_chunks = [i for i in items if isinstance(i, str)]
-        assert string_chunks == ["Hello"]

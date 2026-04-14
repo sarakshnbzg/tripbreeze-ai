@@ -26,10 +26,10 @@ TripBreeze is deployed on Streamlit Community Cloud:
 ```text
 Profile Loader
   -> Trip Intake
-  -> Research Orchestrator (dynamic tool calling for flights, hotels, and RAG)
+  -> Research Orchestrator (ReAct agent: flights, hotels, RAG for overview + entry requirements)
   -> Budget Aggregator
-  -> Review
-  -> Finaliser
+  -> Review (HITL pause)
+  -> Trip Finaliser (ReAct agent: RAG for transport/safety/budget tips, generates itinerary)
   -> Memory Updater
 ```
 

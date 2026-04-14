@@ -175,29 +175,32 @@ def _research_llm_mock(flights: list[dict], hotels: list[dict]) -> MagicMock:
 
 
 def _finaliser_llm_mock() -> MagicMock:
+    """Mock for ReAct-style finaliser that calls Itinerary tool directly."""
     mock_llm = MagicMock()
-    mock_raw = MagicMock()
-    mock_raw.usage_metadata = {"input_tokens": 100, "output_tokens": 200}
 
-    mock_structured = MagicMock()
-    mock_structured.invoke.return_value = {
-        "parsed": Itinerary(
-            trip_overview="London to Paris, 7 nights",
-            flight_details="- Air France direct\n- 2h 30m",
-            hotel_details="- Hotel Le Marais\n- 4-star",
-            destination_highlights="Eiffel Tower, Louvre Museum",
-            budget_breakdown="Total: 1500 EUR",
-            visa_entry_info="No visa needed for EU/UK passport holders",
-            packing_tips="Pack layers for spring weather",
-        ),
-        "raw": mock_raw,
-    }
-    mock_llm.with_structured_output.return_value = mock_structured
+    # First call: LLM decides to submit the Itinerary directly (no RAG needed)
+    submit_response = MagicMock()
+    submit_response.tool_calls = [
+        {
+            "id": "call_final",
+            "name": "Itinerary",
+            "args": {
+                "trip_overview": "London to Paris, 7 nights",
+                "flight_details": "- Air France direct\n- 2h 30m",
+                "hotel_details": "- Hotel Le Marais\n- 4-star",
+                "destination_highlights": "Eiffel Tower, Louvre Museum",
+                "daily_plans": [],
+                "budget_breakdown": "Total: 1500 EUR",
+                "visa_entry_info": "No visa needed for EU/UK passport holders",
+                "packing_tips": "Pack layers for spring weather",
+                "sources": [],
+            },
+        }
+    ]
+    submit_response.usage_metadata = {"input_tokens": 100, "output_tokens": 200}
 
-    # trip_finaliser_stream uses llm.stream(); yield two chunks then a usage chunk
-    chunk1 = MagicMock(); chunk1.content = "London to Paris, 7 nights"; chunk1.usage_metadata = {}
-    chunk2 = MagicMock(); chunk2.content = " - full itinerary here"; chunk2.usage_metadata = {"input_tokens": 100, "output_tokens": 200}
-    mock_llm.stream.return_value = iter([chunk1, chunk2])
+    mock_llm.bind_tools.return_value = mock_llm
+    mock_llm.invoke.return_value = submit_response
 
     return mock_llm
 
@@ -226,6 +229,7 @@ def _patch_all(
         patch("domain.agents.flight_agent.api_search_flights", return_value=_flights) as mock_api_flights,
         patch("domain.agents.hotel_agent.api_search_hotels", return_value=_hotels) as mock_api_hotels,
         patch("domain.nodes.research_orchestrator.retrieve", return_value=[]) as mock_rag,
+        patch("domain.nodes.trip_finaliser.retrieve", return_value=[]) as mock_finaliser_rag,
         patch("domain.nodes.research_orchestrator.create_chat_model", return_value=_research) as mock_research_llm,
         patch("domain.nodes.trip_finaliser.create_chat_model", return_value=_finaliser) as mock_final_llm,
         patch("domain.nodes.trip_intake.create_chat_model") as mock_intake_llm,

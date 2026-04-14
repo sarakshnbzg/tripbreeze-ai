@@ -15,7 +15,7 @@ Profile Loader                ← loads user prefs from long-term memory
 Trip Intake                   ← merges structured fields with free text; validates dates and defaults
   │
   ▼
-Research Orchestrator         ← LLM decides which research tools to call
+Research Orchestrator         ← ReAct agent: decides which research tools to call
   │
   ├──────────┬──────────┐
   ▼          ▼          ▼
@@ -28,11 +28,13 @@ Tool      Tool       Tool
       Budget Aggregator       ← sums costs, checks budget limit
              │
              ▼
-        HITL Review           ← presents options, waits for user
+        HITL Review           ← presents options (overview + entry requirements), waits for user
              │
         ┌────┴────┐
         ▼         ▼
     Finaliser   [END]         ← approve → finalise; feedback → stop
+        │
+        ├── RAG Tool          ← ReAct agent can retrieve transport/safety/budget tips
         │
         ▼
    Memory Updater             ← persists learned preferences
@@ -52,12 +54,13 @@ Tool      Tool       Tool
 | **File** | `domain/nodes/research_orchestrator.py` |
 | **Node name** | `research` |
 | **Implementation** | `research_orchestrator(...)` |
-| **Purpose** | Let the LLM dynamically choose which research tools to call for the current trip |
+| **Purpose** | ReAct agent that dynamically chooses which research tools to call for the current trip |
 | **LLM** | User-selected OpenAI or Google Gemini chat model with tool calling |
 | **Reads from state** | `trip_request`, `user_profile`, `llm_provider`, `llm_model` |
-| **Writes to state** | `flight_options`, `hotel_options`, `destination_info`, research summary message |
+| **Writes to state** | `flight_options`, `hotel_options`, `destination_info` (overview + entry requirements only), `rag_sources`, research summary message |
 | **Tool choices** | `search_flights`, `search_hotels`, `retrieve_knowledge`, `SubmitResearchResult` |
 | **Routing behavior** | May call any subset of tools, including skipping retrieval entirely or calling it multiple times, and finishes by calling `SubmitResearchResult` |
+| **RAG output** | Only extracts `destination_overview` and `entry_requirements` from RAG — transport, safety, and budget tips are deferred to the finaliser |
 
 ### Flight Tool
 
@@ -87,13 +90,12 @@ Tool      Tool       Tool
 
 | Field | Detail |
 |-------|--------|
-| **Active location** | `domain/nodes/research_orchestrator.py` |
 | **Callable name** | `retrieve_knowledge` |
 | **Purpose** | Search the local knowledge base for destination guides, visa requirements, travel tips, transport, safety, and budget information |
 | **Infrastructure** | `infrastructure/rag/vectorstore.retrieve` (ChromaDB) |
-| **Used by** | The main `research` node, which decides whether retrieval is useful |
-| **Behavior** | Optional tool inside the orchestrator's ReAct loop; may be skipped or called multiple times |
-| **Output** | Retrieved knowledge-base chunks that the orchestrator uses to write `destination_info` |
+| **Used by** | Research orchestrator (for overview + entry requirements) and Trip Finaliser (for transport, safety, budget tips) |
+| **Behavior** | Optional tool inside both ReAct loops; may be skipped or called multiple times |
+| **Output** | Retrieved knowledge-base chunks that agents use to write grounded destination information |
 | **Knowledge base** | `knowledge_base/destinations.md`, `visa_requirements.md`, `travel_tips.md` |
 
 ---
@@ -140,12 +142,13 @@ Tool      Tool       Tool
 
 | Field | Detail |
 |-------|--------|
-| **File** | `application/graph.py` (inline) |
+| **File** | `domain/nodes/hitl_review.py` |
 | **Node name** | `review` |
 | **Purpose** | Format research results for human review; pause for approval |
 | **Pure logic** | String formatting only |
-| **Reads from state** | `flight_options`, `hotel_options`, `budget`, `destination_info` |
+| **Reads from state** | `flight_options`, `hotel_options`, `budget`, `destination_info`, `rag_sources`, `trip_request` |
 | **Writes to state** | Formatted review message |
+| **What's shown** | Destination overview, entry requirements, trip summary, budget notes — transport/safety/budget tips are generated later by the finaliser |
 | **Routing** | If `user_approved` → `finalise`; otherwise → `END` (UI waits for input) |
 
 ### Trip Finaliser
@@ -154,10 +157,12 @@ Tool      Tool       Tool
 |-------|--------|
 | **File** | `domain/nodes/trip_finaliser.py` |
 | **Node name** | `finalise` |
-| **Purpose** | Generate a polished, professional itinerary document |
-| **LLM** | User-selected OpenAI or Google Gemini chat model (temperature 0.5) |
-| **Reads from state** | `trip_request`, `flight_options`, `hotel_options`, `destination_info`, `budget`, `user_feedback`, `llm_provider`, `llm_model` |
-| **Writes to state** | `final_itinerary` — complete markdown itinerary |
+| **Purpose** | ReAct agent that generates a polished, professional itinerary document with grounded destination tips |
+| **LLM** | User-selected OpenAI or Google Gemini chat model with tool calling (temperature 0.5) |
+| **Tool choices** | `retrieve_knowledge` (for transport, safety, budget tips), `Itinerary` (final submission) |
+| **Reads from state** | `trip_request`, `selected_flight`, `selected_hotel`, `destination_info`, `budget`, `user_feedback`, `attraction_candidates`, `rag_sources`, `llm_provider`, `llm_model` |
+| **Writes to state** | `final_itinerary` — complete markdown itinerary, `itinerary_data` — structured data, `rag_sources` — updated with any new sources |
+| **Behavior** | Can call RAG to get grounded transport/safety/budget tips before generating the final itinerary; submits via `Itinerary` tool call |
 
 ### Memory Updater
 

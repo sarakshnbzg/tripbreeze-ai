@@ -154,6 +154,10 @@ class TestHitlReview:
 
 class TestDestinationInfoFormatting:
     def test_formats_structured_destination_sections(self):
+        """Only overview and entry requirements are shown in initial result.
+
+        Transport tips, safety notes, and budget tips are deferred to the final itinerary.
+        """
         result = _format_destination_info(
             {
                 "destination_overview": "Tokyo is strong for food and transit. (Source: Destinations)",
@@ -165,10 +169,12 @@ class TestDestinationInfoFormatting:
         assert "A quick travel snapshot" in result
         assert "#### 🌍 Overview" in result
         assert "#### 🛂 Entry Requirements" in result
-        assert "#### 🚇 Getting Around" in result
+        # transport_tips is now deferred to final itinerary
+        assert "#### 🚇 Getting Around" not in result
         assert "Tokyo is strong" in result
         assert "Check passport validity" in result
-        assert "Use trains" in result
+        # transport content should not appear in initial result
+        assert "Use trains" not in result
 
     def test_falls_back_to_legacy_destination_briefing(self):
         result = _format_destination_info(
