@@ -22,6 +22,11 @@ from config import (
     DESTINATIONS,
     HOTEL_STARS,
     TRAVEL_CLASSES,
+    SMTP_HOST,
+    SMTP_PORT,
+    SMTP_SENDER_EMAIL,
+    SMTP_SENDER_PASSWORD,
+    SMTP_USE_TLS,
 )
 from presentation import api_client
 from infrastructure.currency_utils import format_currency, normalise_currency
@@ -37,6 +42,8 @@ from infrastructure.persistence.memory_store import (
     register_user,
     verify_user,
 )
+from infrastructure.pdf_generator import generate_trip_pdf
+from infrastructure.email_sender import send_itinerary_email, SMTPConfig
 
 logger = get_logger(__name__)
 
@@ -1387,6 +1394,66 @@ def _render_main_area() -> None:
 
     if st.session_state.trip_complete:
         st.success("Your trip itinerary is ready. Click New Trip in the sidebar to plan another.")
+
+        # Add PDF export button
+        if st.session_state.graph_state:
+            final_itinerary = st.session_state.graph_state.get("final_itinerary", "")
+            if final_itinerary:
+                try:
+                    pdf_bytes = generate_trip_pdf(
+                        final_itinerary=final_itinerary,
+                        graph_state=st.session_state.graph_state,
+                    )
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.download_button(
+                            label="📥 Download Itinerary as PDF",
+                            data=pdf_bytes,
+                            file_name="trip_itinerary.pdf",
+                            mime="application/pdf",
+                        )
+
+                    # Email sending section
+                    with col2:
+                        with st.form("email_form", border=False):
+                            email_input = st.text_input(
+                                "📧 Email itinerary",
+                                placeholder="your.email@example.com",
+                                label_visibility="collapsed",
+                            )
+                            submitted = st.form_submit_button("Send", use_container_width=True)
+
+                            if submitted:
+                                if not email_input:
+                                    st.error("Please enter an email address.")
+                                else:
+                                    # Create SMTP config from environment variables
+                                    smtp_config = SMTPConfig(
+                                        smtp_host=SMTP_HOST,
+                                        smtp_port=SMTP_PORT,
+                                        sender_email=SMTP_SENDER_EMAIL,
+                                        sender_password=SMTP_SENDER_PASSWORD,
+                                        use_tls=SMTP_USE_TLS,
+                                    )
+
+                                    with st.spinner("Sending email..."):
+                                        success, message = send_itinerary_email(
+                                            recipient_email=email_input,
+                                            pdf_bytes=pdf_bytes,
+                                            smtp_config=smtp_config,
+                                            recipient_name=st.session_state.user_id,
+                                        )
+
+                                    if success:
+                                        st.success(message)
+                                        logger.info("Itinerary emailed to %s", email_input)
+                                    else:
+                                        st.error(message)
+                                        logger.warning("Failed to email itinerary: %s", message)
+
+                except Exception as e:
+                    logger.exception("Failed to generate PDF")
+                    st.warning(f"Could not generate PDF: {e}")
         return
 
     if st.session_state.awaiting_review:

@@ -36,6 +36,13 @@ GOOGLE_API_KEY = _get_config_value("GOOGLE_API_KEY", "") or _get_config_value("G
 SERPAPI_API_KEY = _get_config_value("SERPAPI_API_KEY", "")
 MEMORY_DATABASE_URL = _get_config_value("DATABASE_URL", "") or _get_config_value("NEON_DATABASE_URL", "")
 
+# Email / SMTP settings
+SMTP_HOST = _get_config_value("SMTP_HOST", "")
+SMTP_PORT = int(_get_config_value("SMTP_PORT", "587"))
+SMTP_SENDER_EMAIL = _get_config_value("SMTP_SENDER_EMAIL", "")
+SMTP_SENDER_PASSWORD = _get_config_value("SMTP_SENDER_PASSWORD", "")
+SMTP_USE_TLS = _get_config_value("SMTP_USE_TLS", "true").lower() == "true"
+
 # Model settings
 DEFAULT_LLM_PROVIDER = "openai"
 DEFAULT_LLM_MODEL = {
