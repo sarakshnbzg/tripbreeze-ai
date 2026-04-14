@@ -55,6 +55,7 @@ SESSION_DEFAULTS = {
     "graph_state": None,
     "token_usage_history": [],
     "awaiting_review": False,
+    "awaiting_interests": False,
     "awaiting_clarification": False,
     "clarification_question": "",
     "trip_complete": False,
@@ -494,6 +495,7 @@ def _reset_trip_flow() -> None:
     st.session_state.messages = []
     st.session_state.graph_state = None
     st.session_state.awaiting_review = False
+    st.session_state.awaiting_interests = False
     st.session_state.awaiting_clarification = False
     st.session_state.clarification_question = ""
     st.session_state.trip_complete = False
@@ -1116,33 +1118,6 @@ def _render_review_actions() -> None:
     st.divider()
 
     # ── Actions ──
-    st.markdown("#### 🎯 Your day-by-day plan")
-    st.caption("Pick the activities you enjoy and your daily pace — we'll build the itinerary around them.")
-    existing_interests = trip_request.get("interests", []) or []
-    existing_pace = trip_request.get("pace") or "moderate"
-    interest_options = ["food", "history", "nature", "art", "nightlife", "shopping", "outdoors", "family"]
-    review_interests = st.multiselect(
-        "What do you enjoy while travelling?",
-        options=interest_options,
-        default=[i for i in existing_interests if i in interest_options],
-        key="review_interests",
-    )
-    pace_options = ["relaxed", "moderate", "packed"]
-    review_pace = st.radio(
-        "Daily pace",
-        options=pace_options,
-        index=pace_options.index(existing_pace) if existing_pace in pace_options else 1,
-        horizontal=True,
-        key="review_pace",
-        help="Relaxed ≈ 2 activities/day · Moderate ≈ 3 · Packed ≈ 4+",
-    )
-
-    feedback = st.text_input(
-        "Final itinerary notes (optional)",
-        placeholder="e.g. Make it relaxed, add vegetarian tips, mention window seat preference",
-        help="These notes guide the final itinerary text. They do not re-run flight or hotel search.",
-    )
-
     flight_selection_complete = selected_flight_idx is not None and (
         not is_round_trip
         or selected_return_idx is not None
@@ -1158,7 +1133,7 @@ def _render_review_actions() -> None:
     if is_round_trip and selected_flight_idx is not None and not flight_selection_complete:
         st.warning("Choose a return flight before approving this round trip.")
     if st.button(
-        "Approve & Generate Itinerary",
+        "Approve Selections",
         type="primary",
         use_container_width=True,
         disabled=not can_approve,
@@ -1171,17 +1146,65 @@ def _render_review_actions() -> None:
         else:
             state["selected_flight"] = {}
         state["selected_hotel"] = hotels[selected_hotel_idx] if selected_hotel_idx is not None else {}
-        # Merge review-time interest/pace choices back into trip_request so the
-        # finaliser's day-by-day plan matches the user's latest preferences.
+        st.session_state.graph_state = state
+        st.session_state.awaiting_review = False
+        st.session_state.awaiting_interests = True
+        st.rerun()
+
+
+def _render_interests_form() -> None:
+    """Separate step after flight/hotel approval — choose interests and pace."""
+    state = st.session_state.graph_state
+    if not state:
+        st.error("No trip data found. Please start a new search.")
+        return
+
+    trip_request = state.get("trip_request", {})
+    destination = trip_request.get("destination", "your destination")
+
+    st.subheader(f"Personalise your {destination} itinerary")
+    st.caption(
+        "Pick the activities you enjoy and your preferred daily pace. "
+        "We'll find real attractions and build a day-by-day plan for you."
+    )
+
+    interest_options = ["food", "history", "nature", "art", "nightlife", "shopping", "outdoors", "family"]
+    existing_interests = trip_request.get("interests", []) or []
+    interests = st.multiselect(
+        "What do you enjoy while travelling?",
+        options=interest_options,
+        default=[i for i in existing_interests if i in interest_options],
+        key="interests_form_interests",
+    )
+
+    pace_options = ["relaxed", "moderate", "packed"]
+    existing_pace = trip_request.get("pace") or "moderate"
+    pace = st.radio(
+        "Daily pace",
+        options=pace_options,
+        index=pace_options.index(existing_pace) if existing_pace in pace_options else 1,
+        horizontal=True,
+        key="interests_form_pace",
+        help="Relaxed ≈ 2 activities/day · Moderate ≈ 3 · Packed ≈ 4+",
+    )
+
+    feedback = st.text_input(
+        "Final itinerary notes (optional)",
+        placeholder="e.g. add vegetarian tips, mention window seat preference",
+        help="These notes guide the final itinerary text.",
+    )
+
+    if st.button("Generate Itinerary", type="primary", use_container_width=True):
         updated_trip = dict(trip_request)
-        updated_trip["interests"] = list(review_interests)
-        updated_trip["pace"] = review_pace
+        updated_trip["interests"] = list(interests)
+        updated_trip["pace"] = pace
         state["trip_request"] = updated_trip
         st.session_state.graph_state = state
         st.session_state.messages.append(
             {"role": "user", "content": "Approved! Please generate my final itinerary."}
         )
         _run_finalisation(feedback=feedback)
+        st.session_state.awaiting_interests = False
         st.rerun()
 
 
@@ -1528,6 +1551,10 @@ def _render_main_area() -> None:
 
     if st.session_state.awaiting_review:
         _render_review_actions()
+        return
+
+    if st.session_state.awaiting_interests:
+        _render_interests_form()
         return
 
     if st.session_state.awaiting_clarification:
