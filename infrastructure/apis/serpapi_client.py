@@ -6,6 +6,7 @@ means changing only this file.
 """
 
 from datetime import datetime
+from urllib.parse import quote_plus
 import re
 
 from serpapi import GoogleSearch
@@ -19,6 +20,26 @@ logger = get_logger(__name__)
 # ── Flight search ──
 
 TRAVEL_CLASS_MAP = {"ECONOMY": "1", "PREMIUM_ECONOMY": "2", "BUSINESS": "3", "FIRST": "4"}
+
+
+def _build_google_flights_url(
+    origin: str,
+    destination: str,
+    departure_date: str,
+    return_date: str | None,
+    adults: int,
+    travel_class: str,
+) -> str:
+    """Build a user-facing Google Flights search URL pre-filled with the query."""
+    query_parts = [f"Flights from {origin} to {destination} on {departure_date}"]
+    if return_date:
+        query_parts.append(f"returning {return_date}")
+    if adults > 1:
+        query_parts.append(f"for {adults} adults")
+    cls = travel_class.replace("_", " ").lower()
+    if cls and cls != "economy":
+        query_parts.append(cls)
+    return f"https://www.google.com/travel/flights?q={quote_plus(' '.join(query_parts))}"
 
 
 def _format_flight_legs_summary(legs: list[dict]) -> str:
@@ -174,6 +195,10 @@ def search_flights(
     raw_groups = results.get("best_flights", []) + results.get("other_flights", [])
     flights = []
 
+    google_flights_url = _build_google_flights_url(
+        origin, destination, departure_date, return_date, adults, travel_class
+    )
+
     for group in raw_groups[:RAW_FLIGHT_CANDIDATES]:
         legs = group.get("flights", [])
         if not legs:
@@ -211,6 +236,7 @@ def search_flights(
             "return_summary": return_summary,
             "return_details_available": bool(inline_return_legs),
             "departure_token": group.get("departure_token", ""),
+            "booking_url": google_flights_url,
         })
 
     logger.info("Normalised %s raw flight candidates", len(flights))
@@ -384,8 +410,16 @@ def search_hotels(
             per_night = prop.get("rate_per_night", {}).get("extracted_lowest", 0)
             total_price = per_night * nights
 
+        hotel_name = prop.get("name", "Unknown Hotel")
+        booking_url = prop.get("link") or (
+            f"https://www.google.com/travel/hotels/"
+            f"{quote_plus(destination)}"
+            f"?q={quote_plus(hotel_name)}"
+            f"&check_in={check_in}&check_out={check_out}"
+        )
+
         hotels.append({
-            "name": prop.get("name", "Unknown Hotel"),
+            "name": hotel_name,
             "address": prop.get("description", ""),
             "hotel_class": hotel_class,
             "rating": prop.get("overall_rating", 0),
@@ -395,6 +429,7 @@ def search_hotels(
             "amenities": prop.get("amenities", []),
             "check_in": check_in,
             "check_out": check_out,
+            "booking_url": booking_url,
         })
         if len(hotels) >= MAX_HOTEL_RESULTS:
             break

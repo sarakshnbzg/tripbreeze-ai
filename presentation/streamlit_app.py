@@ -663,6 +663,43 @@ def _run_clarification(answer: str) -> None:
     st.session_state.awaiting_review = result.get("current_step") == "awaiting_review"
 
 
+def _inject_booking_links(markdown: str, flight: dict, hotel: dict) -> str:
+    """Insert booking links inline after the Flight Details / Hotel Details sections.
+
+    Used only for the user-facing message — the stored `final_itinerary` (and thus
+    the PDF and email exports) stays link-free.
+    """
+    def _insert_after_section(md: str, heading: str, link_line: str) -> str:
+        idx = md.find(heading)
+        if idx == -1:
+            return md
+        # Find the start of the next section (####) after this heading.
+        next_idx = md.find("\n#### ", idx + len(heading))
+        insertion = f"\n\n{link_line}\n"
+        if next_idx == -1:
+            return md.rstrip() + insertion
+        return md[:next_idx] + insertion + md[next_idx:]
+
+    flight_url = (flight or {}).get("booking_url")
+    hotel_url = (hotel or {}).get("booking_url")
+    result = markdown
+    if flight_url:
+        airline = (flight or {}).get("airline") or "this flight"
+        result = _insert_after_section(
+            result,
+            "#### 🛫 Flight Details",
+            f"🔗 **[Book {airline} on Google Flights]({flight_url})**",
+        )
+    if hotel_url:
+        name = (hotel or {}).get("name") or "this hotel"
+        result = _insert_after_section(
+            result,
+            "#### 🏨 Hotel Details",
+            f"🔗 **[Book {name}]({hotel_url})**",
+        )
+    return result
+
+
 def _run_finalisation(feedback: str = "") -> None:
     state = st.session_state.graph_state
     if not state:
@@ -710,7 +747,12 @@ def _run_finalisation(feedback: str = "") -> None:
     logger.info("Finalisation completed for user_id=%s", st.session_state.user_id)
     final_state = st.session_state.graph_state
     if final_state and final_state.get("final_itinerary"):
-        _append_assistant_message(final_state["final_itinerary"])
+        display_markdown = _inject_booking_links(
+            final_state["final_itinerary"],
+            final_state.get("selected_flight") or {},
+            final_state.get("selected_hotel") or {},
+        )
+        _append_assistant_message(display_markdown)
 
     st.session_state.awaiting_review = False
     st.session_state.trip_complete = True
