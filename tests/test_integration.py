@@ -19,6 +19,7 @@ import pytest
 from application.graph import compile_graph, run_finalisation_streaming
 from domain.nodes.trip_finaliser import Itinerary
 from langgraph.types import Command
+from presentation.planning_flow import inject_booking_links
 
 
 # ── Future dates (always valid) ──────────────────────────────────────
@@ -758,4 +759,56 @@ class TestMultiCityEndToEnd:
         assert len(final_state["itinerary_data"]["legs"]) == 2
         assert final_state["selected_flights"][0]["airline"] == "Air France"
         assert final_state["selected_hotels"][1]["name"] == "Hotel Le Marais"
+        mocks["memory"].assert_called_once()
+
+    def test_multi_city_final_display_includes_booking_links_for_each_leg(self):
+        with _patch_all() as mocks:
+            graph = compile_graph()
+            thread_id = "test-multi-city-booking-links"
+            config = {"configurable": {"thread_id": thread_id}}
+
+            planning_state = graph.invoke(
+                _base_initial_state(structured_fields=_multi_city_structured_fields()),
+                config,
+            )
+
+            first_leg_flight = {
+                **planning_state["flight_options_by_leg"][0][0],
+                "booking_url": "https://flights.example/paris",
+            }
+            second_leg_flight = {
+                **planning_state["flight_options_by_leg"][1][0],
+                "booking_url": "https://flights.example/barcelona",
+            }
+            first_leg_hotel = {
+                **planning_state["hotel_options_by_leg"][0][0],
+                "booking_url": "https://hotels.example/paris",
+            }
+            second_leg_hotel = {
+                **planning_state["hotel_options_by_leg"][1][0],
+                "booking_url": "https://hotels.example/barcelona",
+            }
+
+            state_updates = {
+                "user_approved": True,
+                "selected_flights": [first_leg_flight, second_leg_flight],
+                "selected_hotels": [first_leg_hotel, second_leg_hotel],
+            }
+            items = list(run_finalisation_streaming(graph, thread_id, state_updates))
+
+        final_state = next((i for i in items if isinstance(i, dict)), None)
+        assert final_state is not None
+
+        display_markdown = inject_booking_links(
+            final_state["final_itinerary"],
+            final_state.get("selected_flight") or {},
+            final_state.get("selected_hotel") or {},
+            final_state.get("selected_flights") or [],
+            final_state.get("selected_hotels") or [],
+        )
+
+        assert "[Book Air France on Google Flights](https://flights.example/paris)" in display_markdown
+        assert "[Book Air France on Google Flights](https://flights.example/barcelona)" in display_markdown
+        assert "[Book Hotel Le Marais](https://hotels.example/paris)" in display_markdown
+        assert "[Book Hotel Le Marais](https://hotels.example/barcelona)" in display_markdown
         mocks["memory"].assert_called_once()

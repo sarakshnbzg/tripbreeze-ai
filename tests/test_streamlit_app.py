@@ -22,6 +22,7 @@ from presentation.review_ui import (
     flight_option_cards,
     hotel_option_cards,
 )
+from presentation.planning_flow import inject_booking_links
 from presentation.trip_form import (
     build_structured_fields_from_form,
     parse_num_nights,
@@ -109,6 +110,54 @@ class TestPlanningProgressMarkdown:
     def test_joins_updates_with_blank_lines(self):
         content = _planning_progress_markdown(["Planning your trip...", "**Searching flights...**", "Found 5 flight options."])
         assert content == "Planning your trip...\n\n**Searching flights...**\n\nFound 5 flight options."
+
+
+class TestInjectBookingLinks:
+    def test_inserts_single_trip_booking_links(self):
+        markdown = "#### 🛫 Flight Details\nFlight info\n\n#### 🏨 Hotel Details\nHotel info"
+
+        updated = inject_booking_links(
+            markdown,
+            {"airline": "Air France", "booking_url": "https://flights.example/af"},
+            {"name": "Hotel Le Marais", "booking_url": "https://hotels.example/marais"},
+        )
+
+        assert "[Book Air France on Google Flights](https://flights.example/af)" in updated
+        assert "[Book Hotel Le Marais](https://hotels.example/marais)" in updated
+
+    def test_inserts_multi_city_booking_links_per_leg(self):
+        markdown = (
+            "#### ✈️ Trip Overview\nOverview\n\n"
+            "#### 🗺️ Trip Legs\n\n"
+            "**Leg 1: London → Paris**\n\n"
+            "- 📅 2026-05-01\n\n"
+            "- ✈️ Air France\n\n"
+            "- 🏨 Hotel Le Marais\n\n"
+            "**Leg 2: Paris → Barcelona**\n\n"
+            "- 📅 2026-05-04\n\n"
+            "- ✈️ Vueling\n\n"
+            "- 🏨 Hotel Arts"
+        )
+
+        updated = inject_booking_links(
+            markdown,
+            {},
+            {},
+            [
+                {"airline": "Air France", "booking_url": "https://flights.example/paris"},
+                {"airline": "Vueling", "booking_url": "https://flights.example/barcelona"},
+            ],
+            [
+                {"name": "Hotel Le Marais", "booking_url": "https://hotels.example/paris"},
+                {"name": "Hotel Arts", "booking_url": "https://hotels.example/barcelona"},
+            ],
+        )
+
+        assert "**Leg 1: London → Paris**" in updated
+        assert "[Book Air France on Google Flights](https://flights.example/paris)" in updated
+        assert "[Book Hotel Le Marais](https://hotels.example/paris)" in updated
+        assert "[Book Vueling on Google Flights](https://flights.example/barcelona)" in updated
+        assert "[Book Hotel Arts](https://hotels.example/barcelona)" in updated
 
 
 class TestPersonalisationDestinationLabel:

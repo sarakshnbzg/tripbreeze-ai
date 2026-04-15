@@ -183,8 +183,14 @@ def run_clarification(answer: str) -> None:
     st.session_state.awaiting_review = result.get("current_step") == "awaiting_review"
 
 
-def inject_booking_links(markdown: str, flight: dict, hotel: dict) -> str:
-    """Insert booking links inline after the Flight Details / Hotel Details sections.
+def inject_booking_links(
+    markdown: str,
+    flight: dict,
+    hotel: dict,
+    flights: list[dict] | None = None,
+    hotels: list[dict] | None = None,
+) -> str:
+    """Insert booking links inline after the relevant itinerary sections.
 
     Used only for the user-facing message - the stored `final_itinerary` (and thus
     the PDF and email exports) stays link-free.
@@ -198,6 +204,20 @@ def inject_booking_links(markdown: str, flight: dict, hotel: dict) -> str:
         if next_idx == -1:
             return md.rstrip() + insertion
         return md[:next_idx] + insertion + md[next_idx:]
+
+    def _insert_into_leg(md: str, leg_number: int, link_lines: list[str]) -> str:
+        if not link_lines:
+            return md
+        anchor = f"**Leg {leg_number}:"
+        idx = md.find(anchor)
+        if idx == -1:
+            return md
+        next_leg_idx = md.find(f"\n\n**Leg {leg_number + 1}:", idx + len(anchor))
+        next_section_idx = md.find("\n\n#### ", idx + len(anchor))
+        boundaries = [pos for pos in (next_leg_idx, next_section_idx) if pos != -1]
+        insert_at = min(boundaries) if boundaries else len(md)
+        insertion = "\n" + "\n".join(link_lines)
+        return md[:insert_at] + insertion + md[insert_at:]
 
     flight_url = (flight or {}).get("booking_url")
     hotel_url = (hotel or {}).get("booking_url")
@@ -216,6 +236,24 @@ def inject_booking_links(markdown: str, flight: dict, hotel: dict) -> str:
             "#### 🏨 Hotel Details",
             f"🔗 **[Book {name}]({hotel_url})**",
         )
+
+    selected_flights = flights or []
+    selected_hotels = hotels or []
+    if selected_flights or selected_hotels:
+        total_legs = max(len(selected_flights), len(selected_hotels))
+        for leg_number in range(1, total_legs + 1):
+            leg_flight = selected_flights[leg_number - 1] if leg_number - 1 < len(selected_flights) else {}
+            leg_hotel = selected_hotels[leg_number - 1] if leg_number - 1 < len(selected_hotels) else {}
+            link_lines = []
+            leg_flight_url = (leg_flight or {}).get("booking_url")
+            leg_hotel_url = (leg_hotel or {}).get("booking_url")
+            if leg_flight_url:
+                airline = (leg_flight or {}).get("airline") or "flight"
+                link_lines.append(f"- 🔗 **[Book {airline} on Google Flights]({leg_flight_url})**")
+            if leg_hotel_url:
+                name = (leg_hotel or {}).get("name") or "hotel"
+                link_lines.append(f"- 🔗 **[Book {name}]({leg_hotel_url})**")
+            result = _insert_into_leg(result, leg_number, link_lines)
     return result
 
 
@@ -273,6 +311,8 @@ def run_finalisation(feedback: str = "") -> None:
             final_state["final_itinerary"],
             final_state.get("selected_flight") or {},
             final_state.get("selected_hotel") or {},
+            final_state.get("selected_flights") or [],
+            final_state.get("selected_hotels") or [],
         )
         _append_assistant_message(display_markdown)
 
