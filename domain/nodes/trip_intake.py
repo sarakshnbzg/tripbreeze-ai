@@ -1,7 +1,6 @@
 """Trip Intake node — builds trip request from structured form fields
 and/or a free-text query, using LLM tool calling to parse user input."""
 
-import re
 from datetime import date, timedelta
 from typing import Any
 
@@ -16,12 +15,6 @@ from domain.nodes.trip_intake_schemas import (
     PREFERENCES_PROMPT,
     FREE_TEXT_PROMPT,
     DOMAIN_GUARDRAIL_PROMPT,
-)
-from domain.nodes.trip_intake_parsing import (
-    extract_explicit_departure_date,
-    extract_trip_duration_days,
-    query_mentions_one_way,
-    apply_free_text_trip_fallbacks,
 )
 from infrastructure.currency_utils import format_currency
 from infrastructure.llms.model_factory import create_chat_model, extract_token_usage, invoke_with_retry
@@ -390,12 +383,6 @@ def trip_intake(state: dict) -> dict:
                 raw_trip_data["preferences"] = f"{existing_prefs}, {ft_prefs}"
             elif not existing_prefs:
                 raw_trip_data["preferences"] = ft_prefs
-
-        raw_trip_data = apply_free_text_trip_fallbacks(
-            raw_trip_data,
-            free_text_query,
-            structured_fields,
-        )
     else:
         logger.info("Trip intake using structured fields only")
 
@@ -405,10 +392,7 @@ def trip_intake(state: dict) -> dict:
     # that if the user's answer still leaves gaps, we ask again. LangGraph replays
     # answered interrupts on re-run, so each iteration's interrupt() returns the
     # previously supplied answer automatically.
-    # all_user_text accumulates the original query + all clarification answers so
-    # that helpers like query_mentions_one_way detect intent from any round.
     if free_text_query.strip() and not _has_structured_trip_signal(structured_fields):
-        all_user_text = free_text_query
         while True:
             missing_fields: list[str] = []
             if not raw_trip_data.get("destination"):
@@ -420,7 +404,7 @@ def trip_intake(state: dict) -> dict:
             if (
                 not raw_trip_data.get("return_date")
                 and not raw_trip_data.get("check_out_date")
-                and not query_mentions_one_way(all_user_text)
+                and not raw_trip_data.get("is_one_way")
             ):
                 missing_fields.append("return_date")
 
@@ -438,7 +422,6 @@ def trip_intake(state: dict) -> dict:
             if not clarification_answer:
                 break  # empty answer — proceed with what we have
             logger.info("Clarification answer received: %s", clarification_answer)
-            all_user_text = f"{all_user_text} {clarification_answer}".strip()
             llm = create_chat_model(provider, model, temperature=temperature)
             parsed_answer, usage = _parse_clarification(
                 llm,
@@ -454,10 +437,6 @@ def trip_intake(state: dict) -> dict:
                 already_set = raw_trip_data.get(key) not in (None, "", []) if key != "stops" else raw_trip_data.get(key) is not None
                 if not_empty and not already_set:
                     raw_trip_data[key] = value
-            # Re-apply free-text fallbacks for the combined input
-            raw_trip_data = apply_free_text_trip_fallbacks(
-                raw_trip_data, all_user_text, structured_fields,
-            )
 
     # Parse any remaining free-text preferences into filter criteria
     preferences = raw_trip_data.get("preferences", "")

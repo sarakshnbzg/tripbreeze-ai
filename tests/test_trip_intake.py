@@ -12,12 +12,7 @@ from domain.nodes.trip_intake import (
     _parse_preferences,
     trip_intake,
 )
-from domain.nodes.trip_intake_parsing import (
-    apply_free_text_trip_fallbacks,
-    extract_explicit_departure_date,
-    extract_trip_duration_days,
-    query_mentions_one_way,
-)
+from domain.nodes.trip_intake_parsing import is_valid_iso_date
 from domain.utils.dates import validate_future_date
 
 # Future dates used across test fixtures
@@ -87,74 +82,21 @@ class TestValidateFutureDate:
 # ── _normalise_trip_data ──
 
 
-class TestFreeTextTripFallbacks:
-    def test_extracts_explicit_departure_date(self):
-        assert extract_explicit_departure_date("I want to leave on 20th of April") == "2026-04-20"
+class TestIsoDateValidation:
+    def test_valid_iso_date(self):
+        assert is_valid_iso_date("2026-04-20") is True
 
-    def test_extracts_trip_duration_days(self):
-        assert extract_trip_duration_days("I want to stay for 2 days") == 2
+    def test_empty_string_is_valid(self):
+        assert is_valid_iso_date("") is True
 
-    def test_extracts_worded_trip_duration_days(self):
-        assert extract_trip_duration_days("I want a one day trip to London") == 1
-        assert extract_trip_duration_days("Plan a one-day trip from Berlin to London") == 1
+    def test_invalid_format_returns_false(self):
+        assert is_valid_iso_date("April 20, 2026") is False
+        assert is_valid_iso_date("20-04-2026") is False
+        assert is_valid_iso_date("2026/04/20") is False
 
-    def test_extracts_day_trip_phrase(self):
-        assert extract_trip_duration_days("Plan a day trip from Berlin to London") == 1
-
-    def test_detects_one_way_phrase(self):
-        assert query_mentions_one_way("I want a one way flight to Barcelona") is True
-        assert query_mentions_one_way("I want a one-way flight to Barcelona") is True
-
-    def test_duration_and_date_override_missing_or_incorrect_llm_dates(self):
-        raw = {
-            "origin": "Berlin",
-            "destination": "London",
-            "departure_date": "2026-04-22",
-            "return_date": "2026-04-29",
-        }
-
-        result = apply_free_text_trip_fallbacks(
-            raw,
-            "I want to fly from Berlin to London for 2 day from 20th of April. Give me a plan.",
-            {},
-        )
-
-        assert result["departure_date"] == "2026-04-20"
-        assert result["return_date"] == "2026-04-22"
-        assert result["check_out_date"] == "2026-04-22"
-
-    def test_structured_dates_are_not_overridden(self):
-        raw = {
-            "departure_date": "2026-04-25",
-            "return_date": "2026-04-28",
-        }
-
-        result = apply_free_text_trip_fallbacks(
-            raw,
-            "I want to fly from Berlin to London for 2 day from 20th of April. Give me a plan.",
-            {"departure_date": "2026-04-25", "return_date": "2026-04-28"},
-        )
-
-        assert result["departure_date"] == "2026-04-25"
-        assert result["return_date"] == "2026-04-28"
-
-    def test_one_way_duration_sets_check_out_not_return_date(self):
-        raw = {
-            "origin": "Berlin",
-            "destination": "Barcelona",
-            "departure_date": "2026-04-22",
-            "return_date": "2026-04-29",
-        }
-
-        result = apply_free_text_trip_fallbacks(
-            raw,
-            "I want to fly from Berlin to Barcelona on the 19th of April. One way for 2 nights.",
-            {},
-        )
-
-        assert result["departure_date"] == "2026-04-19"
-        assert result["return_date"] == ""
-        assert result["check_out_date"] == "2026-04-21"
+    def test_invalid_date_returns_false(self):
+        assert is_valid_iso_date("2026-02-30") is False
+        assert is_valid_iso_date("2026-13-01") is False
 
 
 class TestClassifyDomain:
@@ -520,16 +462,19 @@ class TestTripIntakeNode:
 
         assert mock_invoke.call_count == 1
 
-    def test_free_text_duration_and_explicit_date_fix_llm_misread(self):
+    def test_free_text_duration_and_date_extracted_by_llm(self):
+        """LLM extracts correct dates from natural language."""
         mock_llm = MagicMock()
         mock_response = MagicMock()
+        # LLM now correctly extracts dates and calculates duration
         mock_response.tool_calls = [
             {
                 "args": {
                     "origin": "Berlin",
                     "destination": "London",
-                    "departure_date": "2026-04-22",
-                    "return_date": "2026-04-29",
+                    "departure_date": "2026-04-20",
+                    "return_date": "2026-04-22",
+                    "check_out_date": "2026-04-22",
                 }
             }
         ]
@@ -538,7 +483,7 @@ class TestTripIntakeNode:
 
         state = self._base_state(
             structured_fields={},
-            free_text_query="I want to fly from Berlin to London for 2 day from 20th of April. Give me a plan.",
+            free_text_query="I want to fly from Berlin to London for 2 days from 20th of April. Give me a plan.",
         )
 
         with patch("domain.nodes.trip_intake.create_chat_model", return_value=mock_llm):
@@ -551,16 +496,20 @@ class TestTripIntakeNode:
         assert trip["return_date"] == "2026-04-22"
         assert trip["check_out_date"] == "2026-04-22"
 
-    def test_free_text_one_way_duration_does_not_create_round_trip(self):
+    def test_free_text_one_way_extracted_by_llm(self):
+        """LLM extracts one-way intent and leaves return_date empty."""
         mock_llm = MagicMock()
         mock_response = MagicMock()
+        # LLM now correctly identifies one-way trips
         mock_response.tool_calls = [
             {
                 "args": {
                     "origin": "Berlin",
                     "destination": "Barcelona",
-                    "departure_date": "2026-04-22",
-                    "return_date": "2026-04-29",
+                    "departure_date": "2026-04-19",
+                    "return_date": "",
+                    "check_out_date": "2026-04-21",
+                    "is_one_way": True,
                 }
             }
         ]
