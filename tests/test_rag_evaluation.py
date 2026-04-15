@@ -1,5 +1,8 @@
 """Tests for infrastructure/rag/evaluation.py."""
 
+import sys
+from types import ModuleType
+
 from infrastructure.rag.evaluation import (
     build_retrieval_snapshot,
     evaluate_with_ragas,
@@ -61,13 +64,31 @@ class TestEvaluateWithRagas:
             calls["embeddings"] = embeddings
             return "ok"
 
-        monkeypatch.setattr("datasets.Dataset", FakeDataset)
-        monkeypatch.setattr("ragas.evaluate", fake_evaluate)
-        monkeypatch.setattr("ragas.llms.LangchainLLMWrapper", lambda llm: ("wrapped_llm", llm))
-        monkeypatch.setattr(
-            "ragas.embeddings.LangchainEmbeddingsWrapper",
-            lambda embeddings: ("wrapped_embeddings", embeddings),
+        datasets_module = ModuleType("datasets")
+        datasets_module.Dataset = FakeDataset
+
+        ragas_module = ModuleType("ragas")
+        ragas_module.evaluate = fake_evaluate
+
+        ragas_llms_module = ModuleType("ragas.llms")
+        ragas_llms_module.LangchainLLMWrapper = lambda llm: ("wrapped_llm", llm)
+
+        ragas_embeddings_module = ModuleType("ragas.embeddings")
+        ragas_embeddings_module.LangchainEmbeddingsWrapper = (
+            lambda embeddings: ("wrapped_embeddings", embeddings)
         )
+
+        ragas_metrics_module = ModuleType("ragas.metrics")
+        ragas_metrics_module.answer_relevancy = object()
+        ragas_metrics_module.context_precision = object()
+        ragas_metrics_module.context_recall = object()
+        ragas_metrics_module.faithfulness = object()
+
+        monkeypatch.setitem(sys.modules, "datasets", datasets_module)
+        monkeypatch.setitem(sys.modules, "ragas", ragas_module)
+        monkeypatch.setitem(sys.modules, "ragas.llms", ragas_llms_module)
+        monkeypatch.setitem(sys.modules, "ragas.embeddings", ragas_embeddings_module)
+        monkeypatch.setitem(sys.modules, "ragas.metrics", ragas_metrics_module)
         monkeypatch.setattr("infrastructure.rag.evaluation.create_chat_model", lambda provider, model, temperature=0: "llm")
         monkeypatch.setattr("infrastructure.rag.evaluation.create_embeddings", lambda provider: "embeddings")
 
