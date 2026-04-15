@@ -17,7 +17,7 @@ TripBreeze is deployed on Streamlit Community Cloud:
 - 🌤️ Shows weather forecasts for each day of the trip (via Open-Meteo, no API key needed)
 - 💸 Tracks budget against the trip request
 - ✅ Lets the user review results before finalising
-- 🧠 Remembers preferences such as home airport, class, and trip history
+- 🧠 Remembers preferences such as home airport, class, and trip history (with PDF download for past trips)
 - 📄 Exports final itinerary as a downloadable PDF
 - 📧 Sends itinerary via email with PDF attachment (requires SMTP configuration)
 - 📈 Supports LangSmith tracing for LLM observability
