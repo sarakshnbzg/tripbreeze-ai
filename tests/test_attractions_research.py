@@ -41,3 +41,33 @@ class TestAttractionsResearch:
 
         assert result["attraction_candidates"] == []
         assert result["current_step"] == "attractions_complete"
+
+    def test_queries_each_multi_city_destination_once(self, monkeypatch):
+        calls = []
+
+        def fake_search_attractions(destination, interests):
+            calls.append((destination, interests))
+            return [{"name": f"{destination} Museum"}]
+
+        monkeypatch.setattr(
+            "domain.nodes.attractions_research.search_attractions",
+            fake_search_attractions,
+        )
+
+        result = attractions_research(
+            {
+                "trip_request": {"destination": "Paris", "interests": ["art"]},
+                "trip_legs": [
+                    {"destination": "Paris", "nights": 3},
+                    {"destination": "Barcelona", "nights": 4},
+                    {"destination": "London", "nights": 0},
+                ],
+            }
+        )
+
+        assert calls == [("Paris", ["art"]), ("Barcelona", ["art"])]
+        assert [item["name"] for item in result["attraction_candidates"]] == [
+            "Paris Museum",
+            "Barcelona Museum",
+        ]
+        assert result["attraction_candidates"][1]["destination"] == "Barcelona"

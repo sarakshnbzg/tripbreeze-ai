@@ -6,6 +6,7 @@ from presentation.streamlit_app import (
     _build_token_usage_label,
     _build_profile_payload,
     _logout,
+    _personalisation_destination_label,
     _planning_progress_markdown,
     _select_options_with_blank,
     _start_authenticated_session,
@@ -108,6 +109,29 @@ class TestPlanningProgressMarkdown:
     def test_joins_updates_with_blank_lines(self):
         content = _planning_progress_markdown(["Planning your trip...", "**Searching flights...**", "Found 5 flight options."])
         assert content == "Planning your trip...\n\n**Searching flights...**\n\nFound 5 flight options."
+
+
+class TestPersonalisationDestinationLabel:
+    def test_uses_all_multi_city_destinations_with_overnight_stays(self):
+        label = _personalisation_destination_label(
+            {
+                "trip_request": {"destination": "Paris"},
+                "trip_legs": [
+                    {"destination": "Paris", "nights": 3},
+                    {"destination": "Barcelona", "nights": 4},
+                    {"destination": "London", "nights": 0},
+                ],
+            }
+        )
+
+        assert label == "Paris + Barcelona"
+
+    def test_falls_back_to_trip_request_destination_for_single_city(self):
+        label = _personalisation_destination_label(
+            {"trip_request": {"destination": "Paris"}}
+        )
+
+        assert label == "Paris"
 
 
 class TestOptionCardRendering:

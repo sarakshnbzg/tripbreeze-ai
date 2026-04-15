@@ -14,21 +14,43 @@ logger = get_logger(__name__)
 def attractions_research(state: dict) -> dict:
     """LangGraph node: fetch attraction candidates for the destination."""
     trip_request = state.get("trip_request", {})
-    destination = trip_request.get("destination", "")
     interests = trip_request.get("interests", []) or []
+    trip_legs = state.get("trip_legs", []) or []
 
-    if not destination:
-        logger.info("attractions_research skipped — no destination in trip_request")
+    destinations: list[str] = []
+    for leg in trip_legs:
+        destination = str(leg.get("destination", "")).strip()
+        if destination and destination not in destinations and int(leg.get("nights", 0) or 0) > 0:
+            destinations.append(destination)
+
+    if not destinations:
+        destination = str(trip_request.get("destination", "")).strip()
+        if destination:
+            destinations.append(destination)
+
+    if not destinations:
+        logger.info("attractions_research skipped — no destinations available")
         return {"attraction_candidates": [], "current_step": "attractions_complete"}
 
     logger.info(
-        "attractions_research started destination=%s interests=%s",
-        destination,
+        "attractions_research started destinations=%s interests=%s",
+        destinations,
         interests,
     )
 
+    candidates = []
     try:
-        candidates = search_attractions(destination=destination, interests=interests)
+        seen_names: set[str] = set()
+        for destination in destinations:
+            for candidate in search_attractions(destination=destination, interests=interests):
+                name = str(candidate.get("name", "")).strip().lower()
+                if name and name in seen_names:
+                    continue
+                if name:
+                    seen_names.add(name)
+                enriched_candidate = dict(candidate)
+                enriched_candidate.setdefault("destination", destination)
+                candidates.append(enriched_candidate)
     except Exception as exc:
         logger.exception("attractions_research failed: %s", exc)
         candidates = []

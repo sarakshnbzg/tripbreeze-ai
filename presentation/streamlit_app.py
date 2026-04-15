@@ -479,6 +479,24 @@ def _render_profile_sidebar() -> None:
         st.rerun()
 
 
+def _personalisation_destination_label(state: dict[str, Any]) -> str:
+    """Return a user-facing destination label for the personalise step."""
+    trip_request = state.get("trip_request", {}) or {}
+    trip_legs = state.get("trip_legs", []) or []
+
+    leg_destinations: list[str] = []
+    for leg in trip_legs:
+        destination = str(leg.get("destination", "")).strip()
+        if destination and destination not in leg_destinations and int(leg.get("nights", 0) or 0) > 0:
+            leg_destinations.append(destination)
+
+    if len(leg_destinations) > 1:
+        return " + ".join(leg_destinations)
+    if leg_destinations:
+        return leg_destinations[0]
+    return trip_request.get("destination", "your destination")
+
+
 def _render_interests_form() -> None:
     """Separate step after flight/hotel approval - choose interests and pace."""
     state = st.session_state.graph_state
@@ -487,9 +505,9 @@ def _render_interests_form() -> None:
         return
 
     trip_request = state.get("trip_request", {})
-    destination = trip_request.get("destination", "your destination")
+    destination_label = _personalisation_destination_label(state)
 
-    st.subheader(f"Personalise your {destination} itinerary")
+    st.subheader(f"Personalise your {destination_label} itinerary")
     st.caption(
         "Pick the activities you enjoy and your preferred daily pace. "
         "We'll find real attractions and build a day-by-day plan for you."
