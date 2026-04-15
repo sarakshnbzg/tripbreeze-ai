@@ -238,6 +238,8 @@ def run_finalisation(feedback: str = "") -> None:
         "user_feedback": feedback,
         "selected_flight": state.get("selected_flight", {}),
         "selected_hotel": state.get("selected_hotel", {}),
+        "selected_flights": state.get("selected_flights", []),
+        "selected_hotels": state.get("selected_hotels", []),
         "trip_request": state.get("trip_request", {}),
         "llm_provider": st.session_state.llm_provider,
         "llm_model": st.session_state.llm_model,

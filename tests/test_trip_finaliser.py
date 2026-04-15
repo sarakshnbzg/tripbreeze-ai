@@ -1,9 +1,16 @@
 """Tests for domain/nodes/trip_finaliser.py."""
 
+from unittest.mock import MagicMock, patch
+
 from domain.nodes.trip_finaliser import (
+    _build_multi_city_daily_plans,
     render_itinerary_markdown,
     Itinerary,
     Source,
+    _format_multi_city_budget,
+    _multi_city_flight_summary,
+    _multi_city_packing_tips,
+    _parse_multi_city_destination_info,
     _selected_flight_context,
     _selected_hotel_context,
     _traveler_preference_context,
@@ -141,6 +148,212 @@ class TestSelectedFlightContext:
         )
         assert "Outbound flight summary:" in context
         assert "Return flight summary:" not in context
+
+
+class TestMultiCityFlightSummary:
+    def test_uses_outbound_summary_when_present(self):
+        summary = _multi_city_flight_summary(
+            {"outbound_summary": "BER 08:35 → CDG 10:25", "airline": "Air France"},
+            "EUR",
+        )
+        assert summary == "BER 08:35 → CDG 10:25"
+
+    def test_builds_summary_from_raw_fields_when_outbound_summary_missing(self):
+        summary = _multi_city_flight_summary(
+            {
+                "airline": "Air France",
+                "departure_time": "08:35",
+                "arrival_time": "10:25",
+                "duration": "1h 50m",
+                "stops": 0,
+                "total_price": 117,
+            },
+            "EUR",
+        )
+        assert "Air France" in summary
+        assert "08:35 → 10:25" in summary
+        assert "1h 50m" in summary
+        assert "Direct" in summary
+        assert "EUR 117 total" in summary
+
+
+class TestMultiCityDerivedSections:
+    def test_parses_destination_info_into_highlights_and_entry_sections(self):
+        destination_info = (
+            "A quick travel snapshot for each destination to help you compare options and plan your stay:\n\n"
+            "### Paris\n\n"
+            "#### 🌍 Overview\n"
+            "Paris, France is a strong city-break choice; best time to visit is April-June. (Source: Destinations)\n\n"
+            "#### 🛂 Entry Requirements\n"
+            "### France (Schengen Area)\n"
+            "- **US citizens:** Visa-free for up to 90 days. (Source: Visa Requirements)\n"
+            "- **Documents needed:** Passport valid 3+ months beyond stay. (Source: Visa Requirements)\n\n"
+            "---\n\n"
+            "### Rome\n\n"
+            "#### 🌍 Overview\n"
+            "Rome, Italy is a strong city-break choice; best time to visit is April-May. (Source: Destinations)\n\n"
+            "#### 🛂 Entry Requirements\n"
+            "### Italy (Schengen Area)\n"
+            "- **US citizens:** Visa-free for up to 90 days. (Source: Visa Requirements)"
+        )
+
+        highlights, visa_info = _parse_multi_city_destination_info(destination_info)
+
+        assert "**Paris:** Paris, France is a strong city-break choice" in highlights
+        assert "**Rome:** Rome, Italy is a strong city-break choice" in highlights
+        assert "Source:" not in highlights
+        assert "**Paris — France (Schengen Area)**" in visa_info
+        assert "**US citizens:** Visa-free for up to 90 days." in visa_info
+        assert "Documents needed" in visa_info
+
+    def test_formats_multi_city_budget_for_users(self):
+        budget_md = _format_multi_city_budget(
+            {
+                "flight_cost": 566.0,
+                "hotel_cost": 458.0,
+                "estimated_daily_expenses": 860.0,
+                "total_estimated": 1884.0,
+                "budget_notes": "You're within budget with ~EUR 1116 to spare.",
+                "per_leg_breakdown": [
+                    {
+                        "origin": "Berlin",
+                        "destination": "Paris",
+                        "nights": 2,
+                        "flight_cost": 161,
+                        "hotel_cost": 269,
+                        "daily_expenses": 440,
+                        "leg_total": 870,
+                    }
+                ],
+            },
+            "EUR",
+        )
+
+        assert 'flight_cost' not in budget_md
+        assert "- Flights: EUR 566" in budget_md
+        assert "- Total estimated trip cost: EUR 1,884" in budget_md
+        assert "**Per leg**" in budget_md
+        assert "Berlin → Paris" in budget_md
+
+    def test_builds_trip_aware_packing_tips(self):
+        tips = _multi_city_packing_tips(
+            {"departure_date": "2026-06-11"},
+            [
+                {"destination": "Paris", "nights": 2},
+                {"destination": "Rome", "nights": 2},
+            ],
+        )
+
+        assert "Paris, Rome" in tips
+        assert "June" in tips
+        assert "passports" in tips
+
+    def test_builds_multi_city_daily_plans_from_leg_dates(self):
+        plans = _build_multi_city_daily_plans(
+            [
+                {
+                    "origin": "Berlin",
+                    "destination": "Paris",
+                    "departure_date": "2026-06-11",
+                    "nights": 2,
+                },
+                {
+                    "origin": "Paris",
+                    "destination": "Rome",
+                    "departure_date": "2026-06-13",
+                    "nights": 2,
+                },
+                {
+                    "origin": "Rome",
+                    "destination": "Berlin",
+                    "departure_date": "2026-06-15",
+                    "nights": 0,
+                },
+            ]
+        )
+
+        assert len(plans) == 4
+        assert plans[0].date == "2026-06-11"
+        assert plans[0].theme == "Arrive in Paris from Berlin"
+        assert plans[1].date == "2026-06-12"
+        assert plans[1].theme == "Final full day in Paris"
+        assert plans[2].date == "2026-06-13"
+        assert plans[2].theme == "Arrive in Rome from Paris"
+        assert plans[3].date == "2026-06-14"
+
+    @patch("domain.nodes.trip_finaliser.fetch_weather_for_trip", return_value={})
+    @patch("domain.nodes.trip_finaliser.create_chat_model")
+    def test_multi_city_trip_uses_llm_structured_itinerary(self, mock_create, _mock_weather):
+        response = MagicMock()
+        response.tool_calls = [
+            {
+                "id": "mc-1",
+                "name": "MultiCityItinerary",
+                "args": {
+                    "trip_overview": "Berlin → Paris → Rome → Berlin for 4 nights.",
+                    "legs": [
+                        {
+                            "leg_number": 1,
+                            "origin": "Berlin",
+                            "destination": "Paris",
+                            "departure_date": "2026-06-11",
+                            "flight_summary": "Air France direct",
+                            "hotel_summary": "Hotel Le Marais - 4 stars",
+                            "nights": 2,
+                        }
+                    ],
+                    "destination_highlights": "- **Paris:** Great for a short city break.",
+                    "daily_plans": [
+                        {"day_number": 1, "date": "2026-06-11", "theme": "Arrive in Paris", "activities": []}
+                    ],
+                    "budget_breakdown": "- Total estimated trip cost: EUR 1,884",
+                    "visa_entry_info": "**Paris — France (Schengen Area)**\n- **US citizens:** Visa-free for up to 90 days.",
+                    "packing_tips": "- Pack light layers.",
+                    "sources": [],
+                },
+            }
+        ]
+        response.usage_metadata = {"input_tokens": 50, "output_tokens": 100}
+
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+        mock_llm.invoke.return_value = response
+        mock_create.return_value = mock_llm
+
+        state = {
+            "trip_legs": [
+                {"leg_index": 0, "origin": "Berlin", "destination": "Paris", "departure_date": "2026-06-11", "nights": 2, "needs_hotel": True},
+                {"leg_index": 1, "origin": "Paris", "destination": "Rome", "departure_date": "2026-06-13", "nights": 2, "needs_hotel": True},
+                {"leg_index": 2, "origin": "Rome", "destination": "Berlin", "departure_date": "2026-06-15", "nights": 0, "needs_hotel": False},
+            ],
+            "trip_request": {
+                "origin": "Berlin",
+                "departure_date": "2026-06-11",
+                "return_date": "2026-06-15",
+                "currency": "EUR",
+                "num_travelers": 2,
+                "pace": "moderate",
+                "interests": ["food", "art"],
+            },
+            "selected_flights": [{"airline": "Air France", "outbound_summary": "BER 08:00 → CDG 10:00"}],
+            "selected_hotels": [{"name": "Hotel Le Marais", "rating": 4}],
+            "destination_info": "### Paris\n\n#### 🌍 Overview\nParis overview.\n\n#### 🛂 Entry Requirements\n### France (Schengen Area)\n- **US citizens:** Visa-free.",
+            "budget": {"total_estimated": 1884, "currency": "EUR"},
+            "llm_provider": "openai",
+            "llm_model": "gpt-4o-mini",
+            "llm_temperature": 0.5,
+            "user_profile": {},
+            "rag_sources": [],
+        }
+
+        from domain.nodes.trip_finaliser import trip_finaliser
+
+        result = trip_finaliser(state)
+
+        assert "Berlin → Paris → Rome → Berlin for 4 nights." in result["final_itinerary"]
+        assert "Arrive in Paris" in result["final_itinerary"]
+        assert result["itinerary_data"]["daily_plans"][0]["date"] == "2026-06-11"
+        assert mock_llm.invoke.call_count == 1
 
 
 class TestTravelerPreferenceContext:

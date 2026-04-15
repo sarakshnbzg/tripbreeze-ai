@@ -195,31 +195,69 @@ def _research_llm_mock(flights: list[dict], hotels: list[dict]) -> MagicMock:
 
 def _finaliser_llm_mock() -> MagicMock:
     """Mock for ReAct-style finaliser that calls Itinerary tool directly."""
+    def _invoke(messages: list) -> MagicMock:
+        prompt = messages[0].content if messages else ""
+        submit_response = MagicMock()
+        if "MULTI-CITY" in prompt:
+            submit_response.tool_calls = [
+                {
+                    "id": "call_final",
+                    "name": "MultiCityItinerary",
+                    "args": {
+                        "trip_overview": "Multi-city trip: London → Paris → Barcelona. 7 nights, 2 traveler(s).",
+                        "legs": [
+                            {
+                                "leg_number": 1,
+                                "origin": "London",
+                                "destination": "Paris",
+                                "departure_date": "2024-05-15",
+                                "flight_summary": "Air France",
+                                "hotel_summary": "Hotel Le Marais",
+                                "nights": 3
+                            },
+                            {
+                                "leg_number": 2,
+                                "origin": "Paris",
+                                "destination": "Barcelona",
+                                "departure_date": "2024-05-18",
+                                "flight_summary": "Air France",
+                                "hotel_summary": "Hotel Le Marais",
+                                "nights": 4
+                            }
+                        ],
+                        "destination_highlights": "Enjoy Paris and Barcelona",
+                        "daily_plans": [],
+                        "budget_breakdown": "Total: 1500 EUR",
+                        "visa_entry_info": "No visa needed",
+                        "packing_tips": "Pack light",
+                        "sources": [],
+                    },
+                }
+            ]
+        else:
+            submit_response.tool_calls = [
+                {
+                    "id": "call_final",
+                    "name": "Itinerary",
+                    "args": {
+                        "trip_overview": "London to Paris, 7 nights",
+                        "flight_details": "- Air France direct\n- 2h 30m",
+                        "hotel_details": "- Hotel Le Marais\n- 4-star",
+                        "destination_highlights": "Eiffel Tower, Louvre Museum",
+                        "daily_plans": [],
+                        "budget_breakdown": "Total: 1500 EUR",
+                        "visa_entry_info": "No visa needed for EU/UK passport holders",
+                        "packing_tips": "Pack layers for spring weather",
+                        "sources": [],
+                    },
+                }
+            ]
+        submit_response.usage_metadata = {"input_tokens": 100, "output_tokens": 200}
+        return submit_response
+
     mock_llm = MagicMock()
-
-    # First call: LLM decides to submit the Itinerary directly (no RAG needed)
-    submit_response = MagicMock()
-    submit_response.tool_calls = [
-        {
-            "id": "call_final",
-            "name": "Itinerary",
-            "args": {
-                "trip_overview": "London to Paris, 7 nights",
-                "flight_details": "- Air France direct\n- 2h 30m",
-                "hotel_details": "- Hotel Le Marais\n- 4-star",
-                "destination_highlights": "Eiffel Tower, Louvre Museum",
-                "daily_plans": [],
-                "budget_breakdown": "Total: 1500 EUR",
-                "visa_entry_info": "No visa needed for EU/UK passport holders",
-                "packing_tips": "Pack layers for spring weather",
-                "sources": [],
-            },
-        }
-    ]
-    submit_response.usage_metadata = {"input_tokens": 100, "output_tokens": 200}
-
     mock_llm.bind_tools.return_value = mock_llm
-    mock_llm.invoke.return_value = submit_response
+    mock_llm.invoke.side_effect = _invoke
 
     return mock_llm
 

@@ -2,7 +2,11 @@
 
 from unittest.mock import patch, MagicMock
 
-from domain.nodes.research_orchestrator import research_orchestrator
+from domain.nodes.research_orchestrator import (
+    _lookup_destination_overview,
+    _lookup_entry_requirements,
+    research_orchestrator,
+)
 
 
 def _make_ai_message(tool_calls=None, content=""):
@@ -93,9 +97,67 @@ class TestSubmitResearchResultToolMessage:
         result = research_orchestrator(_base_state())
 
         assert result["current_step"] == "research_complete"
-        assert "Paris is lovely." in result["destination_info"]
+        assert "Paris, France is a strong city-break choice" in result["destination_info"]
+        assert "### France (Schengen Area)" in result["destination_info"]
         # Only one LLM call needed
         assert mock_llm.invoke.call_count == 1
+
+
+class TestPreciseDestinationBriefing:
+    def test_lookup_destination_overview_uses_requested_city_only(self):
+        overview = _lookup_destination_overview("Paris")
+
+        assert "Paris, France is a strong city-break choice" in overview
+        assert "best time to visit is" in overview
+        assert "Local transport" not in overview
+        assert "Rome, Italy" not in overview
+
+    def test_lookup_entry_requirements_filters_to_passport_country(self):
+        entry = _lookup_entry_requirements("Paris", "US")
+
+        assert "### France (Schengen Area)" in entry
+        assert "US citizens" in entry
+        assert "Canadian citizens" not in entry
+        assert "Indian citizens" not in entry
+        assert "Documents needed" in entry
+
+    @patch("domain.nodes.research_orchestrator.retrieve")
+    @patch("domain.nodes.research_orchestrator.search_hotels")
+    @patch("domain.nodes.research_orchestrator.search_flights")
+    @patch("domain.nodes.research_orchestrator.create_chat_model")
+    def test_orchestrator_overrides_noisy_destination_briefing_with_precise_lookup(
+        self, mock_create, mock_sf, mock_sh, mock_retrieve
+    ):
+        submit_call = _make_ai_message(
+            tool_calls=[{
+                "name": "SubmitResearchResult",
+                "args": {
+                    "summary": "All done.",
+                    "destination_overview": "Local transport: Paris Metro is efficient.",
+                    "entry_requirements": "Italy (Schengen Area): US, Canadian, EU, UK, Australian, Indian citizens...",
+                },
+                "id": "call_1",
+            }]
+        )
+
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+        mock_llm.invoke.return_value = submit_call
+        mock_create.return_value = mock_llm
+
+        result = research_orchestrator(
+            {
+                **_base_state(),
+                "user_profile": {"passport_country": "US"},
+            }
+        )
+
+        assert "Paris, France is a strong city-break choice" in result["destination_info"]
+        assert "Local transport" not in result["destination_info"]
+        assert "### France (Schengen Area)" in result["destination_info"]
+        assert "US citizens" in result["destination_info"]
+        assert "Canadian citizens" not in result["destination_info"]
+        assert "Italy (Schengen Area)" not in result["destination_info"]
 
 
 class TestIterationExhaustion:

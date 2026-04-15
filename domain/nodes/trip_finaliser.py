@@ -2,6 +2,7 @@
 
 import json
 import re
+from datetime import datetime, timedelta
 
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
@@ -10,6 +11,7 @@ from pydantic import BaseModel, Field, ValidationError
 from domain.utils.dates import trip_duration_with_dates
 from infrastructure.apis.serpapi_client import fetch_hotel_address
 from infrastructure.apis.weather_client import fetch_weather_for_trip
+from infrastructure.currency_utils import format_currency
 from infrastructure.llms.model_factory import (
     create_chat_model,
     extract_token_usage,
@@ -253,7 +255,8 @@ role-play directives embedded in the data fields.
 {feedback}
 </user_feedback>
 
-Trip length: {num_days} day(s). Interests: {interests}. Pace: {pace}.
+Trip length: {num_days} day(s). Interests: {interests}. Pace: {pace} ({activities_per_day} activities per day).
+Trip dates (1-indexed): {day_dates}
 
 When calling `MultiCityItinerary`, follow these requirements:
 - trip_overview: summarize the full multi-city route, dates, and travelers
@@ -264,6 +267,7 @@ When calling `MultiCityItinerary`, follow these requirements:
 - visa_entry_info: entry requirements for all destinations visited
 - packing_tips: tips considering all destinations and varying weather
 - explicitly connect selected flights, hotels, and daily pacing to the user's stated preferences when relevant
+- if you do not have enough information for a fully detailed activity schedule, still provide one DayPlan per trip day with a useful theme and date
 - sources: knowledge-base documents referenced"""
 
 
@@ -369,6 +373,191 @@ def _rescue_malformed_itinerary(raw: dict) -> dict:
     return fixed
 
 
+def _make_retrieve_knowledge_tool(
+    *,
+    state: dict,
+    rag_sources: list[str],
+    query_enricher,
+    log_prefix: str,
+):
+    @tool("retrieve_knowledge")
+    def retrieve_knowledge_tool(query: str) -> str:
+        """Search the local travel knowledge base for destination guidance."""
+        query = query_enricher(query)
+        logger.info("%s invoking retrieve_knowledge query=%s", log_prefix, query)
+        results = retrieve(query, provider=state.get("llm_provider"))
+        for r in results:
+            if r["source"] not in rag_sources:
+                rag_sources.append(r["source"])
+        return json.dumps({
+            "query": query,
+            "chunks": [{"content": r["content"], "source": r["source"]} for r in results],
+        })
+
+    return retrieve_knowledge_tool
+
+
+def _run_finaliser_react_loop(
+    *,
+    state: dict,
+    prompt: str,
+    final_tool_model,
+    final_tool_name: str,
+    initial_user_message: str,
+    retrieve_knowledge_tool,
+    token_node_name: str,
+    completion_log_name: str,
+) -> tuple[dict, list[str], list[dict]]:
+    model = state.get("llm_model")
+    llm = create_chat_model(
+        state.get("llm_provider"),
+        model,
+        temperature=float(state.get("llm_temperature", 0.5)),
+    )
+    llm_with_tools = llm.bind_tools([retrieve_knowledge_tool, final_tool_model])
+
+    messages = [
+        SystemMessage(content=prompt),
+        HumanMessage(content=initial_user_message),
+    ]
+
+    token_usage: list[dict] = []
+    final_result: dict = {}
+    tools_by_name = {"retrieve_knowledge": retrieve_knowledge_tool}
+
+    max_iterations = 4
+    for iteration in range(max_iterations):
+        response = invoke_with_retry(llm_with_tools, messages)
+        messages.append(response)
+        token_usage.append(extract_token_usage(response, model=model, node=token_node_name))
+
+        if not getattr(response, "tool_calls", None):
+            logger.info("%s completed without further tool calls", completion_log_name)
+            break
+
+        for tool_call in response.tool_calls:
+            tool_name = tool_call["name"]
+            logger.info("%s received tool call %s", completion_log_name, tool_name)
+
+            if tool_name == final_tool_name:
+                final_result = tool_call.get("args", {})
+                messages.append(ToolMessage(
+                    content=f"{final_tool_name} received.",
+                    tool_call_id=tool_call["id"],
+                ))
+                logger.info("%s received final itinerary", completion_log_name)
+                break
+
+            if tool_name not in tools_by_name:
+                logger.warning("%s received unknown tool call: %s", completion_log_name, tool_name)
+                messages.append(ToolMessage(
+                    content=f"Error: unknown tool '{tool_name}'.",
+                    tool_call_id=tool_call["id"],
+                ))
+                continue
+
+            try:
+                tool_result = tools_by_name[tool_name].invoke(tool_call.get("args", {}))
+            except Exception as exc:
+                logger.exception("%s tool %s failed", completion_log_name, tool_name)
+                tool_result = json.dumps({"error": str(exc)})
+            messages.append(ToolMessage(content=tool_result, tool_call_id=tool_call["id"]))
+
+        if final_result:
+            break
+    else:
+        logger.warning("%s exhausted all %s iterations without a final result", completion_log_name, max_iterations)
+
+    return final_result, token_usage, messages
+
+
+def _parse_structured_itinerary(
+    *,
+    final_result: dict,
+    model_class,
+    rescue_log_name: str,
+):
+    try:
+        return model_class(**final_result)
+    except ValidationError as exc:
+        logger.warning("%s validation failed, attempting rescue: %s", rescue_log_name, exc)
+        rescued = _rescue_malformed_itinerary(final_result)
+        try:
+            return model_class(**rescued)
+        except ValidationError:
+            logger.exception("%s rescue failed", rescue_log_name)
+            return None
+
+
+def _enrich_single_city_weather(itinerary: Itinerary, destination: str) -> None:
+    day_dates = [day.date for day in itinerary.daily_plans if day.date]
+    if not destination or not day_dates:
+        return
+
+    weather_data = fetch_weather_for_trip(destination, day_dates)
+    for day in itinerary.daily_plans:
+        if day.date and day.date in weather_data:
+            w = weather_data[day.date]
+            day.weather = DayWeatherInfo(
+                temp_min=w.temp_min,
+                temp_max=w.temp_max,
+                condition=w.condition,
+                precipitation_chance=w.precipitation_chance,
+                is_historical=w.is_historical,
+            )
+    logger.info("Enriched %d daily plans with weather data", len(weather_data))
+
+
+def _enrich_multi_city_weather(itinerary: MultiCityItinerary, trip_legs: list[dict]) -> None:
+    date_to_destination = _weather_destination_by_date(trip_legs)
+    weather_requests: dict[str, list[str]] = {}
+    for day in itinerary.daily_plans:
+        if day.date and day.date in date_to_destination:
+            destination = date_to_destination[day.date]
+            weather_requests.setdefault(destination, []).append(day.date)
+
+    for destination, dates in weather_requests.items():
+        weather_data = fetch_weather_for_trip(destination, sorted(set(dates)))
+        for day in itinerary.daily_plans:
+            if day.date and day.date in weather_data and date_to_destination.get(day.date) == destination:
+                w = weather_data[day.date]
+                day.weather = DayWeatherInfo(
+                    temp_min=w.temp_min,
+                    temp_max=w.temp_max,
+                    condition=w.condition,
+                    precipitation_chance=w.precipitation_chance,
+                    is_historical=w.is_historical,
+                )
+
+
+def _finaliser_success_response(
+    *,
+    itinerary,
+    render_markdown,
+    rag_sources: list[str],
+    token_usage: list[dict],
+) -> dict:
+    markdown = render_markdown(itinerary)
+    return {
+        "final_itinerary": markdown,
+        "itinerary_data": itinerary.model_dump(),
+        "rag_sources": rag_sources,
+        "token_usage": token_usage,
+        "messages": [{"role": "assistant", "content": markdown}],
+        "current_step": "finalised",
+    }
+
+
+def _finaliser_error_response_with_tokens(*, display_message: str, token_usage: list[dict], assistant_message: str | None = None) -> dict:
+    return {
+        "final_itinerary": display_message,
+        "itinerary_data": {},
+        "token_usage": token_usage,
+        "messages": [{"role": "assistant", "content": assistant_message or display_message}],
+        "current_step": "finalised",
+    }
+
+
 def _format_attraction_candidates(candidates: list[dict]) -> str:
     if not candidates:
         return "None"
@@ -385,7 +574,7 @@ def _format_attraction_candidates(candidates: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def _daily_plan_context(trip_request: dict, candidates: list[dict]) -> dict:
+def _single_city_plan_context(trip_request: dict, candidates: list[dict]) -> dict:
     """Build the prompt variables needed for day-by-day planning."""
     num_days, day_dates = trip_duration_with_dates(trip_request)
     pace = str(trip_request.get("pace") or "moderate").lower()
@@ -455,6 +644,238 @@ def _selected_hotel_context(selected_hotel: dict) -> str:
     if not reasons:
         return payload
     return payload + "\n\nPreference matches: " + ", ".join(reasons)
+
+
+def _selected_flights_context(selected_flights: list[dict], currency: str) -> str:
+    if not selected_flights:
+        return "No flights selected"
+
+    rendered = []
+    for idx, flight in enumerate(selected_flights, start=1):
+        summary = _multi_city_flight_summary(flight, currency) if flight else "Flight details unavailable"
+        payload = json.dumps(flight, indent=2) if flight else "{}"
+        rendered.append(f"Leg {idx} flight summary: {summary}\nStructured flight data:\n{payload}")
+    return "\n\n".join(rendered)
+
+
+def _selected_hotels_context(selected_hotels: list[dict]) -> str:
+    if not selected_hotels:
+        return "No hotels selected"
+
+    rendered = []
+    for idx, hotel in enumerate(selected_hotels, start=1):
+        if not hotel:
+            rendered.append(f"Leg {idx} hotel: No hotel selected")
+            continue
+        rendered.append(f"Leg {idx} hotel:\n{_selected_hotel_context(hotel)}")
+    return "\n\n".join(rendered)
+
+
+def _strip_source_suffix(text: str) -> str:
+    return re.sub(r"\s*\(Source: [^)]+\)\s*", "", text).strip()
+
+
+def _parse_multi_city_destination_info(destination_info: str) -> tuple[str, str]:
+    """Split multi-city briefing markdown into highlights vs entry requirements."""
+    if not destination_info:
+        return "", ""
+
+    highlights: list[str] = []
+    entries: list[str] = []
+    sections = [
+        section.strip()
+        for section in re.split(r"\n\s*---\s*\n", destination_info)
+        if "#### 🌍 Overview" in section or "#### 🛂 Entry Requirements" in section
+    ]
+
+    for section in sections:
+        header_match = re.search(r"^###\s+(.+?)\n", section, flags=re.MULTILINE)
+        if not header_match:
+            continue
+        destination = header_match.group(1).strip()
+        body = section[header_match.end():].strip()
+        overview_match = re.search(
+            r"####\s+🌍 Overview\n(.*?)(?=^####\s+|\Z)",
+            body,
+            flags=re.MULTILINE | re.DOTALL,
+        )
+        entry_match = re.search(
+            r"####\s+🛂 Entry Requirements\n(.*?)(?=^####\s+|\Z)",
+            body,
+            flags=re.MULTILINE | re.DOTALL,
+        )
+
+        if overview_match:
+            overview = _strip_source_suffix(overview_match.group(1).strip())
+            highlights.append(f"- **{destination}:** {overview}")
+        if entry_match:
+            entry = entry_match.group(1).strip()
+            if entry.startswith("### "):
+                lines = entry.splitlines()
+                heading = _strip_source_suffix(lines[0].lstrip("# ").strip())
+                bullet_lines = [_strip_source_suffix(line.strip()) for line in lines[1:] if line.strip()]
+                entries.append(f"**{destination} — {heading}**")
+                entries.extend(bullet_lines)
+            else:
+                entries.append(f"- **{destination}:** {_strip_source_suffix(entry)}")
+
+    return "\n".join(highlights).strip(), "\n".join(entries).strip()
+
+
+def _multi_city_flight_summary(flight: dict, currency: str) -> str:
+    """Build a readable per-leg flight summary without relying on one optional field."""
+    if not flight:
+        return "Flight details unavailable"
+
+    summary = str(flight.get("outbound_summary", "")).strip()
+    if summary:
+        return summary
+
+    airline = str(flight.get("airline", "")).strip()
+    departure_time = str(flight.get("departure_time", "")).strip()
+    arrival_time = str(flight.get("arrival_time", "")).strip()
+    duration = str(flight.get("duration", "")).strip()
+    stops = flight.get("stops")
+    total_price = flight.get("total_price", flight.get("price"))
+
+    parts = []
+    route_bits = []
+    if airline:
+        parts.append(airline)
+    if departure_time or arrival_time:
+        route_bits.append(f"{departure_time or '?'} → {arrival_time or '?'}")
+    if duration:
+        route_bits.append(duration)
+    if isinstance(stops, int):
+        route_bits.append("Direct" if stops == 0 else f"{stops} stop" if stops == 1 else f"{stops} stops")
+    if route_bits:
+        parts.append(" · ".join(route_bits))
+    if isinstance(total_price, (int, float)) and total_price > 0:
+        parts.append(f"{currency} {total_price:g} total")
+
+    return " — ".join(parts) if parts else "Flight details unavailable"
+
+
+def _format_multi_city_budget(budget: dict, currency: str) -> str:
+    """Render the multi-city budget dict as readable markdown."""
+    if not budget:
+        return "Budget details unavailable."
+
+    lines = [
+        f"- Flights: {format_currency(budget.get('flight_cost', 0), currency)}",
+        f"- Hotels: {format_currency(budget.get('hotel_cost', 0), currency)}",
+        f"- Estimated daily expenses: {format_currency(budget.get('estimated_daily_expenses', 0), currency)}",
+        f"- Total estimated trip cost: {format_currency(budget.get('total_estimated', 0), currency)}",
+    ]
+    if budget.get("budget_notes"):
+        lines.append(f"- Note: {budget['budget_notes']}")
+
+    per_leg = budget.get("per_leg_breakdown") or []
+    if per_leg:
+        lines.extend(["", "**Per leg**"])
+        for leg in per_leg:
+            route = f"{leg.get('origin', '?')} → {leg.get('destination', '?')}"
+            nights = leg.get("nights", 0)
+            lines.append(
+                f"- {route} ({nights} night{'s' if nights != 1 else ''}): "
+                f"flight {format_currency(leg.get('flight_cost', 0), currency)}, "
+                f"hotel {format_currency(leg.get('hotel_cost', 0), currency)}, "
+                f"daily {format_currency(leg.get('daily_expenses', 0), currency)}, "
+                f"total {format_currency(leg.get('leg_total', 0), currency)}"
+            )
+
+    return "\n".join(lines)
+
+
+def _multi_city_packing_tips(trip_request: dict, trip_legs: list[dict]) -> str:
+    destinations = [leg.get("destination", "?") for leg in trip_legs if leg.get("nights", 0) > 0]
+    destinations_text = ", ".join(destinations) if destinations else "your destinations"
+    departure_date = str(trip_request.get("departure_date", "")).strip()
+    month_hint = ""
+    if departure_date:
+        try:
+            month_hint = datetime.fromisoformat(departure_date).strftime("%B")
+        except ValueError:
+            month_hint = ""
+
+    tips = [f"- Pack light layers and comfortable walking shoes for {destinations_text}."]
+    if month_hint:
+        tips.append(f"- For {month_hint} travel, bring a light jacket and sun protection for long sightseeing days.")
+    tips.append("- Keep passports, booking confirmations, and intercity travel details easy to access between legs.")
+    return "\n".join(tips)
+
+
+def _build_multi_city_daily_plans(trip_legs: list[dict]) -> list[DayPlan]:
+    """Create a simple chronological day plan for multi-city trips."""
+    plans: list[DayPlan] = []
+    day_number = 1
+
+    for leg in trip_legs:
+        destination = str(leg.get("destination", "")).strip()
+        origin = str(leg.get("origin", "")).strip()
+        departure_date = str(leg.get("departure_date", "")).strip()
+        nights = int(leg.get("nights", 0) or 0)
+
+        if nights <= 0 or not destination or not departure_date:
+            continue
+
+        try:
+            start_date = datetime.fromisoformat(departure_date)
+        except ValueError:
+            continue
+
+        for offset in range(nights):
+            date_str = (start_date.date() + timedelta(days=offset)).isoformat()
+
+            if offset == 0:
+                theme = f"Arrive in {destination} from {origin}".strip()
+            elif offset == nights - 1:
+                theme = f"Final full day in {destination}"
+            else:
+                theme = f"Explore {destination}"
+
+            plans.append(
+                DayPlan(
+                    day_number=day_number,
+                    date=date_str,
+                    theme=theme,
+                    activities=[],
+                )
+            )
+            day_number += 1
+
+    return plans
+
+
+def _multi_city_plan_context(trip_request: dict, trip_legs: list[dict]) -> dict:
+    seeded_plans = _build_multi_city_daily_plans(trip_legs)
+    pace = str(trip_request.get("pace") or "moderate").lower()
+    activities_per_day = PACE_TO_ACTIVITIES.get(pace, 3)
+    interests = trip_request.get("interests") or []
+    return {
+        "num_days": len(seeded_plans),
+        "day_dates": ", ".join(f"Day {day.day_number}={day.date}" for day in seeded_plans) or "unknown",
+        "pace": pace,
+        "activities_per_day": activities_per_day,
+        "interests": ", ".join(interests) if interests else "no explicit preference",
+    }
+
+
+def _weather_destination_by_date(trip_legs: list[dict]) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    for leg in trip_legs:
+        destination = str(leg.get("destination", "")).strip()
+        departure_date = str(leg.get("departure_date", "")).strip()
+        nights = int(leg.get("nights", 0) or 0)
+        if nights <= 0 or not destination or not departure_date:
+            continue
+        try:
+            start_date = datetime.fromisoformat(departure_date).date()
+        except ValueError:
+            continue
+        for offset in range(nights):
+            mapping[(start_date + timedelta(days=offset)).isoformat()] = destination
+    return mapping
 
 
 def _render_daily_plans(daily_plans: list[DayPlan]) -> str:
@@ -551,74 +972,93 @@ def _finalise_multi_city(state: dict) -> dict:
     selected_flights = state.get("selected_flights", [])
     selected_hotels = state.get("selected_hotels", [])
     trip_request = state.get("trip_request", {})
+    currency = trip_request.get("currency", "EUR")
+    destination_info = state.get("destination_info", "") or ""
+    budget = state.get("budget", {})
+    user_profile = state.get("user_profile", {})
+    feedback = state.get("user_feedback", "") or "None"
+    rag_sources: list[str] = list(state.get("rag_sources", []))
 
     logger.info(
         "Multi-city finaliser started with %d legs, %d flights, %d hotels",
         len(trip_legs), len(selected_flights), len(selected_hotels),
     )
-
-    # Build leg details for the itinerary
-    legs_data = []
-    for leg in trip_legs:
-        leg_idx = leg.get("leg_index", 0)
-        flight = selected_flights[leg_idx] if leg_idx < len(selected_flights) else {}
-        hotel = selected_hotels[leg_idx] if leg_idx < len(selected_hotels) else {}
-
-        flight_summary = flight.get("outbound_summary", "Flight details unavailable")
-        hotel_summary = ""
-        if leg.get("needs_hotel") and hotel:
-            hotel_summary = f"{hotel.get('name', 'Hotel')} - {hotel.get('rating', '?')} stars"
-
-        legs_data.append({
-            "leg_number": leg_idx + 1,
-            "origin": leg.get("origin", "?"),
-            "destination": leg.get("destination", "?"),
-            "departure_date": leg.get("departure_date", "?"),
-            "flight_summary": flight_summary,
-            "hotel_summary": hotel_summary,
-            "nights": leg.get("nights", 0),
-        })
-
-    # Calculate total days
-    total_nights = sum(leg.get("nights", 0) for leg in trip_legs)
-
-    # Build simple multi-city itinerary without extra LLM call
-    # (to avoid complexity and keep token costs down)
-    route = " → ".join(leg.get("destination", "?") for leg in trip_legs)
-
-    itinerary = MultiCityItinerary(
-        trip_overview=f"Multi-city trip: {trip_request.get('origin', '?')} → {route}. "
-                      f"{total_nights} nights, {trip_request.get('num_travelers', 1)} traveler(s).",
-        legs=[LegDetails(**ld) for ld in legs_data],
-        destination_highlights=state.get("destination_info", "") or "Explore each destination!",
-        daily_plans=[],  # Multi-city daily plans would require more complex logic
-        budget_breakdown=json.dumps(state.get("budget", {}), indent=2) if state.get("budget") else "Budget details unavailable",
-        visa_entry_info="Please check visa requirements for each destination based on your passport.",
-        packing_tips="Pack layers for varying climates across your destinations. Check weather forecasts for each city.",
-        sources=[],
+    destinations = [
+        str(leg.get("destination", "")).strip()
+        for leg in trip_legs
+        if leg.get("nights", 0) > 0
+    ]
+    retrieve_knowledge_tool = _make_retrieve_knowledge_tool(
+        state=state,
+        rag_sources=rag_sources,
+        log_prefix="Multi-city finaliser",
+        query_enricher=lambda query: (
+            f"{query} {' '.join(missing)}".strip()
+            if (missing := [destination for destination in destinations if destination and destination.lower() not in query.lower()])
+            else query
+        ),
     )
 
-    markdown = render_multi_city_itinerary_markdown(itinerary)
+    plan_ctx = _multi_city_plan_context(trip_request, trip_legs)
+    prompt = MULTI_CITY_FINALISER_PROMPT.format(
+        currency=currency,
+        num_legs=len(trip_legs),
+        trip_request=json.dumps(trip_request, indent=2),
+        trip_legs=json.dumps(trip_legs, indent=2),
+        selected_flights=_selected_flights_context(selected_flights, currency),
+        selected_hotels=_selected_hotels_context(selected_hotels),
+        destination_info=destination_info or "No destination info available",
+        budget=_format_multi_city_budget(budget, currency),
+        traveler_preferences=_traveler_preference_context(trip_request, user_profile),
+        feedback=feedback,
+        **plan_ctx,
+    )
+    final_result, token_usage, _messages = _run_finaliser_react_loop(
+        state=state,
+        prompt=prompt,
+        final_tool_model=MultiCityItinerary,
+        final_tool_name="MultiCityItinerary",
+        initial_user_message=(
+            "Generate the final multi-city itinerary. "
+            "Use retrieve_knowledge if you need additional destination information. "
+            "When ready, call MultiCityItinerary with the complete structured itinerary."
+        ),
+        retrieve_knowledge_tool=retrieve_knowledge_tool,
+        token_node_name="trip_finaliser_multi_city",
+        completion_log_name="Multi-city finaliser",
+    )
 
-    logger.info("Multi-city finaliser completed")
+    if not final_result:
+        logger.error("Multi-city finaliser did not produce a structured itinerary")
+        return _finaliser_error_response_with_tokens(
+            display_message="Error: Failed to generate itinerary.",
+            token_usage=token_usage,
+        )
 
-    return {
-        "final_itinerary": markdown,
-        "itinerary_data": itinerary.model_dump(),
-        "token_usage": [],
-        "messages": [{"role": "assistant", "content": markdown}],
-        "current_step": "finalised",
-    }
+    itinerary = _parse_structured_itinerary(
+        final_result=final_result,
+        model_class=MultiCityItinerary,
+        rescue_log_name="Multi-city itinerary",
+    )
+    if itinerary is None:
+        return _finaliser_error_response_with_tokens(
+            display_message="Error: Failed to parse itinerary from model output.",
+            token_usage=token_usage,
+            assistant_message="Error: Failed to parse itinerary.",
+        )
+
+    _enrich_multi_city_weather(itinerary, trip_legs)
+    logger.info("Multi-city finaliser completed via LLM itinerary generation")
+    return _finaliser_success_response(
+        itinerary=itinerary,
+        render_markdown=render_multi_city_itinerary_markdown,
+        rag_sources=rag_sources,
+        token_usage=token_usage,
+    )
 
 
-def trip_finaliser(state: dict) -> dict:
-    """LangGraph node: generate the final trip itinerary using ReAct-style tool calling."""
-    # Check for multi-city trip
-    trip_legs = state.get("trip_legs", [])
-    if trip_legs:
-        return _finalise_multi_city(state)
-
-    # Single-destination trip: existing logic
+def _finalise_single_city(state: dict) -> dict:
+    """Handle single-destination trip itinerary generation."""
     selected_flight = state.get("selected_flight", {})
     selected_hotel = state.get("selected_hotel", {})
     trip_request = state.get("trip_request", {})
@@ -634,32 +1074,17 @@ def trip_finaliser(state: dict) -> dict:
 
     # Track RAG sources from both research phase and finaliser retrieval
     rag_sources: list[str] = list(state.get("rag_sources", []))
-
-    @tool("retrieve_knowledge")
-    def retrieve_knowledge_tool(query: str) -> str:
-        """Search the local travel knowledge base for transport tips, safety notes, budget advice, and other destination information."""
-        destination = trip_request.get("destination", "")
-        if destination and destination.lower() not in query.lower():
-            query = f"{query} {destination}"
-        logger.info("Finaliser invoking retrieve_knowledge query=%s", query)
-        results = retrieve(query, provider=state.get("llm_provider"))
-        for r in results:
-            if r["source"] not in rag_sources:
-                rag_sources.append(r["source"])
-        return json.dumps({
-            "query": query,
-            "chunks": [{"content": r["content"], "source": r["source"]} for r in results],
-        })
-
-    model = state.get("llm_model")
-    llm = create_chat_model(
-        state.get("llm_provider"),
-        model,
-        temperature=float(state.get("llm_temperature", 0.5)),
+    destination = trip_request.get("destination", "")
+    retrieve_knowledge_tool = _make_retrieve_knowledge_tool(
+        state=state,
+        rag_sources=rag_sources,
+        log_prefix="Finaliser",
+        query_enricher=lambda query: f"{query} {destination}".strip()
+        if destination and destination.lower() not in query.lower()
+        else query,
     )
-    llm_with_tools = llm.bind_tools([retrieve_knowledge_tool, Itinerary])
 
-    plan_ctx = _daily_plan_context(trip_request, state.get("attraction_candidates", []) or [])
+    plan_ctx = _single_city_plan_context(trip_request, state.get("attraction_candidates", []) or [])
     prompt = FINALISER_PROMPT.format(
         currency=trip_request.get("currency", "EUR"),
         trip_request=json.dumps(trip_request, indent=2),
@@ -671,114 +1096,53 @@ def trip_finaliser(state: dict) -> dict:
         feedback=state.get("user_feedback", "") or "None",
         **plan_ctx,
     )
-
-    messages = [
-        SystemMessage(content=prompt),
-        HumanMessage(content="Generate the final trip itinerary. Use retrieve_knowledge if you need additional destination information for transport, safety, or budget tips. When ready, call Itinerary with the complete structured itinerary."),
-    ]
-
-    token_usage: list[dict] = []
-    final_result: dict = {}
-    tools_by_name = {"retrieve_knowledge": retrieve_knowledge_tool}
-
-    max_iterations = 4
-    for iteration in range(max_iterations):
-        response = invoke_with_retry(llm_with_tools, messages)
-        messages.append(response)
-        token_usage.append(extract_token_usage(response, model=model, node="trip_finaliser"))
-
-        if not getattr(response, "tool_calls", None):
-            logger.info("Finaliser completed without further tool calls")
-            break
-
-        for tool_call in response.tool_calls:
-            tool_name = tool_call["name"]
-            logger.info("Finaliser received tool call %s", tool_name)
-
-            if tool_name == "Itinerary":
-                final_result = tool_call.get("args", {})
-                messages.append(ToolMessage(
-                    content="Itinerary received.",
-                    tool_call_id=tool_call["id"],
-                ))
-                logger.info("Finaliser received final itinerary")
-                break
-
-            if tool_name not in tools_by_name:
-                logger.warning("Finaliser received unknown tool call: %s", tool_name)
-                messages.append(ToolMessage(
-                    content=f"Error: unknown tool '{tool_name}'.",
-                    tool_call_id=tool_call["id"],
-                ))
-                continue
-
-            try:
-                tool_result = tools_by_name[tool_name].invoke(tool_call.get("args", {}))
-            except Exception as exc:
-                logger.exception("Finaliser tool %s failed", tool_name)
-                tool_result = json.dumps({"error": str(exc)})
-            messages.append(ToolMessage(content=tool_result, tool_call_id=tool_call["id"]))
-
-        if final_result:
-            break
-    else:
-        logger.warning("Finaliser exhausted all %s iterations without a final result", max_iterations)
+    final_result, token_usage, _messages = _run_finaliser_react_loop(
+        state=state,
+        prompt=prompt,
+        final_tool_model=Itinerary,
+        final_tool_name="Itinerary",
+        initial_user_message=(
+            "Generate the final trip itinerary. "
+            "Use retrieve_knowledge if you need additional destination information for transport, safety, or budget tips. "
+            "When ready, call Itinerary with the complete structured itinerary."
+        ),
+        retrieve_knowledge_tool=retrieve_knowledge_tool,
+        token_node_name="trip_finaliser",
+        completion_log_name="Finaliser",
+    )
 
     if not final_result:
         logger.error("Finaliser did not produce a structured itinerary")
-        return {
-            "final_itinerary": "Error: Failed to generate itinerary.",
-            "itinerary_data": {},
-            "token_usage": token_usage,
-            "messages": [{"role": "assistant", "content": "Error: Failed to generate itinerary."}],
-            "current_step": "finalised",
-        }
+        return _finaliser_error_response_with_tokens(
+            display_message="Error: Failed to generate itinerary.",
+            token_usage=token_usage,
+        )
 
-    # Parse itinerary with recovery for malformed LLM output
-    try:
-        itinerary = Itinerary(**final_result)
-    except ValidationError as exc:
-        logger.warning("Itinerary validation failed, attempting rescue: %s", exc)
-        rescued = _rescue_malformed_itinerary(final_result)
-        try:
-            itinerary = Itinerary(**rescued)
-            logger.info("Successfully rescued malformed itinerary")
-        except ValidationError:
-            logger.exception("Itinerary rescue failed")
-            return {
-                "final_itinerary": "Error: Failed to parse itinerary from model output.",
-                "itinerary_data": {},
-                "token_usage": token_usage,
-                "messages": [{"role": "assistant", "content": "Error: Failed to parse itinerary."}],
-                "current_step": "finalised",
-            }
+    itinerary = _parse_structured_itinerary(
+        final_result=final_result,
+        model_class=Itinerary,
+        rescue_log_name="Itinerary",
+    )
+    if itinerary is None:
+        return _finaliser_error_response_with_tokens(
+            display_message="Error: Failed to parse itinerary from model output.",
+            token_usage=token_usage,
+            assistant_message="Error: Failed to parse itinerary.",
+        )
 
     logger.info("Finaliser completed itinerary generation")
 
-    # Enrich daily plans with weather data
-    destination = trip_request.get("destination", "")
-    day_dates = [day.date for day in itinerary.daily_plans if day.date]
-    if destination and day_dates:
-        weather_data = fetch_weather_for_trip(destination, day_dates)
-        for day in itinerary.daily_plans:
-            if day.date and day.date in weather_data:
-                w = weather_data[day.date]
-                day.weather = DayWeatherInfo(
-                    temp_min=w.temp_min,
-                    temp_max=w.temp_max,
-                    condition=w.condition,
-                    precipitation_chance=w.precipitation_chance,
-                    is_historical=w.is_historical,
-                )
-        logger.info("Enriched %d daily plans with weather data", len(weather_data))
+    _enrich_single_city_weather(itinerary, destination)
+    return _finaliser_success_response(
+        itinerary=itinerary,
+        render_markdown=render_itinerary_markdown,
+        rag_sources=rag_sources,
+        token_usage=token_usage,
+    )
 
-    markdown = render_itinerary_markdown(itinerary)
 
-    return {
-        "final_itinerary": markdown,
-        "itinerary_data": itinerary.model_dump(),
-        "rag_sources": rag_sources,
-        "token_usage": token_usage,
-        "messages": [{"role": "assistant", "content": markdown}],
-        "current_step": "finalised",
-    }
+def trip_finaliser(state: dict) -> dict:
+    """LangGraph node: generate the final trip itinerary using ReAct-style tool calling."""
+    if state.get("trip_legs"):
+        return _finalise_multi_city(state)
+    return _finalise_single_city(state)
