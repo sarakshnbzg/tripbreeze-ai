@@ -6,29 +6,29 @@ from domain.nodes.budget_aggregator import (
     budget_aggregator,
     _destination_daily_rate,
     _filter_options_within_budget,
-    _trip_days,
 )
+from domain.utils.dates import trip_duration_days
 
 
-# ── _trip_days ──
+# ── trip_duration_days ──
 
 
 class TestTripDays:
     def test_valid_dates(self):
         trip = {"departure_date": "2025-06-01", "return_date": "2025-06-08"}
-        assert _trip_days(trip) == 7
+        assert trip_duration_days(trip) == 7
 
     def test_same_day_returns_one(self):
         trip = {"departure_date": "2025-06-01", "return_date": "2025-06-01"}
-        assert _trip_days(trip) == 1
+        assert trip_duration_days(trip) == 1
 
     def test_missing_dates_returns_one(self):
-        assert _trip_days({}) == 1
-        assert _trip_days({"departure_date": "2025-06-01"}) == 1
+        assert trip_duration_days({}) == 1
+        assert trip_duration_days({"departure_date": "2025-06-01"}) == 1
 
     def test_invalid_format_returns_one(self):
         trip = {"departure_date": "not-a-date", "return_date": "also-not"}
-        assert _trip_days(trip) == 1
+        assert trip_duration_days(trip) == 1
 
 
 # ── _filter_options_within_budget ──

@@ -77,6 +77,11 @@ MODEL_LABELS = {
 }
 
 
+def _planning_progress_markdown(updates: list[str]) -> str:
+    """Format streamed planning updates into a readable markdown block."""
+    return "\n\n".join(update for update in updates if update)
+
+
 def _compress_star_preferences(stars: list[int]) -> list[int]:
     """Collapse expanded star lists into minimal `N-star and up` thresholds for display."""
     selected = sorted({int(star) for star in stars if star in HOTEL_STARS})

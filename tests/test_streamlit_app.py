@@ -1,21 +1,25 @@
-"""Tests for presentation/streamlit_app.py helper functions."""
+"""Tests for presentation helper functions across UI modules."""
 
 from datetime import date
 
 from presentation.streamlit_app import (
-    _can_approve_itinerary,
-    _badge_pills_html,
-    _flight_option_cards,
-    _build_structured_fields_from_form,
     _build_token_usage_label,
-    _hotel_option_cards,
+    _planning_progress_markdown,
+    _summarise_token_usage,
+)
+from presentation.review_ui import (
+    _badge_pills_html,
+    _can_approve_itinerary,
     _is_budget_status_note,
     _normalise_selected_index,
-    _parse_num_nights,
-    _planning_progress_markdown,
     _render_option_card,
     _selection_button_label,
-    _summarise_token_usage,
+    flight_option_cards,
+    hotel_option_cards,
+)
+from presentation.trip_form import (
+    build_structured_fields_from_form,
+    parse_num_nights,
 )
 
 
@@ -96,7 +100,7 @@ class TestOptionCardRendering:
         assert _normalise_selected_index(None, 0) is None
 
     def test_flight_option_cards_build_display_data(self):
-        cards = _flight_option_cards(
+        cards = flight_option_cards(
             [
                 {
                     "airline": "easyJet",
@@ -116,7 +120,7 @@ class TestOptionCardRendering:
         assert "Direct" in cards[0]["badges"]
 
     def test_hotel_option_cards_build_display_data(self):
-        cards = _hotel_option_cards(
+        cards = hotel_option_cards(
             [
                 {
                     "name": "Hotel Lumiere",
@@ -133,7 +137,7 @@ class TestOptionCardRendering:
 
 class TestBuildStructuredFieldsFromForm:
     def test_ignores_untouched_defaults_when_free_text_is_present(self):
-        result = _build_structured_fields_from_form(
+        result = build_structured_fields_from_form(
             free_text="I want to fly from Berlin to London on the 20th of April for 2 days. Plan my trip.",
             origin="Berlin",
             destination="",
@@ -155,7 +159,7 @@ class TestBuildStructuredFieldsFromForm:
         assert result == {}
 
     def test_keeps_explicit_refinements_with_free_text(self):
-        result = _build_structured_fields_from_form(
+        result = build_structured_fields_from_form(
             free_text="Plan my trip to London.",
             origin="Berlin",
             destination="London",
@@ -184,17 +188,17 @@ class TestBuildStructuredFieldsFromForm:
 
 class TestParseNumNights:
     def test_parses_positive_integer(self):
-        assert _parse_num_nights("5") == 5
+        assert parse_num_nights("5") == 5
 
     def test_rejects_blank_value(self):
-        assert _parse_num_nights("") is None
+        assert parse_num_nights("") is None
 
     def test_rejects_non_numeric_value(self):
-        assert _parse_num_nights("five") is None
+        assert parse_num_nights("five") is None
 
     def test_rejects_zero_or_negative_values(self):
-        assert _parse_num_nights("0") is None
-        assert _parse_num_nights("-2") is None
+        assert parse_num_nights("0") is None
+        assert parse_num_nights("-2") is None
 
 
 class TestCanApproveItinerary:

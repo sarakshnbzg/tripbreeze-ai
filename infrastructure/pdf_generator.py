@@ -4,13 +4,6 @@ import io
 from datetime import datetime
 from typing import Any
 
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
-
 
 def _escape_xml(text: str) -> str:
     """Escape special XML characters for reportlab Paragraph."""
@@ -57,6 +50,18 @@ def generate_trip_pdf(
     Returns:
         PDF bytes ready to be downloaded
     """
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+        from reportlab.lib.units import inch
+        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    except ImportError as exc:
+        raise RuntimeError(
+            "PDF generation requires the `reportlab` package. Install project dependencies with `uv sync`."
+        ) from exc
+
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer,
