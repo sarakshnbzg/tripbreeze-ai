@@ -7,6 +7,12 @@ import pytest
 from infrastructure.apis.serpapi_client import search_flights, search_return_flights, search_hotels
 
 
+@pytest.fixture(autouse=True)
+def _set_dummy_serpapi_key(monkeypatch):
+    """Make SerpAPI client tests independent of local/CI environment secrets."""
+    monkeypatch.setattr("infrastructure.apis.serpapi_client.SERPAPI_API_KEY", "test-serpapi-key")
+
+
 def _mock_google_search(expected_params_subset):
     """Helper: capture the params dict passed to GoogleSearch and return empty results."""
     captured = {}
