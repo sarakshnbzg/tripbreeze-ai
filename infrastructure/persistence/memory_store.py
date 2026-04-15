@@ -87,15 +87,6 @@ def _get_pool():
     return _pool
 
 
-def close_pool() -> None:
-    """Shut down the connection pool (idempotent)."""
-    global _pool
-    if _pool is not None:
-        _pool.close()
-        _pool = None
-        logger.info("Postgres connection pool closed")
-
-
 # ── Helpers ──────────────────────────────────────────────────────────
 
 

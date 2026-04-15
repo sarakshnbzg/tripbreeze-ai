@@ -175,26 +175,6 @@ def invoke_with_retry(llm, prompt, *, max_attempts: int = 3):
     return _call()
 
 
-def stream_with_retry(llm, prompt, *, max_attempts: int = 3):
-    """Stream an LLM response with automatic retry on transient failures.
-
-    Returns a generator that yields string chunks. Retries apply to the
-    initial connection only — once streaming starts, errors are raised.
-    """
-
-    @retry(
-        retry=retry_if_exception_type(_RETRYABLE_EXCEPTIONS),
-        stop=stop_after_attempt(max_attempts),
-        wait=wait_exponential(multiplier=1, min=1, max=16),
-        before_sleep=before_sleep_log(logger, 30),
-        reraise=True,
-    )
-    def _start_stream():
-        return llm.stream(prompt)
-
-    return _start_stream()
-
-
 def create_embeddings(provider: str | None = None):
     """Create embeddings for the selected provider."""
     chosen_provider, _ = normalise_llm_selection(provider, None)

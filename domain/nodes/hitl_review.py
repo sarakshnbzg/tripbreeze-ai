@@ -1,7 +1,6 @@
 """HITL Review node — formats research results for human inspection."""
 
-from datetime import datetime
-
+from domain.utils.dates import trip_duration_display
 from infrastructure.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -10,20 +9,6 @@ logger = get_logger(__name__)
 def _markdown_table_value(value: object) -> str:
     """Keep dynamic values safe inside Markdown table cells."""
     return str(value).replace("|", "\\|").replace("\n", " ")
-
-
-def _trip_nights(trip: dict) -> int | str:
-    """Return trip nights from return/check-out dates when available."""
-    departure_date = trip.get("departure_date", "")
-    end_date = trip.get("return_date", "") or trip.get("check_out_date", "")
-    if not departure_date or not end_date:
-        return "?"
-    try:
-        d1 = datetime.strptime(departure_date, "%Y-%m-%d")
-        d2 = datetime.strptime(end_date, "%Y-%m-%d")
-    except ValueError:
-        return "?"
-    return max((d2 - d1).days, 1)
 
 
 def _format_trip_summary(trip: dict, flights: list[dict], hotels: list[dict]) -> str:
@@ -36,7 +21,7 @@ def _format_trip_summary(trip: dict, flights: list[dict], hotels: list[dict]) ->
         trip_type = "One-way"
     travelers = trip.get("num_travelers", 1)
     class_name = str(trip.get("travel_class", "ECONOMY")).replace("_", " ").title()
-    nights = _trip_nights(trip)
+    nights = trip_duration_display(trip)
 
     return "\n".join(
         [

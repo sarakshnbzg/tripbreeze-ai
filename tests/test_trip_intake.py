@@ -6,17 +6,19 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from domain.nodes.trip_intake import (
-    _apply_free_text_trip_fallbacks,
     _classify_domain,
-    _extract_explicit_departure_date,
-    _extract_trip_duration_days,
-    _query_mentions_one_way,
     _normalise_hotel_stars,
     _normalise_trip_data,
     _parse_preferences,
-    _validate_date,
     trip_intake,
 )
+from domain.nodes.trip_intake_parsing import (
+    apply_free_text_trip_fallbacks,
+    extract_explicit_departure_date,
+    extract_trip_duration_days,
+    query_mentions_one_way,
+)
+from domain.utils.dates import validate_future_date
 
 # Future dates used across test fixtures
 _DEPARTURE = str(date.today() + timedelta(days=30))
@@ -58,28 +60,28 @@ class TestNormaliseHotelStars:
         assert _normalise_hotel_stars([], {}) == []
 
 
-# ── _validate_date ──
+# ── validate_future_date ──
 
 
-class TestValidateDate:
+class TestValidateFutureDate:
     def test_empty_returns_empty(self):
-        assert _validate_date("", "Test") == ""
+        assert validate_future_date("", "Test") == ""
 
     def test_valid_future_date(self):
-        assert _validate_date(_DEPARTURE, "Test") == _DEPARTURE
+        assert validate_future_date(_DEPARTURE, "Test") == _DEPARTURE
 
     def test_invalid_format_raises(self):
         with pytest.raises(ValueError, match="not a valid date"):
-            _validate_date("not-a-date", "Test")
+            validate_future_date("not-a-date", "Test")
 
     def test_past_date_raises(self):
         yesterday = str(date.today() - timedelta(days=1))
         with pytest.raises(ValueError, match="in the past"):
-            _validate_date(yesterday, "Test")
+            validate_future_date(yesterday, "Test")
 
     def test_today_is_accepted(self):
         today = str(date.today())
-        assert _validate_date(today, "Test") == today
+        assert validate_future_date(today, "Test") == today
 
 
 # ── _normalise_trip_data ──
@@ -87,21 +89,21 @@ class TestValidateDate:
 
 class TestFreeTextTripFallbacks:
     def test_extracts_explicit_departure_date(self):
-        assert _extract_explicit_departure_date("I want to leave on 20th of April") == "2026-04-20"
+        assert extract_explicit_departure_date("I want to leave on 20th of April") == "2026-04-20"
 
     def test_extracts_trip_duration_days(self):
-        assert _extract_trip_duration_days("I want to stay for 2 days") == 2
+        assert extract_trip_duration_days("I want to stay for 2 days") == 2
 
     def test_extracts_worded_trip_duration_days(self):
-        assert _extract_trip_duration_days("I want a one day trip to London") == 1
-        assert _extract_trip_duration_days("Plan a one-day trip from Berlin to London") == 1
+        assert extract_trip_duration_days("I want a one day trip to London") == 1
+        assert extract_trip_duration_days("Plan a one-day trip from Berlin to London") == 1
 
     def test_extracts_day_trip_phrase(self):
-        assert _extract_trip_duration_days("Plan a day trip from Berlin to London") == 1
+        assert extract_trip_duration_days("Plan a day trip from Berlin to London") == 1
 
     def test_detects_one_way_phrase(self):
-        assert _query_mentions_one_way("I want a one way flight to Barcelona") is True
-        assert _query_mentions_one_way("I want a one-way flight to Barcelona") is True
+        assert query_mentions_one_way("I want a one way flight to Barcelona") is True
+        assert query_mentions_one_way("I want a one-way flight to Barcelona") is True
 
     def test_duration_and_date_override_missing_or_incorrect_llm_dates(self):
         raw = {
@@ -111,7 +113,7 @@ class TestFreeTextTripFallbacks:
             "return_date": "2026-04-29",
         }
 
-        result = _apply_free_text_trip_fallbacks(
+        result = apply_free_text_trip_fallbacks(
             raw,
             "I want to fly from Berlin to London for 2 day from 20th of April. Give me a plan.",
             {},
@@ -127,7 +129,7 @@ class TestFreeTextTripFallbacks:
             "return_date": "2026-04-28",
         }
 
-        result = _apply_free_text_trip_fallbacks(
+        result = apply_free_text_trip_fallbacks(
             raw,
             "I want to fly from Berlin to London for 2 day from 20th of April. Give me a plan.",
             {"departure_date": "2026-04-25", "return_date": "2026-04-28"},
@@ -144,7 +146,7 @@ class TestFreeTextTripFallbacks:
             "return_date": "2026-04-29",
         }
 
-        result = _apply_free_text_trip_fallbacks(
+        result = apply_free_text_trip_fallbacks(
             raw,
             "I want to fly from Berlin to Barcelona on the 19th of April. One way for 2 nights.",
             {},

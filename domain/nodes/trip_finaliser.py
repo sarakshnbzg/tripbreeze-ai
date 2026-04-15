@@ -2,12 +2,12 @@
 
 import json
 import re
-from datetime import date, timedelta
 
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
+from domain.utils.dates import trip_duration_with_dates
 from infrastructure.apis.serpapi_client import fetch_hotel_address
 from infrastructure.apis.weather_client import fetch_weather_for_trip
 from infrastructure.llms.model_factory import (
@@ -211,29 +211,6 @@ def _enrich_hotel_address(selected_hotel: dict, trip_request: dict) -> None:
 PACE_TO_ACTIVITIES = {"relaxed": 2, "moderate": 3, "packed": 4}
 
 
-def _compute_trip_days(trip_request: dict) -> tuple[int, list[str]]:
-    """Return (num_days, [ISO date per day]) based on the trip request."""
-    departure = trip_request.get("departure_date", "")
-    end = trip_request.get("return_date", "") or trip_request.get("check_out_date", "")
-    if not departure:
-        return 0, []
-    try:
-        start = date.fromisoformat(departure)
-    except ValueError:
-        return 0, []
-
-    if end:
-        try:
-            end_d = date.fromisoformat(end)
-            num_days = max(1, (end_d - start).days)
-        except ValueError:
-            num_days = 1
-    else:
-        num_days = 1
-
-    return num_days, [(start + timedelta(days=i)).isoformat() for i in range(num_days)]
-
-
 def _format_attraction_candidates(candidates: list[dict]) -> str:
     if not candidates:
         return "None"
@@ -252,7 +229,7 @@ def _format_attraction_candidates(candidates: list[dict]) -> str:
 
 def _daily_plan_context(trip_request: dict, candidates: list[dict]) -> dict:
     """Build the prompt variables needed for day-by-day planning."""
-    num_days, day_dates = _compute_trip_days(trip_request)
+    num_days, day_dates = trip_duration_with_dates(trip_request)
     pace = str(trip_request.get("pace") or "moderate").lower()
     activities_per_day = PACE_TO_ACTIVITIES.get(pace, 3)
     interests = trip_request.get("interests") or []

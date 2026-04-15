@@ -1,8 +1,7 @@
 """Budget Aggregator node — combines costs and checks against the budget limit."""
 
-from datetime import datetime
-
 from config import DAILY_EXPENSE_BY_CURRENCY, DAILY_EXPENSE_BY_DESTINATION, DEFAULT_DAILY_EXPENSE
+from domain.utils.dates import trip_duration_days
 from infrastructure.currency_utils import currency_prefix
 from infrastructure.logging_utils import get_logger
 
@@ -24,17 +23,6 @@ def _destination_daily_rate(destination: str, currency: str) -> float:
         if keyword in city:
             return round(eur_rate * (trip_baseline / eur_baseline), 2)
     return trip_baseline
-
-
-def _trip_days(trip: dict) -> int:
-    """Return the number of nights for the trip (minimum 1)."""
-    try:
-        d1 = datetime.strptime(trip.get("departure_date", ""), "%Y-%m-%d")
-        end_date = trip.get("return_date", "") or trip.get("check_out_date", "")
-        d2 = datetime.strptime(end_date, "%Y-%m-%d")
-        return max((d2 - d1).days, 1)
-    except ValueError:
-        return 1
 
 
 def _flight_total(flight: dict) -> float:
@@ -78,7 +66,7 @@ def budget_aggregator(state: dict) -> dict:
     currency = trip.get("currency", "EUR")
     prefix = currency_prefix(currency)
 
-    num_days = _trip_days(trip)
+    num_days = trip_duration_days(trip)
     num_travelers = max(1, int(trip.get("num_travelers", 1) or 1))
     destination = trip.get("destination", "")
     daily_rate = _destination_daily_rate(destination, currency)
