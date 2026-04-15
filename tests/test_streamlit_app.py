@@ -241,6 +241,8 @@ class TestOptionCardRendering:
             [
                 {
                     "name": "Hotel Lumiere",
+                    "address": "12 Rue de Rivoli, Paris",
+                    "amenities": ["Free breakfast", "Pool"],
                     "rating": 9.1,
                     "price_per_night": 120,
                     "total_price": 360,
@@ -249,7 +251,9 @@ class TestOptionCardRendering:
             "EUR",
         )
         assert cards[0]["title"] == "Option 1: Hotel Lumiere"
-        assert "Rating: 9.1" in cards[0]["details"][0]
+        assert "Rating: 9.1 (Excellent)" in cards[0]["details"][0]
+        assert "Address: 12 Rue de Rivoli, Paris" in cards[0]["details"][1]
+        assert "Breakfast included" in cards[0]["details"][2]
 
 
 class TestBuildStructuredFieldsFromForm:

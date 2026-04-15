@@ -421,6 +421,7 @@ def search_hotels(
         hotels.append({
             "name": hotel_name,
             "description": prop.get("description", ""),
+            "address": prop.get("address", ""),
             "property_token": prop.get("property_token", ""),
             "hotel_class": hotel_class,
             "rating": prop.get("overall_rating", 0),

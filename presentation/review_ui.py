@@ -70,6 +70,40 @@ def _hotel_badges(hotels: list[dict], hotel: dict) -> list[str]:
     return badges
 
 
+def _hotel_rating_label(rating: object) -> str:
+    try:
+        score = float(rating)
+    except (TypeError, ValueError):
+        return ""
+
+    if score >= 9:
+        return "Excellent"
+    if score >= 8:
+        return "Very Good"
+    if score >= 7:
+        return "Good"
+    if score >= 6:
+        return "Fair"
+    if score > 0:
+        return "Poor"
+    return ""
+
+
+def _hotel_breakfast_status(hotel: dict) -> str:
+    amenities = [str(item).strip().lower() for item in (hotel.get("amenities") or []) if str(item).strip()]
+    if not amenities:
+        return ""
+
+    breakfast_amenities = [item for item in amenities if "breakfast" in item]
+    if not breakfast_amenities:
+        return ""
+
+    included_keywords = ("included", "free", "complimentary")
+    if any(any(keyword in item for keyword in included_keywords) for item in breakfast_amenities):
+        return "Breakfast included"
+    return "Breakfast available"
+
+
 _BADGE_COLORS = {
     "Best price": ("#14532d", "#bbf7d0"),
     "Direct": ("#1d4ed8", "#bfdbfe"),
@@ -240,7 +274,18 @@ def hotel_option_cards(hotels: list[dict], currency: str) -> list[dict[str, obje
         details = []
         if stars_str:
             details.append(f"Stars: {stars_str} ({hotel_class}-star)")
-        details.append(f"Rating: {hotel.get('rating', '?')}")
+        rating = hotel.get("rating", "?")
+        rating_label = _hotel_rating_label(rating)
+        rating_text = f"Rating: {rating}"
+        if rating_label:
+            rating_text += f" ({rating_label})"
+        details.append(rating_text)
+        address = hotel.get("address")
+        if address:
+            details.append(f"Address: {address}")
+        breakfast_status = _hotel_breakfast_status(hotel)
+        if breakfast_status:
+            details.append(breakfast_status)
         details.append(f"Per night: {format_currency(hotel.get('price_per_night', 0), currency)}")
         details.append(f"Total: {format_currency(hotel.get('total_price', 0), currency)}")
         booking_url = hotel.get("booking_url")
