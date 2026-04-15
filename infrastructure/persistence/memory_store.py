@@ -172,10 +172,15 @@ def update_profile_from_trip(user_id: str, trip_data: dict) -> dict:
 
     if trip_data.get("destination"):
         past = profile.get("past_trips", [])
-        past.append({
+        trip_entry = {
             "destination": trip_data["destination"],
             "dates": f"{trip_data.get('departure_date', '')} – {trip_data.get('return_date', '')}",
-        })
+        }
+        if trip_data.get("final_itinerary"):
+            trip_entry["final_itinerary"] = trip_data["final_itinerary"]
+        if trip_data.get("pdf_state"):
+            trip_entry["pdf_state"] = trip_data["pdf_state"]
+        past.append(trip_entry)
         profile["past_trips"] = past[-10:]
 
     if trip_data.get("home_city") and not profile.get("home_city"):

@@ -22,6 +22,12 @@ def memory_updater(state: dict) -> dict:
         "home_city": trip.get("origin", ""),
         "travel_class": trip.get("travel_class", ""),
         "passport_country": state.get("user_profile", {}).get("passport_country", ""),
+        "final_itinerary": state.get("final_itinerary", ""),
+        "pdf_state": {
+            "selected_flight": state.get("selected_flight", {}),
+            "selected_hotel": state.get("selected_hotel", {}),
+            "budget": state.get("budget", {}),
+        },
     }
 
     updated_profile = update_profile_from_trip(user_id, trip_data)

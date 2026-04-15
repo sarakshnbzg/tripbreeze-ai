@@ -950,9 +950,26 @@ def _render_profile_sidebar() -> None:
 
     if profile.get("past_trips"):
         st.subheader("Past Trips")
-        for trip in profile["past_trips"][-5:]:
-            st.write(f"• {trip['destination']} ({trip.get('dates', '')})")
-
+        for idx, trip in enumerate(profile["past_trips"][-5:]):
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.write(f"• {trip['destination']} ({trip.get('dates', '')})")
+            with col2:
+                if trip.get("final_itinerary"):
+                    try:
+                        pdf_bytes = generate_trip_pdf(
+                            final_itinerary=trip["final_itinerary"],
+                            graph_state=trip.get("pdf_state", {}),
+                        )
+                        st.download_button(
+                            label="📥 PDF",
+                            data=pdf_bytes,
+                            file_name=f"{trip['destination'].replace(' ', '_')}_itinerary.pdf",
+                            mime="application/pdf",
+                            key=f"past_trip_pdf_{idx}",
+                        )
+                    except Exception:
+                        pass
     st.divider()
     if st.button("New Trip", use_container_width=True):
         _reset_trip_flow()
