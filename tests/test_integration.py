@@ -18,6 +18,7 @@ import pytest
 
 from application.graph import compile_graph, run_finalisation_streaming
 from domain.nodes.trip_finaliser import Itinerary
+from langgraph.types import Command
 
 
 # ── Future dates (always valid) ──────────────────────────────────────
@@ -142,6 +143,24 @@ def _base_initial_state(**overrides: Any) -> dict[str, Any]:
     return state
 
 
+def _multi_city_structured_fields(**overrides: Any) -> dict[str, Any]:
+    fields: dict[str, Any] = {
+        "origin": "London",
+        "departure_date": FUTURE_DEPARTURE,
+        "num_travelers": 2,
+        "budget_limit": 5000,
+        "currency": "EUR",
+        "travel_class": "ECONOMY",
+        "multi_city_legs": [
+            {"destination": "Paris", "nights": 3},
+            {"destination": "Barcelona", "nights": 4},
+        ],
+        "return_to_origin": False,
+    }
+    fields.update(overrides)
+    return fields
+
+
 
 def _make_config() -> dict:
     """Return a LangGraph config with a unique thread_id (required by MemorySaver)."""
@@ -234,6 +253,8 @@ def _patch_all(
         patch("domain.nodes.trip_finaliser.create_chat_model", return_value=_finaliser) as mock_final_llm,
         patch("domain.nodes.trip_intake.create_chat_model") as mock_intake_llm,
         patch("domain.nodes.memory_updater.update_profile_from_trip", return_value=_profile) as mock_memory,
+        patch("domain.nodes.attractions_research.search_attractions", return_value=[]) as mock_attractions,
+        patch("domain.nodes.trip_finaliser.fetch_weather_for_trip", return_value={}) as mock_weather,
     ):
         if intake_llm is not None:
             mock_intake_llm.return_value = intake_llm
@@ -247,6 +268,8 @@ def _patch_all(
             "finaliser_llm": mock_final_llm,
             "intake_llm": mock_intake_llm,
             "memory": mock_memory,
+            "attractions": mock_attractions,
+            "weather": mock_weather,
         }
 
 
@@ -584,3 +607,117 @@ class TestRAGIntegration:
         assert "destinations.md" in result["rag_sources"]
         assert "visa_requirements.md" in result["rag_sources"]
         assert result["destination_info"]  # non-empty
+
+
+class TestClarificationResumeFlow:
+    """Free-text planning should pause for clarification, then resume to review."""
+
+    def test_free_text_clarification_then_resume_to_review(self):
+        def _invoke(prompt: str):
+            if "<clarification_question>" in prompt:
+                return _make_ai_message(tool_calls=[{
+                    "name": "ExtractTripDetails",
+                    "args": {
+                        "origin": "Berlin",
+                        "return_date": FUTURE_RETURN,
+                    },
+                    "id": "clarify-1",
+                }])
+            if "<user_query>" in prompt and "travel domain" in prompt.lower():
+                return _make_ai_message(tool_calls=[{
+                    "name": "EvaluateDomain",
+                    "args": {"in_domain": True, "reason": ""},
+                    "id": "domain-1",
+                }])
+            return _make_ai_message(tool_calls=[{
+                "name": "ExtractTripDetails",
+                "args": {
+                    "destination": "Paris",
+                    "departure_date": FUTURE_DEPARTURE,
+                    "num_travelers": 2,
+                    "currency": "EUR",
+                },
+                "id": "extract-1",
+            }])
+
+        intake_llm = MagicMock()
+        intake_llm.bind_tools.return_value = intake_llm
+        intake_llm.invoke.side_effect = _invoke
+
+        with _patch_all(intake_llm=intake_llm) as mocks:
+            graph = compile_graph()
+            config = _make_config()
+
+            graph.invoke(
+                _base_initial_state(
+                    structured_fields={},
+                    free_text_query="Plan a trip to Paris on these dates for two people.",
+                ),
+                config,
+            )
+
+            paused = graph.get_state(config)
+            assert paused.tasks
+            interrupt_value = paused.tasks[0].interrupts[0].value
+            assert interrupt_value["type"] == "clarification"
+            assert "origin" in interrupt_value["missing_fields"]
+            assert "return_date" in interrupt_value["missing_fields"]
+
+            events = list(graph.stream(Command(resume="From Berlin, returning on the listed date."), config))
+            assert events
+
+            final_state = dict(graph.get_state(config).values)
+
+        assert final_state["current_step"] == "awaiting_review"
+        assert final_state["trip_request"]["origin"] == "Berlin"
+        assert final_state["trip_request"]["destination"] == "Paris"
+        assert final_state["trip_request"]["return_date"] == FUTURE_RETURN
+        assert len(final_state["flight_options"]) > 0
+        assert len(final_state["hotel_options"]) > 0
+        mocks["api_flights"].assert_called_once()
+        mocks["api_hotels"].assert_called_once()
+
+
+class TestMultiCityEndToEnd:
+    """Structured multi-city trip should plan leg-by-leg and finalise without LLM errors."""
+
+    def test_multi_city_open_jaw_plans_and_finalises(self):
+        with _patch_all() as mocks:
+            graph = compile_graph()
+            thread_id = "test-multi-city-open-jaw"
+            config = {"configurable": {"thread_id": thread_id}}
+
+            planning_state = graph.invoke(
+                _base_initial_state(structured_fields=_multi_city_structured_fields()),
+                config,
+            )
+
+            assert planning_state["current_step"] == "awaiting_review"
+            assert len(planning_state["trip_legs"]) == 2
+            assert planning_state["trip_legs"][0]["destination"] == "Paris"
+            assert planning_state["trip_legs"][1]["destination"] == "Barcelona"
+            assert planning_state["budget"]["is_multi_city"] is True
+            assert len(planning_state["flight_options_by_leg"]) == 2
+            assert len(planning_state["hotel_options_by_leg"]) == 2
+
+            state_updates = {
+                "user_approved": True,
+                "selected_flights": [
+                    planning_state["flight_options_by_leg"][0][0],
+                    planning_state["flight_options_by_leg"][1][0],
+                ],
+                "selected_hotels": [
+                    planning_state["hotel_options_by_leg"][0][0],
+                    planning_state["hotel_options_by_leg"][1][0],
+                ],
+            }
+            items = list(run_finalisation_streaming(graph, thread_id, state_updates))
+
+        final_state = next((i for i in items if isinstance(i, dict)), None)
+        assert final_state is not None
+        assert final_state["current_step"] == "done"
+        assert "Multi-city trip" in final_state["final_itinerary"]
+        assert len(final_state["itinerary_data"]["legs"]) == 2
+        assert final_state["selected_flights"][0]["airline"] == "Air France"
+        assert final_state["selected_hotels"][1]["name"] == "Hotel Le Marais"
+        mocks["memory"].assert_called_once()
