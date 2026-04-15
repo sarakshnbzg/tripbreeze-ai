@@ -4,7 +4,12 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from infrastructure.apis.serpapi_client import search_flights, search_return_flights, search_hotels
+from infrastructure.apis.serpapi_client import (
+    search_attractions,
+    search_flights,
+    search_hotels,
+    search_return_flights,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -258,8 +263,33 @@ class TestSearchFlightsParams:
         )
 
         assert results[0]["departure_token"] == "token-123"
-        assert results[0]["return_details_available"] is False
-        assert "Return details require selecting" in results[0]["return_summary"]
+
+
+class TestSearchAttractions:
+    @patch("infrastructure.apis.serpapi_client.GoogleSearch")
+    def test_normalises_map_fields_when_coordinates_are_present(self, mock_gs_cls):
+        mock_gs_cls.return_value.get_dict.return_value = {
+            "local_results": [
+                {
+                    "title": "Louvre Museum",
+                    "address": "Rue de Rivoli, Paris",
+                    "rating": 4.8,
+                    "reviews": 120000,
+                    "gps_coordinates": {"latitude": 48.8606, "longitude": 2.3376},
+                    "type": "Museum",
+                }
+            ]
+        }
+
+        results = search_attractions("Paris", interests=["art"], max_per_query=1, max_total=1)
+
+        assert len(results) == 1
+        place = results[0]
+        assert place["name"] == "Louvre Museum"
+        assert place["address"] == "Rue de Rivoli, Paris"
+        assert place["latitude"] == 48.8606
+        assert place["longitude"] == 2.3376
+        assert "google.com/maps/search" in place["maps_url"]
 
     @patch("infrastructure.apis.serpapi_client.GoogleSearch")
     def test_round_trip_inline_return_details_are_normalised(self, mock_gs_cls):

@@ -489,6 +489,41 @@ INTEREST_QUERIES: dict[str, list[str]] = {
 }
 
 
+def _coerce_coordinate(value) -> float | None:
+    try:
+        if value in ("", None):
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _extract_place_coordinates(place: dict) -> tuple[float | None, float | None]:
+    """Extract lat/lng from the most common Google Maps payload shapes."""
+    lat = _coerce_coordinate(place.get("latitude") or place.get("lat"))
+    lng = _coerce_coordinate(place.get("longitude") or place.get("lng") or place.get("lon"))
+    if lat is not None and lng is not None:
+        return lat, lng
+
+    for key in ("gps_coordinates", "coordinates", "position"):
+        coords = place.get(key)
+        if not isinstance(coords, dict):
+            continue
+        lat = _coerce_coordinate(coords.get("latitude") or coords.get("lat"))
+        lng = _coerce_coordinate(coords.get("longitude") or coords.get("lng") or coords.get("lon"))
+        if lat is not None and lng is not None:
+            return lat, lng
+
+    return None, None
+
+
+def _build_google_maps_place_url(name: str, address: str, destination: str) -> str:
+    query = " ".join(part for part in [name, address, destination] if part).strip()
+    if not query:
+        return ""
+    return f"https://www.google.com/maps/search/?api=1&query={quote_plus(query)}"
+
+
 def search_attractions(
     destination: str,
     interests: list[str] | None = None,
@@ -498,7 +533,7 @@ def search_attractions(
     """Search Google Maps via SerpAPI for attractions matching the user's interests.
 
     Falls back to a generic "top attractions" query if no interests are provided.
-    Returns a deduplicated list of {name, category, address, rating, reviews}.
+    Returns a deduplicated list of map-ready attraction dicts.
     """
     if not SERPAPI_API_KEY:
         logger.warning("search_attractions skipped — no SERPAPI_API_KEY configured")
@@ -551,13 +586,18 @@ def search_attractions(
             if key in seen_names:
                 continue
             seen_names.add(key)
+            address = place.get("address", "")
+            latitude, longitude = _extract_place_coordinates(place)
             results.append({
                 "name": name,
                 "category": category,
-                "address": place.get("address", ""),
+                "address": address,
                 "rating": place.get("rating"),
                 "reviews": place.get("reviews"),
                 "description": place.get("description", "") or place.get("type", ""),
+                "latitude": latitude,
+                "longitude": longitude,
+                "maps_url": _build_google_maps_place_url(name, address, destination),
             })
             if len(results) >= max_total:
                 break

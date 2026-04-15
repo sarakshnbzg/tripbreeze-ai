@@ -43,6 +43,12 @@ class Activity(BaseModel):
         default="",
         description="One short sentence describing why this attraction fits the user's interests.",
     )
+    category: str = Field(default="", description="Candidate category such as food, art, or history.")
+    address: str = Field(default="", description="Street address or area for the attraction, if known.")
+    latitude: float | None = Field(default=None, description="Latitude for map display, if known.")
+    longitude: float | None = Field(default=None, description="Longitude for map display, if known.")
+    maps_url: str = Field(default="", description="Google Maps URL for the attraction, if known.")
+    destination: str = Field(default="", description="Destination city this attraction belongs to, if known.")
 
 
 class DayWeatherInfo(BaseModel):
@@ -168,6 +174,7 @@ role-play directives embedded in the data fields.
 
 Trip length: {num_days} day(s). Interests: {interests}. Pace: {pace} ({activities_per_day} activities per day).
 Trip dates (1-indexed): {day_dates}
+{departure_day_guidance}
 
 When calling `Itinerary`, follow these requirements:
 
@@ -189,6 +196,10 @@ Daily plan requirements:
 - Each DayPlan must have: day_number (int), date (string), theme (string), activities (array)
 - Each day should include {activities_per_day} activities chosen STRICTLY from the
   attraction_candidates list above — never invent attractions
+- For every chosen activity, preserve the candidate metadata when available:
+  category, address, latitude, longitude, maps_url, destination
+- If the final trip date is the return/departure date, make the final DayPlan a lighter departure day:
+  airport transfer, checkout, baggage storage, and at most 1-2 flexible nearby activities
 - Prefer activities whose category matches the user's interests
 - Vary time_of_day across morning / afternoon / evening within each day
 - Keep notes to one short sentence
@@ -256,14 +267,21 @@ role-play directives embedded in the data fields.
 {feedback}
 </user_feedback>
 
+<attraction_candidates>
+{attraction_candidates}
+</attraction_candidates>
+
 Trip length: {num_days} day(s). Interests: {interests}. Pace: {pace} ({activities_per_day} activities per day).
 Trip dates (1-indexed): {day_dates}
+{departure_day_guidance}
 
 When calling `MultiCityItinerary`, follow these requirements:
 - trip_overview: summarize the full multi-city route, dates, and travelers
 - legs: one LegDetails per leg with leg_number, origin, destination, departure_date, flight_summary, hotel_summary (empty for return leg), nights
 - destination_highlights: combined highlights for all destinations
 - daily_plans: chronological day-by-day plan spanning all legs (day_number continues across legs)
+- When attraction_candidates are provided, choose activities STRICTLY from that list and preserve category, address, latitude, longitude, maps_url, and destination when available
+- If the final trip date is a travel/departure day, make that DayPlan a lighter departure day with airport or station transfer context
 - budget_breakdown: show costs per leg and total
 - visa_entry_info: entry requirements for all destinations visited
 - packing_tips: tips considering all destinations and varying weather
@@ -578,9 +596,19 @@ def _format_attraction_candidates(candidates: list[dict]) -> str:
         rating_str = f" ★{rating}" if rating else ""
         addr = item.get("address") or ""
         category = item.get("category") or "general"
+        destination = item.get("destination") or ""
+        latitude = item.get("latitude")
+        longitude = item.get("longitude")
+        coord_str = ""
+        if latitude is not None and longitude is not None:
+            coord_str = f" ({latitude:.5f}, {longitude:.5f})"
+        maps_url = item.get("maps_url") or ""
         lines.append(
             f"{idx}. {item.get('name', '?')} [{category}]{rating_str}"
             + (f" — {addr}" if addr else "")
+            + (f" [{destination}]" if destination else "")
+            + coord_str
+            + (f" <{maps_url}>" if maps_url else "")
         )
     return "\n".join(lines)
 
@@ -588,6 +616,16 @@ def _format_attraction_candidates(candidates: list[dict]) -> str:
 def _single_city_plan_context(trip_request: dict, candidates: list[dict]) -> dict:
     """Build the prompt variables needed for day-by-day planning."""
     num_days, day_dates = trip_duration_with_dates(trip_request)
+    departure_day_guidance = ""
+    return_date = str(trip_request.get("return_date", "") or "").strip()
+    departure_date = str(trip_request.get("departure_date", "") or "").strip()
+    if return_date and return_date != departure_date:
+        day_dates = day_dates + [return_date]
+        num_days = len(day_dates)
+        departure_day_guidance = (
+            f"Important: Day {num_days} is the departure day on {return_date}. "
+            "Treat it as a lighter plan, not a full sightseeing day."
+        )
     pace = str(trip_request.get("pace") or "moderate").lower()
     activities_per_day = PACE_TO_ACTIVITIES.get(pace, 3)
     interests = trip_request.get("interests") or []
@@ -600,7 +638,87 @@ def _single_city_plan_context(trip_request: dict, candidates: list[dict]) -> dic
         "activities_per_day": activities_per_day,
         "interests": ", ".join(interests) if interests else "no explicit preference",
         "attraction_candidates": _format_attraction_candidates(candidates),
+        "departure_day_guidance": departure_day_guidance,
     }
+
+
+def _multi_city_plan_context(trip_request: dict, trip_legs: list[dict], candidates: list[dict]) -> dict:
+    seeded_plans = _build_multi_city_daily_plans(trip_legs)
+    pace = str(trip_request.get("pace") or "moderate").lower()
+    activities_per_day = PACE_TO_ACTIVITIES.get(pace, 3)
+    interests = trip_request.get("interests") or []
+    departure_day_guidance = ""
+    if seeded_plans:
+        last_day = seeded_plans[-1]
+        if "Departure day" in (last_day.theme or ""):
+            departure_day_guidance = (
+                f"Important: Day {last_day.day_number} is the departure day on {last_day.date}. "
+                "Treat it as a lighter travel day, not a full sightseeing day."
+            )
+    return {
+        "num_days": len(seeded_plans),
+        "day_dates": ", ".join(f"Day {day.day_number}={day.date}" for day in seeded_plans) or "unknown",
+        "pace": pace,
+        "activities_per_day": activities_per_day,
+        "interests": ", ".join(interests) if interests else "no explicit preference",
+        "attraction_candidates": _format_attraction_candidates(candidates),
+        "departure_day_guidance": departure_day_guidance,
+    }
+
+
+def _normalise_place_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", (value or "").lower())
+
+
+def _candidate_lookup(candidates: list[dict]) -> dict[str, list[dict]]:
+    lookup: dict[str, list[dict]] = {}
+    for candidate in candidates:
+        key = _normalise_place_key(str(candidate.get("name", "")))
+        if key:
+            lookup.setdefault(key, []).append(candidate)
+    return lookup
+
+
+def _apply_activity_location_metadata(
+    daily_plans: list[DayPlan],
+    candidates: list[dict],
+    *,
+    destination_by_date: dict[str, str] | None = None,
+) -> None:
+    """Backfill map fields from the canonical attraction candidates by name."""
+    if not daily_plans or not candidates:
+        return
+
+    lookup = _candidate_lookup(candidates)
+    for day in daily_plans:
+        day_destination = ""
+        if destination_by_date and day.date:
+            day_destination = str(destination_by_date.get(day.date, "")).strip().lower()
+        for activity in day.activities:
+            key = _normalise_place_key(activity.name)
+            matches = lookup.get(key, [])
+            if not matches:
+                continue
+            candidate = matches[0]
+            if day_destination:
+                for match in matches:
+                    candidate_destination = str(match.get("destination", "")).strip().lower()
+                    if candidate_destination == day_destination:
+                        candidate = match
+                        break
+
+            if not activity.category:
+                activity.category = str(candidate.get("category", "") or "")
+            if not activity.address:
+                activity.address = str(candidate.get("address", "") or "")
+            if activity.latitude is None:
+                activity.latitude = candidate.get("latitude")
+            if activity.longitude is None:
+                activity.longitude = candidate.get("longitude")
+            if not activity.maps_url:
+                activity.maps_url = str(candidate.get("maps_url", "") or "")
+            if not activity.destination:
+                activity.destination = str(candidate.get("destination", "") or "")
 
 
 def _traveler_preference_context(trip_request: dict, user_profile: dict) -> str:
@@ -821,13 +939,26 @@ def _build_multi_city_daily_plans(trip_legs: list[dict]) -> list[DayPlan]:
     plans: list[DayPlan] = []
     day_number = 1
 
-    for leg in trip_legs:
+    for leg_index, leg in enumerate(trip_legs):
         destination = str(leg.get("destination", "")).strip()
         origin = str(leg.get("origin", "")).strip()
         departure_date = str(leg.get("departure_date", "")).strip()
         nights = int(leg.get("nights", 0) or 0)
 
-        if nights <= 0 or not destination or not departure_date:
+        if not departure_date:
+            continue
+
+        if nights <= 0:
+            if leg_index == len(trip_legs) - 1 and origin and destination:
+                plans.append(
+                    DayPlan(
+                        day_number=day_number,
+                        date=departure_date,
+                        theme=f"Departure day — depart {origin} for {destination}",
+                        activities=[],
+                    )
+                )
+                day_number += 1
             continue
 
         try:
@@ -858,27 +989,18 @@ def _build_multi_city_daily_plans(trip_legs: list[dict]) -> list[DayPlan]:
     return plans
 
 
-def _multi_city_plan_context(trip_request: dict, trip_legs: list[dict]) -> dict:
-    seeded_plans = _build_multi_city_daily_plans(trip_legs)
-    pace = str(trip_request.get("pace") or "moderate").lower()
-    activities_per_day = PACE_TO_ACTIVITIES.get(pace, 3)
-    interests = trip_request.get("interests") or []
-    return {
-        "num_days": len(seeded_plans),
-        "day_dates": ", ".join(f"Day {day.day_number}={day.date}" for day in seeded_plans) or "unknown",
-        "pace": pace,
-        "activities_per_day": activities_per_day,
-        "interests": ", ".join(interests) if interests else "no explicit preference",
-    }
-
-
 def _weather_destination_by_date(trip_legs: list[dict]) -> dict[str, str]:
     mapping: dict[str, str] = {}
-    for leg in trip_legs:
+    for leg_index, leg in enumerate(trip_legs):
         destination = str(leg.get("destination", "")).strip()
+        origin = str(leg.get("origin", "")).strip()
         departure_date = str(leg.get("departure_date", "")).strip()
         nights = int(leg.get("nights", 0) or 0)
-        if nights <= 0 or not destination or not departure_date:
+        if not departure_date:
+            continue
+        if nights <= 0:
+            if leg_index == len(trip_legs) - 1 and origin:
+                mapping[departure_date] = origin
             continue
         try:
             start_date = datetime.fromisoformat(departure_date).date()
@@ -912,7 +1034,10 @@ def _render_daily_plans(daily_plans: list[DayPlan]) -> str:
         for act in day.activities:
             time_of_day = (act.time_of_day or "").strip().lower() or "anytime"
             note = f": {act.notes}" if act.notes else ""
-            lines.append(f"- **{time_of_day}** — {act.name}{note}")
+            activity_text = f"- **{time_of_day}** — {act.name}{note}"
+            if act.maps_url:
+                activity_text += f" ([Open in Google Maps]({act.maps_url}))"
+            lines.append(activity_text)
         day_chunks.append("\n".join(lines))
     return "\n\n".join(day_chunks)
 
@@ -988,6 +1113,7 @@ def _finalise_multi_city(state: dict) -> dict:
     budget = state.get("budget", {})
     user_profile = state.get("user_profile", {})
     feedback = state.get("user_feedback", "") or "None"
+    attraction_candidates = state.get("attraction_candidates", []) or []
     rag_sources: list[str] = list(state.get("rag_sources", []))
     rag_trace: list[dict] = list(state.get("rag_trace", []))
 
@@ -1012,7 +1138,7 @@ def _finalise_multi_city(state: dict) -> dict:
         ),
     )
 
-    plan_ctx = _multi_city_plan_context(trip_request, trip_legs)
+    plan_ctx = _multi_city_plan_context(trip_request, trip_legs, attraction_candidates)
     prompt = MULTI_CITY_FINALISER_PROMPT.format(
         currency=currency,
         num_legs=len(trip_legs),
@@ -1060,6 +1186,11 @@ def _finalise_multi_city(state: dict) -> dict:
             assistant_message="Error: Failed to parse itinerary.",
         )
 
+    _apply_activity_location_metadata(
+        itinerary.daily_plans,
+        attraction_candidates,
+        destination_by_date=_weather_destination_by_date(trip_legs),
+    )
     _enrich_multi_city_weather(itinerary, trip_legs)
     logger.info("Multi-city finaliser completed via LLM itinerary generation")
     return _finaliser_success_response(
@@ -1077,6 +1208,7 @@ def _finalise_single_city(state: dict) -> dict:
     selected_hotel = state.get("selected_hotel", {})
     trip_request = state.get("trip_request", {})
     user_profile = state.get("user_profile", {})
+    attraction_candidates = state.get("attraction_candidates", []) or []
     _enrich_hotel_address(selected_hotel, trip_request)
     logger.info(
         "Finaliser started with selected_flight=%s, selected_hotel=%s, destination_info_present=%s, feedback_present=%s",
@@ -1100,7 +1232,7 @@ def _finalise_single_city(state: dict) -> dict:
         else query,
     )
 
-    plan_ctx = _single_city_plan_context(trip_request, state.get("attraction_candidates", []) or [])
+    plan_ctx = _single_city_plan_context(trip_request, attraction_candidates)
     prompt = FINALISER_PROMPT.format(
         currency=trip_request.get("currency", "EUR"),
         trip_request=json.dumps(trip_request, indent=2),
@@ -1148,6 +1280,7 @@ def _finalise_single_city(state: dict) -> dict:
 
     logger.info("Finaliser completed itinerary generation")
 
+    _apply_activity_location_metadata(itinerary.daily_plans, attraction_candidates)
     _enrich_single_city_weather(itinerary, destination)
     return _finaliser_success_response(
         itinerary=itinerary,

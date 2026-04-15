@@ -15,6 +15,7 @@ from presentation.streamlit_app import (
 from presentation.review_ui import (
     _badge_pills_html,
     _can_approve_itinerary,
+    _hotel_rating_label,
     _is_budget_status_note,
     _normalise_selected_index,
     _render_option_card,
@@ -243,7 +244,7 @@ class TestOptionCardRendering:
                     "name": "Hotel Lumiere",
                     "address": "12 Rue de Rivoli, Paris",
                     "amenities": ["Free breakfast", "Pool"],
-                    "rating": 9.1,
+                    "rating": 4.9,
                     "price_per_night": 120,
                     "total_price": 360,
                 }
@@ -251,9 +252,16 @@ class TestOptionCardRendering:
             "EUR",
         )
         assert cards[0]["title"] == "Option 1: Hotel Lumiere"
-        assert "Rating: 9.1 (Excellent)" in cards[0]["details"][0]
+        assert "Rating: 4.9 (Excellent)" in cards[0]["details"][0]
         assert "Address: 12 Rue de Rivoli, Paris" in cards[0]["details"][1]
         assert "Breakfast included" in cards[0]["details"][2]
+
+    def test_hotel_rating_label_uses_five_point_scale(self):
+        assert _hotel_rating_label(4.9) == "Excellent"
+        assert _hotel_rating_label(4.2) == "Very Good"
+        assert _hotel_rating_label(3.7) == "Good"
+        assert _hotel_rating_label(3.1) == "Fair"
+        assert _hotel_rating_label(2.4) == "Poor"
 
 
 class TestBuildStructuredFieldsFromForm:

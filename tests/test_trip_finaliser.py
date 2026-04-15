@@ -3,7 +3,11 @@
 from unittest.mock import MagicMock, patch
 
 from domain.nodes.trip_finaliser import (
+    Activity,
+    DayPlan,
     _build_multi_city_daily_plans,
+    _apply_activity_location_metadata,
+    _single_city_plan_context,
     render_itinerary_markdown,
     Itinerary,
     Source,
@@ -93,6 +97,30 @@ class TestRenderItineraryMarkdown:
         assert "- 4-star stay" in md
         assert "- Breakfast included" in md
 
+    def test_day_by_day_plan_includes_google_maps_links_when_available(self):
+        md = render_itinerary_markdown(
+            self._sample_itinerary(
+                daily_plans=[
+                    DayPlan(
+                        day_number=1,
+                        date="2026-07-01",
+                        theme="Classic Paris",
+                        activities=[
+                            Activity(
+                                name="Louvre Museum",
+                                time_of_day="morning",
+                                notes="Start early",
+                                maps_url="https://www.google.com/maps/search/?api=1&query=Louvre+Museum",
+                            )
+                        ],
+                    )
+                ],
+            )
+        )
+
+        assert "Open in Google Maps" in md
+        assert "https://www.google.com/maps/search/?api=1&query=Louvre+Museum" in md
+
 
 class TestItineraryModel:
     def test_default_sources_empty(self):
@@ -123,6 +151,41 @@ class TestItineraryModel:
         assert restored.trip_overview == "overview"
         assert len(restored.sources) == 1
         assert restored.sources[0].document == "doc.md"
+
+
+class TestActivityLocationMetadata:
+    def test_backfills_activity_map_fields_from_candidates(self):
+        plans = [
+            DayPlan(
+                day_number=1,
+                date="2026-06-11",
+                theme="Art day",
+                activities=[Activity(name="Louvre Museum", time_of_day="morning", notes="Classic stop")],
+            )
+        ]
+
+        _apply_activity_location_metadata(
+            plans,
+            [
+                {
+                    "name": "Louvre Museum",
+                    "category": "art",
+                    "address": "Rue de Rivoli, Paris",
+                    "latitude": 48.8606,
+                    "longitude": 2.3376,
+                    "maps_url": "https://www.google.com/maps/search/?api=1&query=Louvre+Museum",
+                    "destination": "Paris",
+                }
+            ],
+        )
+
+        activity = plans[0].activities[0]
+        assert activity.category == "art"
+        assert activity.address == "Rue de Rivoli, Paris"
+        assert activity.latitude == 48.8606
+        assert activity.longitude == 2.3376
+        assert "google.com/maps/search" in activity.maps_url
+        assert activity.destination == "Paris"
 
 
 class TestSelectedFlightContext:
@@ -178,6 +241,21 @@ class TestMultiCityFlightSummary:
 
 
 class TestMultiCityDerivedSections:
+    def test_single_city_plan_context_includes_departure_day(self):
+        ctx = _single_city_plan_context(
+            {
+                "departure_date": "2026-05-28",
+                "return_date": "2026-05-31",
+                "pace": "moderate",
+                "interests": ["food"],
+            },
+            [],
+        )
+
+        assert ctx["num_days"] == 4
+        assert "Day 4=2026-05-31" in ctx["day_dates"]
+        assert "departure day" in ctx["departure_day_guidance"].lower()
+
     def test_parses_destination_info_into_highlights_and_entry_sections(self):
         destination_info = (
             "A quick travel snapshot for each destination to help you compare options and plan your stay:\n\n"
@@ -272,7 +350,7 @@ class TestMultiCityDerivedSections:
             ]
         )
 
-        assert len(plans) == 4
+        assert len(plans) == 5
         assert plans[0].date == "2026-06-11"
         assert plans[0].theme == "Arrive in Paris from Berlin"
         assert plans[1].date == "2026-06-12"
@@ -280,6 +358,8 @@ class TestMultiCityDerivedSections:
         assert plans[2].date == "2026-06-13"
         assert plans[2].theme == "Arrive in Rome from Paris"
         assert plans[3].date == "2026-06-14"
+        assert plans[4].date == "2026-06-15"
+        assert plans[4].theme == "Departure day — depart Rome for Berlin"
 
     @patch("domain.nodes.trip_finaliser.fetch_weather_for_trip", return_value={})
     @patch("domain.nodes.trip_finaliser.create_chat_model")

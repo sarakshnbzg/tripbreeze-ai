@@ -76,13 +76,14 @@ def _hotel_rating_label(rating: object) -> str:
     except (TypeError, ValueError):
         return ""
 
-    if score >= 9:
+    # Google Hotels / SerpAPI overall_rating is on a 0-5 scale.
+    if score >= 4.5:
         return "Excellent"
-    if score >= 8:
+    if score >= 4.0:
         return "Very Good"
-    if score >= 7:
+    if score >= 3.5:
         return "Good"
-    if score >= 6:
+    if score >= 3.0:
         return "Fair"
     if score > 0:
         return "Poor"
