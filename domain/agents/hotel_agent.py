@@ -7,9 +7,100 @@ from infrastructure.logging_utils import get_logger
 logger = get_logger(__name__)
 
 
+def _preferred_hotel_stars(trip: dict, user_profile: dict) -> list[int]:
+    raw = trip.get("hotel_stars") or user_profile.get("preferred_hotel_stars") or []
+    if isinstance(raw, int):
+        raw = [raw]
+    return sorted({int(star) for star in raw if isinstance(star, int) and star in HOTEL_STARS})
+
+
+def _preferred_hotel_features(preferences: str) -> dict[str, tuple[str, ...]]:
+    lowered = str(preferences or "").lower()
+    feature_map = {
+        "breakfast": ("breakfast",),
+        "pool": ("pool",),
+        "spa": ("spa",),
+        "gym": ("gym", "fitness"),
+        "wifi": ("wifi", "wi-fi", "internet"),
+        "parking": ("parking",),
+        "central location": ("central", "city center", "city centre", "walkable"),
+    }
+    return {
+        label: keywords
+        for label, keywords in feature_map.items()
+        if any(keyword in lowered for keyword in keywords)
+    }
+
+
+def _hotel_text(hotel: dict) -> str:
+    amenities = hotel.get("amenities") or []
+    amenity_text = " ".join(str(item) for item in amenities)
+    return " ".join(
+        str(part or "")
+        for part in [hotel.get("name"), hotel.get("description"), amenity_text]
+    ).lower()
+
+
+def _rank_hotels_by_preferences(hotels: list[dict], trip: dict, user_profile: dict) -> list[dict]:
+    if not hotels:
+        return hotels
+
+    preferred_stars = _preferred_hotel_stars(trip, user_profile)
+    preferred_features = _preferred_hotel_features(trip.get("preferences", ""))
+
+    ranked: list[dict] = []
+    for hotel in hotels:
+        score = 0
+        reasons: list[str] = []
+
+        hotel_class = hotel.get("hotel_class")
+        if isinstance(hotel_class, (int, float)):
+            hotel_class = int(hotel_class)
+        else:
+            hotel_class = None
+
+        if preferred_stars and hotel_class is not None:
+            if hotel_class in preferred_stars:
+                score += 40
+                reasons.append("matches preferred hotel class")
+            else:
+                distance = min(abs(hotel_class - star) for star in preferred_stars)
+                score += max(0, 20 - (distance * 8))
+
+        rating = hotel.get("rating")
+        if isinstance(rating, (int, float)):
+            score += int(float(rating) * 3)
+
+        total_price = hotel.get("total_price")
+        if isinstance(total_price, (int, float)):
+            score += max(0, 24 - int(float(total_price) / 120))
+
+        hotel_text = _hotel_text(hotel)
+        for label, keywords in preferred_features.items():
+            if any(keyword in hotel_text for keyword in keywords):
+                score += 12
+                reasons.append(f"offers {label}")
+
+        ranked_hotel = dict(hotel)
+        ranked_hotel["preference_score"] = score
+        ranked_hotel["preference_reasons"] = reasons
+        ranked.append(ranked_hotel)
+
+    ranked.sort(
+        key=lambda hotel: (
+            -hotel.get("preference_score", 0),
+            hotel.get("total_price", float("inf")),
+            -(hotel.get("rating", 0) or 0),
+        )
+    )
+    logger.info("Ranked %s hotel options using explicit preference scoring", len(ranked))
+    return ranked
+
+
 def search_hotels(state: dict) -> dict:
     """LangGraph node: search for hotels based on trip request."""
     trip = state.get("trip_request", {})
+    user_profile = state.get("user_profile", {})
     if not trip:
         logger.error("Hotel search skipped because trip request is missing")
         return {"hotel_options": [], "error": "No trip request found."}
@@ -52,6 +143,7 @@ def search_hotels(state: dict) -> dict:
             hotel_stars=hotel_stars,
             currency=trip.get("currency", "EUR"),
         )
+        hotels = _rank_hotels_by_preferences(hotels, trip, user_profile)
 
         logger.info("Hotel search returned %s options", len(hotels))
         return {
@@ -69,6 +161,7 @@ def search_hotels(state: dict) -> dict:
 def search_leg_hotels(
     leg: dict,
     trip_request: dict,
+    user_profile: dict | None = None,
 ) -> list[dict]:
     """Search hotels for a single leg of a multi-city trip.
 
@@ -113,6 +206,7 @@ def search_leg_hotels(
             hotel_stars=hotel_stars,
             currency=trip_request.get("currency", "EUR"),
         )
+        hotels = _rank_hotels_by_preferences(hotels, trip_request, user_profile or {})
 
         logger.info("Leg hotel search returned %s options for %s", len(hotels), destination)
         return hotels

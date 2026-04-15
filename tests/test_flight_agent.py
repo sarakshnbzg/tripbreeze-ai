@@ -4,7 +4,12 @@ from unittest.mock import patch
 
 import pytest
 
-from domain.agents.flight_agent import _normalise_time_window, _rank_flights_by_preferred_airlines, search_flights
+from domain.agents.flight_agent import (
+    _normalise_time_window,
+    _rank_flights_by_preferred_airlines,
+    _rank_flights_by_preferences,
+    search_flights,
+)
 
 
 # ── _normalise_time_window ──
@@ -64,6 +69,31 @@ class TestRankFlightsByPreferredAirlines:
         ]
         ranked = _rank_flights_by_preferred_airlines(flights, ["british"])
         assert ranked[0]["airline"] == "British Airways"
+
+
+class TestRankFlightsByPreferences:
+    def test_scores_preferred_airline_and_time_window_above_cheaper_option(self):
+        flights = [
+            {"airline": "Budget Air", "price": 120, "duration": "2h 30m", "stops": 1, "departure_time": "06:00"},
+            {"airline": "Lufthansa", "price": 180, "duration": "2h 10m", "stops": 0, "departure_time": "09:00"},
+        ]
+        ranked = _rank_flights_by_preferences(
+            flights,
+            {"max_flight_price": 250},
+            {"preferred_airlines": ["Lufthansa"], "preferred_outbound_time_window": [8, 12]},
+        )
+        assert ranked[0]["airline"] == "Lufthansa"
+        assert "matches preferred airline" in ranked[0]["preference_reasons"]
+        assert "fits preferred departure window" in ranked[0]["preference_reasons"]
+
+    def test_adds_preference_metadata(self):
+        ranked = _rank_flights_by_preferences(
+            [{"airline": "Lufthansa", "price": 180, "duration": "2h", "stops": 0, "departure_time": "09:00"}],
+            {"max_flight_price": 250},
+            {"preferred_airlines": ["Lufthansa"], "preferred_outbound_time_window": [8, 12]},
+        )
+        assert ranked[0]["preference_score"] > 0
+        assert isinstance(ranked[0]["preference_reasons"], list)
 
 
 # ── search_flights (node function) ──

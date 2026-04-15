@@ -5,6 +5,8 @@ from domain.nodes.trip_finaliser import (
     Itinerary,
     Source,
     _selected_flight_context,
+    _selected_hotel_context,
+    _traveler_preference_context,
 )
 
 
@@ -139,3 +141,39 @@ class TestSelectedFlightContext:
         )
         assert "Outbound flight summary:" in context
         assert "Return flight summary:" not in context
+
+
+class TestTravelerPreferenceContext:
+    def test_summarises_profile_and_trip_preferences(self):
+        context = _traveler_preference_context(
+            {
+                "travel_class": "BUSINESS",
+                "hotel_stars": [4, 5],
+                "interests": ["food", "art"],
+                "pace": "relaxed",
+                "preferences": "quiet boutique hotel",
+            },
+            {
+                "preferred_airlines": ["Lufthansa"],
+                "preferred_hotel_stars": [4],
+                "preferred_outbound_time_window": [8, 12],
+                "preferred_return_time_window": [14, 20],
+            },
+        )
+        assert "Travel class: BUSINESS" in context
+        assert "Preferred airlines: Lufthansa" in context
+        assert "Requested hotel stars for this trip: 4, 5" in context
+        assert "Interests: food, art" in context
+        assert "Free-text preferences: quiet boutique hotel" in context
+
+
+class TestSelectedHotelContext:
+    def test_includes_preference_reasons_when_available(self):
+        context = _selected_hotel_context(
+            {
+                "name": "Hotel Le Marais",
+                "preference_reasons": ["matches preferred hotel class", "offers breakfast"],
+            }
+        )
+        assert "Hotel Le Marais" in context
+        assert "Preference matches: matches preferred hotel class, offers breakfast" in context

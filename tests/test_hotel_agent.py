@@ -2,7 +2,7 @@
 
 from unittest.mock import patch
 
-from domain.agents.hotel_agent import search_hotels
+from domain.agents.hotel_agent import _rank_hotels_by_preferences, search_hotels
 
 
 class TestSearchHotelsNode:
@@ -104,3 +104,50 @@ class TestSearchHotelsNode:
             search_hotels(state)
 
         assert captured["hotel_stars"] == [3]
+
+    def test_ranks_hotels_by_profile_stars_and_preference_keywords(self):
+        hotels = [
+            {
+                "name": "Cheap Sleep",
+                "description": "Simple outskirts stay",
+                "hotel_class": 2,
+                "rating": 7.0,
+                "total_price": 200,
+                "amenities": [],
+            },
+            {
+                "name": "Central Suites",
+                "description": "Central hotel with breakfast and pool",
+                "hotel_class": 4,
+                "rating": 8.7,
+                "total_price": 320,
+                "amenities": ["Breakfast included", "Pool"],
+            },
+        ]
+
+        ranked = _rank_hotels_by_preferences(
+            hotels,
+            {"preferences": "central hotel with breakfast and pool"},
+            {"preferred_hotel_stars": [4]},
+        )
+
+        assert ranked[0]["name"] == "Central Suites"
+        assert "matches preferred hotel class" in ranked[0]["preference_reasons"]
+        assert "offers breakfast" in ranked[0]["preference_reasons"]
+
+    def test_search_applies_preference_ranking(self):
+        hotels = [
+            {"name": "Budget Inn", "hotel_class": 2, "rating": 7.5, "total_price": 180, "amenities": []},
+            {"name": "Skyline Hotel", "hotel_class": 4, "rating": 8.8, "total_price": 260, "amenities": []},
+        ]
+
+        with patch("domain.agents.hotel_agent.api_search_hotels", return_value=hotels):
+            result = search_hotels(
+                {
+                    "trip_request": self._base_state()["trip_request"],
+                    "user_profile": {"preferred_hotel_stars": [4]},
+                }
+            )
+
+        assert result["hotel_options"][0]["name"] == "Skyline Hotel"
+        assert result["hotel_options"][0]["preference_score"] >= result["hotel_options"][1]["preference_score"]

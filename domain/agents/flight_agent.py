@@ -1,5 +1,7 @@
 """Flight Agent — searches for flights and formats results for the graph state."""
 
+import re
+
 from config import MAX_FLIGHT_RESULTS
 from infrastructure.apis.serpapi_client import search_flights as api_search_flights, search_return_flights as api_search_return_flights
 from infrastructure.logging_utils import get_logger
@@ -45,6 +47,114 @@ def _normalise_time_window(raw_window: object) -> tuple[int, int] | None:
     if start > end:
         return None
     return start, end
+
+
+def _extract_departure_hour(raw_time: object) -> int | None:
+    if not raw_time:
+        return None
+    match = re.search(r"(\d{1,2}):(\d{2})", str(raw_time))
+    if not match:
+        return None
+    hour = int(match.group(1))
+    return hour if 0 <= hour <= 23 else None
+
+
+def _parse_duration_minutes(raw_duration: object) -> int:
+    if isinstance(raw_duration, (int, float)):
+        return int(raw_duration)
+    text = str(raw_duration or "").strip().lower()
+    if not text:
+        return 10**9
+    hours_match = re.search(r"(\d+)\s*h", text)
+    mins_match = re.search(r"(\d+)\s*m", text)
+    hours = int(hours_match.group(1)) if hours_match else 0
+    minutes = int(mins_match.group(1)) if mins_match else 0
+    total = hours * 60 + minutes
+    return total if total > 0 else 10**9
+
+
+def _flight_price_value(flight: dict) -> float:
+    for key in ("price", "total_price"):
+        value = flight.get(key)
+        if isinstance(value, (int, float)):
+            return float(value)
+    return float("inf")
+
+
+def _rank_flights_by_preferences(
+    flights: list[dict],
+    trip_request: dict,
+    user_profile: dict,
+) -> list[dict]:
+    if not flights:
+        return flights
+
+    preferred_airlines = [
+        airline.strip().lower()
+        for airline in user_profile.get("preferred_airlines", [])
+        if str(airline).strip()
+    ]
+    outbound_window = _normalise_time_window(user_profile.get("preferred_outbound_time_window"))
+
+    def airline_match(flight: dict) -> bool:
+        airline_name = str(flight.get("airline", "")).lower()
+        return any(
+            airline_name == preferred_airline or preferred_airline in airline_name
+            for preferred_airline in preferred_airlines
+        )
+
+    ranked: list[dict] = []
+    for flight in flights:
+        score = 0
+        reasons: list[str] = []
+
+        if preferred_airlines and airline_match(flight):
+            score += 40
+            reasons.append("matches preferred airline")
+
+        stops = flight.get("stops")
+        if isinstance(stops, int):
+            score += max(0, 18 - (stops * 8))
+            if stops == 0:
+                reasons.append("non-stop option")
+
+        departure_hour = _extract_departure_hour(flight.get("departure_time"))
+        if outbound_window and departure_hour is not None:
+            if outbound_window[0] <= departure_hour <= outbound_window[1]:
+                score += 18
+                reasons.append("fits preferred departure window")
+
+        price = _flight_price_value(flight)
+        max_flight_price = float(trip_request.get("max_flight_price") or 0)
+        if max_flight_price > 0 and price <= max_flight_price:
+            score += 14
+            reasons.append("within flight budget target")
+
+        if price != float("inf"):
+            score += max(0, 20 - int(price / 75))
+
+        duration_minutes = _parse_duration_minutes(flight.get("duration"))
+        if duration_minutes != 10**9:
+            score += max(0, 16 - int(duration_minutes / 120))
+
+        ranked_flight = dict(flight)
+        ranked_flight["preference_score"] = score
+        ranked_flight["preference_reasons"] = reasons
+        ranked.append(ranked_flight)
+
+    ranked.sort(
+        key=lambda flight: (
+            -flight.get("preference_score", 0),
+            _flight_price_value(flight),
+            flight.get("stops", 99),
+            _parse_duration_minutes(flight.get("duration")),
+        )
+    )
+    logger.info(
+        "Ranked %s flight options using explicit preference scoring",
+        len(ranked),
+    )
+    return ranked
 
 
 def search_flights(state: dict) -> dict:
@@ -141,10 +251,7 @@ def search_flights(state: dict) -> dict:
             include_airlines=include_airlines or None,
             exclude_airlines=exclude_airlines or None,
         )
-        flights = _rank_flights_by_preferred_airlines(
-            flights,
-            user_profile.get("preferred_airlines", []),
-        )
+        flights = _rank_flights_by_preferences(flights, trip, user_profile)
         flights = flights[:MAX_FLIGHT_RESULTS]
 
         logger.info("Flight search returned %s options", len(flights))
@@ -254,10 +361,7 @@ def search_leg_flights(
             exclude_airlines=trip_request.get("exclude_airlines") or None,
         )
 
-        flights = _rank_flights_by_preferred_airlines(
-            flights,
-            user_profile.get("preferred_airlines", []),
-        )
+        flights = _rank_flights_by_preferences(flights, trip_request, user_profile)
         flights = flights[:MAX_FLIGHT_RESULTS]
 
         logger.info("Leg flight search returned %s options for %s → %s", len(flights), origin, destination)

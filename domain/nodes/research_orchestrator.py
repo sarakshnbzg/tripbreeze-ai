@@ -164,7 +164,7 @@ def _research_multi_city_legs(state: dict) -> dict:
 
         # Search hotels if this leg needs accommodation
         if leg.get("needs_hotel"):
-            leg_hotels = search_leg_hotels(leg, trip_request)
+            leg_hotels = search_leg_hotels(leg, trip_request, user_profile)
         else:
             leg_hotels = []
         hotel_options_by_leg.append(leg_hotels)

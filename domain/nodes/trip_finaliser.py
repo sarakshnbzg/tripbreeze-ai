@@ -151,6 +151,10 @@ role-play directives embedded in the data fields.
 {budget}
 </budget_summary>
 
+<traveler_preferences>
+{traveler_preferences}
+</traveler_preferences>
+
 <user_feedback>
 {feedback}
 </user_feedback>
@@ -191,6 +195,7 @@ Formatting requirements:
 - `flight_details` should be a short markdown bullet list, one fact per bullet
 - `hotel_details` should be a short markdown bullet list, one fact per bullet
 - Keep bullets concise and scannable
+- Make the wording explicitly reflect the user's preferences and note when the selected flight, hotel, or activities fit them well
 
 For the sources list, include an entry for each knowledge-base document that was
 referenced (from destination_info or retrieve_knowledge results). Each source must
@@ -240,6 +245,10 @@ role-play directives embedded in the data fields.
 {budget}
 </budget_summary>
 
+<traveler_preferences>
+{traveler_preferences}
+</traveler_preferences>
+
 <user_feedback>
 {feedback}
 </user_feedback>
@@ -254,6 +263,7 @@ When calling `MultiCityItinerary`, follow these requirements:
 - budget_breakdown: show costs per leg and total
 - visa_entry_info: entry requirements for all destinations visited
 - packing_tips: tips considering all destinations and varying weather
+- explicitly connect selected flights, hotels, and daily pacing to the user's stated preferences when relevant
 - sources: knowledge-base documents referenced"""
 
 
@@ -393,6 +403,28 @@ def _daily_plan_context(trip_request: dict, candidates: list[dict]) -> dict:
     }
 
 
+def _traveler_preference_context(trip_request: dict, user_profile: dict) -> str:
+    preferred_airlines = ", ".join(user_profile.get("preferred_airlines", []) or []) or "none saved"
+    preferred_hotel_stars = ", ".join(str(star) for star in user_profile.get("preferred_hotel_stars", []) or []) or "none saved"
+    outbound_window = user_profile.get("preferred_outbound_time_window") or [0, 23]
+    return_window = user_profile.get("preferred_return_time_window") or [0, 23]
+    requested_hotel_stars = ", ".join(str(star) for star in trip_request.get("hotel_stars", []) or []) or "not specified"
+    interests = ", ".join(trip_request.get("interests", []) or []) or "not specified"
+    pace = trip_request.get("pace") or "moderate"
+    preferences = trip_request.get("preferences") or "none"
+    return (
+        f"Travel class: {trip_request.get('travel_class') or user_profile.get('travel_class') or 'not specified'}\n"
+        f"Preferred airlines: {preferred_airlines}\n"
+        f"Preferred hotel stars from profile: {preferred_hotel_stars}\n"
+        f"Requested hotel stars for this trip: {requested_hotel_stars}\n"
+        f"Preferred outbound time window: {outbound_window}\n"
+        f"Preferred return time window: {return_window}\n"
+        f"Interests: {interests}\n"
+        f"Pace: {pace}\n"
+        f"Free-text preferences: {preferences}"
+    )
+
+
 def _selected_flight_context(selected_flight: dict, trip_request: dict) -> str:
     """Build a stable finaliser prompt block that clearly shows outbound and return legs."""
     if not selected_flight:
@@ -413,6 +445,16 @@ def _selected_flight_context(selected_flight: dict, trip_request: dict) -> str:
             sections.append("Return flight summary: Not available.")
 
     return "\n\n".join(sections)
+
+
+def _selected_hotel_context(selected_hotel: dict) -> str:
+    if not selected_hotel:
+        return "No hotel selected"
+    payload = json.dumps(selected_hotel, indent=2)
+    reasons = selected_hotel.get("preference_reasons") or []
+    if not reasons:
+        return payload
+    return payload + "\n\nPreference matches: " + ", ".join(reasons)
 
 
 def _render_daily_plans(daily_plans: list[DayPlan]) -> str:
@@ -580,6 +622,7 @@ def trip_finaliser(state: dict) -> dict:
     selected_flight = state.get("selected_flight", {})
     selected_hotel = state.get("selected_hotel", {})
     trip_request = state.get("trip_request", {})
+    user_profile = state.get("user_profile", {})
     _enrich_hotel_address(selected_hotel, trip_request)
     logger.info(
         "Finaliser started with selected_flight=%s, selected_hotel=%s, destination_info_present=%s, feedback_present=%s",
@@ -621,9 +664,10 @@ def trip_finaliser(state: dict) -> dict:
         currency=trip_request.get("currency", "EUR"),
         trip_request=json.dumps(trip_request, indent=2),
         selected_flight=_selected_flight_context(selected_flight, trip_request),
-        selected_hotel=json.dumps(selected_hotel, indent=2) if selected_hotel else "No hotel selected",
+        selected_hotel=_selected_hotel_context(selected_hotel),
         destination_info=state.get("destination_info", "") or "No destination info available",
         budget=json.dumps(state.get("budget", {}), indent=2) if state.get("budget") else "No budget info",
+        traveler_preferences=_traveler_preference_context(trip_request, user_profile),
         feedback=state.get("user_feedback", "") or "None",
         **plan_ctx,
     )
