@@ -218,53 +218,56 @@ def _build_profile_payload(profile: dict[str, Any], form_values: dict[str, Any])
 
 def _render_login_screen() -> None:
     """Show a login / register form and block until the user authenticates."""
-    st.title("Welcome to TripBreeze AI")
+    left_spacer, auth_col, right_spacer = st.columns([1, 1.6, 1])
+    with auth_col:
+        st.title("Welcome to TripBreeze AI")
+        st.caption("Log in or create an account to save preferences and revisit past trips.")
+        with st.container(border=True):
+            login_tab, register_tab = st.tabs(["Log In", "Register"])
 
-    login_tab, register_tab = st.tabs(["Log In", "Register"])
-
-    with login_tab:
-        with st.form("login_form"):
-            login_id = st.text_input("Username").strip()
-            login_pw = st.text_input("Password", type="password")
-            login_submitted = st.form_submit_button("Log In")
-        if login_submitted:
-            if not login_id or not login_pw:
-                st.warning("Please enter both username and password.")
-            elif verify_user(login_id, login_pw):
-                _start_authenticated_session(login_id)
-                st.rerun()
-            else:
-                st.error("Invalid username or password.")
-
-    with register_tab:
-        registration_profile = load_profile("registration_defaults")
-        with st.form("register_form"):
-            reg_id = st.text_input("Choose a Username").strip()
-            reg_pw = st.text_input("Choose a Password", type="password")
-            reg_pw2 = st.text_input("Confirm Password", type="password")
-            st.caption("Set up your travel profile now, or leave anything blank and update it later.")
-            registration_form_values = _profile_form_fields(registration_profile, prefix="register")
-            reg_submitted = st.form_submit_button("Register")
-        if reg_submitted:
-            if not reg_id or not reg_pw:
-                st.warning("Please fill in all fields.")
-            elif reg_pw != reg_pw2:
-                st.error("Passwords do not match.")
-            else:
-                try:
-                    registered = register_user(
-                        reg_id,
-                        reg_pw,
-                        _build_profile_payload(registration_profile, registration_form_values),
-                    )
-                except ValueError as exc:
-                    st.error(str(exc))
-                else:
-                    if registered:
-                        _start_authenticated_session(reg_id)
+            with login_tab:
+                with st.form("login_form"):
+                    login_id = st.text_input("Username").strip()
+                    login_pw = st.text_input("Password", type="password")
+                    login_submitted = st.form_submit_button("Log In", use_container_width=True)
+                if login_submitted:
+                    if not login_id or not login_pw:
+                        st.warning("Please enter both username and password.")
+                    elif verify_user(login_id, login_pw):
+                        _start_authenticated_session(login_id)
                         st.rerun()
                     else:
-                        st.error("Username is already taken.")
+                        st.error("Invalid username or password.")
+
+            with register_tab:
+                registration_profile = load_profile("registration_defaults")
+                with st.form("register_form"):
+                    reg_id = st.text_input("Choose a Username").strip()
+                    reg_pw = st.text_input("Choose a Password", type="password")
+                    reg_pw2 = st.text_input("Confirm Password", type="password")
+                    st.caption("Set up your travel profile now, or leave anything blank and update it later.")
+                    registration_form_values = _profile_form_fields(registration_profile, prefix="register")
+                    reg_submitted = st.form_submit_button("Register", use_container_width=True)
+                if reg_submitted:
+                    if not reg_id or not reg_pw:
+                        st.warning("Please fill in all fields.")
+                    elif reg_pw != reg_pw2:
+                        st.error("Passwords do not match.")
+                    else:
+                        try:
+                            registered = register_user(
+                                reg_id,
+                                reg_pw,
+                                _build_profile_payload(registration_profile, registration_form_values),
+                            )
+                        except ValueError as exc:
+                            st.error(str(exc))
+                        else:
+                            if registered:
+                                _start_authenticated_session(reg_id)
+                                st.rerun()
+                            else:
+                                st.error("Username is already taken.")
 
 
 def _summarise_token_usage(usage_list: list[dict]) -> dict[str, Any]:
