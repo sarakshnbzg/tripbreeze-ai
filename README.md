@@ -12,6 +12,7 @@ TripBreeze is deployed on Streamlit Community Cloud:
 - Uses a ReAct-style research orchestrator to decide when to search flights, search hotels, and query the local knowledge base
 - 🎙️ Accepts voice input — describe your trip by speaking and it's transcribed via OpenAI Whisper
 - ✈️ Searches flights with SerpAPI / Google Flights
+- 🚆 Shows ground transport options (trains, buses, ferries) side-by-side with flights so users can compare modes. Currently backed by a stub; swap `infrastructure/apis/ground_transport_client.py` for a real provider when one becomes available.
 - 🏨 Searches hotels with SerpAPI / Google Hotels
 - 🌍 Supports **multi-city itineraries** — plan trips like "Paris for 3 days, then Barcelona for 4 days" with per-leg flight and hotel selection
 - 📚 Retrieves destination tips, visa info, and travel guidance from a local RAG knowledge base
@@ -28,7 +29,7 @@ TripBreeze is deployed on Streamlit Community Cloud:
 ```text
 Profile Loader
   -> Trip Intake
-  -> Research Orchestrator (ReAct agent: flights, hotels, RAG for overview + entry requirements)
+  -> Research Orchestrator (ReAct agent: flights, ground transport, hotels, RAG for overview + entry requirements)
   -> Budget Aggregator
   -> Review (HITL pause)
   -> Trip Finaliser (ReAct agent: RAG for transport/safety/budget tips, generates itinerary)
@@ -180,7 +181,7 @@ If you want to use the same hosted database in Docker, keep `DATABASE_URL` in `.
 2. Describe the trip in free text or by voice, optionally refining it with structured form fields for dates, destination, travellers, budget, and similar core details.
 3. The intake step merges structured fields with free text, validates dates, and extracts travel filters such as nonstop flights, airline exclusions, hotel stars, or max flight price.
 4. The ReAct-style research orchestrator decides which tools to call for this request: flights, hotels, knowledge retrieval, or any combination of them.
-5. Review flight, hotel, destination, and budget results.
+5. Review flight, ground transport, hotel, destination, and budget results. Ground transport is optional — pick a train/bus/ferry alongside (or instead of) your flight.
 6. Approve to generate the final itinerary.
 7. Download the itinerary as a PDF or email it directly to yourself.
 

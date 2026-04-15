@@ -17,12 +17,13 @@ Trip Intake                   ← merges structured fields with free text; valid
   ▼
 Research Orchestrator         ← ReAct agent: decides which research tools to call
   │
-  ├──────────┬──────────┐
-  ▼          ▼          ▼
-Flight    Hotel      RAG
-Tool      Tool       Tool
-  │          │          │
-  └──────────┴──────────┘
+  ├──────────┬──────────┬──────────┐
+  ▼          ▼          ▼          ▼
+Flight    Ground      Hotel      RAG
+Tool      Transport   Tool       Tool
+          Tool
+  │          │          │          │
+  └──────────┴──────────┴──────────┘
              │
              ▼
       Budget Aggregator       ← sums costs, checks budget limit
@@ -57,8 +58,8 @@ Tool      Tool       Tool
 | **Purpose** | ReAct agent that dynamically chooses which research tools to call for the current trip |
 | **LLM** | User-selected OpenAI or Google Gemini chat model with tool calling |
 | **Reads from state** | `trip_request`, `trip_legs` (for multi-city), `user_profile`, `llm_provider`, `llm_model` |
-| **Writes to state** | `flight_options`, `hotel_options`, `destination_info` (overview + entry requirements only), `rag_sources`, research summary message; for multi-city: `flight_options_by_leg`, `hotel_options_by_leg` |
-| **Tool choices** | `search_flights`, `search_hotels`, `retrieve_knowledge`, `SubmitResearchResult` |
+| **Writes to state** | `flight_options`, `transport_options`, `hotel_options`, `destination_info` (overview + entry requirements only), `rag_sources`, research summary message; for multi-city: `flight_options_by_leg`, `hotel_options_by_leg` |
+| **Tool choices** | `search_flights`, `search_ground_transport`, `search_hotels`, `retrieve_knowledge`, `SubmitResearchResult` |
 | **Routing behavior** | May call any subset of tools, including skipping retrieval entirely or calling it multiple times, and finishes by calling `SubmitResearchResult` |
 | **Multi-city** | When `trip_legs` is present, searches flights and hotels per leg (one-way flights) and aggregates results into `*_by_leg` fields |
 | **RAG output** | Only extracts `destination_overview` and `entry_requirements` from RAG — transport, safety, and budget tips are deferred to the finaliser |
@@ -75,6 +76,20 @@ Tool      Tool       Tool
 | **Writes to state** | `flight_options` — list of dicts with airline, times, duration, stops, price |
 | **Multi-city** | `search_leg_flights` searches one-way flights for a single leg, used when iterating over `trip_legs` |
 | **Error handling** | Returns empty list + status message on missing inputs or API failure |
+
+### Ground Transport Tool
+
+| Field | Detail |
+|-------|--------|
+| **File** | `domain/agents/ground_transport_agent.py` |
+| **Callable name** | `search_ground_transport` |
+| **Purpose** | Search trains, buses, and ferries for the requested route and date, presented side-by-side with flights so the user can compare modes |
+| **Infrastructure** | `infrastructure/apis/ground_transport_client.search_ground_transport` — currently a stub returning realistic mock data with Google Maps transit deep-links. Replace this one file to swap in a real provider (Rome2Rio, Google Routes, etc.); the normalized return shape is the contract the rest of the app depends on |
+| **Reads from state** | `trip_request` (origin, destination, departure_date, travellers, currency) |
+| **Writes to state** | `transport_options` — list of dicts with mode, operator, departure/arrival times, duration, stops, price, booking_url |
+| **Selection** | Optional — user may pick a ground option in addition to (or instead of) a flight; additive in the budget summary |
+| **Scope** | Single-destination only in the current implementation; multi-city legs do not yet call this tool |
+| **Error handling** | Returns empty list + status message on missing inputs or failure |
 
 ### Hotel Tool
 
@@ -151,7 +166,7 @@ Tool      Tool       Tool
 | **Node name** | `review` |
 | **Purpose** | Format research results for human review; pause for approval |
 | **Pure logic** | String formatting only |
-| **Reads from state** | `flight_options`, `hotel_options`, `trip_legs`, `flight_options_by_leg`, `hotel_options_by_leg`, `budget`, `destination_info`, `rag_sources`, `trip_request` |
+| **Reads from state** | `flight_options`, `transport_options`, `hotel_options`, `trip_legs`, `flight_options_by_leg`, `hotel_options_by_leg`, `budget`, `destination_info`, `rag_sources`, `trip_request` |
 | **Writes to state** | Formatted review message |
 | **What's shown** | Destination overview, entry requirements, trip summary, budget notes — transport/safety/budget tips are generated later by the finaliser |
 | **Multi-city** | Shows leg-by-leg summary table with route, dates, and nights per destination |

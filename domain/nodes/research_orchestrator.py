@@ -8,6 +8,7 @@ from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
 from domain.agents.flight_agent import search_flights, search_leg_flights
+from domain.agents.ground_transport_agent import search_ground_transport
 from domain.agents.hotel_agent import search_hotels, search_leg_hotels
 from infrastructure.llms.model_factory import create_chat_model, extract_token_usage, invoke_with_retry
 from infrastructure.logging_utils import get_logger
@@ -27,6 +28,7 @@ Use a ReAct-style workflow:
 
 Available tools:
 - `search_flights`: search live flights when enough trip details are available
+- `search_ground_transport`: search trains, buses, and ferries alongside flights so the user can compare. Call this whenever flight search is possible.
 - `search_hotels`: search live hotels when enough trip details are available
 - `retrieve_knowledge`: search the local travel knowledge base for destination and visa information
   Always include the destination city and the traveller's passport country (from user_profile) in your query so the knowledge base returns the most relevant results.
@@ -265,6 +267,7 @@ def research_orchestrator(state: dict) -> dict:
     collected: dict[str, Any] = {
         "flight_options": state.get("flight_options"),
         "hotel_options": state.get("hotel_options"),
+        "transport_options": state.get("transport_options"),
         "destination_info": state.get("destination_info", ""),
         "rag_used": False,
         "rag_sources": [],
@@ -286,6 +289,19 @@ def research_orchestrator(state: dict) -> dict:
             {
                 "flight_count": len(collected["flight_options"] or []),
                 "status": result.get("messages", [{}])[-1].get("content", "Flight search complete."),
+            }
+        )
+
+    @tool("search_ground_transport")
+    def search_ground_transport_tool() -> str:
+        """Search trains, buses, and ferries for the current trip request."""
+        logger.info("Research orchestrator invoking search_ground_transport tool")
+        result = search_ground_transport(tool_state)
+        collected["transport_options"] = result.get("transport_options", [])
+        return json.dumps(
+            {
+                "transport_count": len(collected["transport_options"] or []),
+                "status": result.get("messages", [{}])[-1].get("content", "Ground transport search complete."),
             }
         )
 
@@ -334,7 +350,7 @@ def research_orchestrator(state: dict) -> dict:
         temperature=float(state.get("llm_temperature", 0)),
     )
     llm_with_tools = llm.bind_tools(
-        [search_flights_tool, search_hotels_tool, retrieve_knowledge_tool, SubmitResearchResult]
+        [search_flights_tool, search_ground_transport_tool, search_hotels_tool, retrieve_knowledge_tool, SubmitResearchResult]
     )
 
     messages = [
@@ -353,6 +369,7 @@ def research_orchestrator(state: dict) -> dict:
     final_response = ""
     tools_by_name = {
         "search_flights": search_flights_tool,
+        "search_ground_transport": search_ground_transport_tool,
         "search_hotels": search_hotels_tool,
         "retrieve_knowledge": retrieve_knowledge_tool,
     }
@@ -416,6 +433,7 @@ def research_orchestrator(state: dict) -> dict:
     return {
         "flight_options": collected.get("flight_options") or [],
         "hotel_options": collected.get("hotel_options") or [],
+        "transport_options": collected.get("transport_options") or [],
         "destination_info": collected.get("destination_info") or "",
         "rag_used": bool(collected.get("rag_used")),
         "rag_sources": collected.get("rag_sources") or [],

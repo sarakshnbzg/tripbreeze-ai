@@ -178,6 +178,46 @@ def flight_option_cards(options: list[dict], currency: str, leg_label: str) -> l
     return cards
 
 
+_MODE_LABELS = {"train": "🚆 Train", "bus": "🚌 Bus", "ferry": "⛴️ Ferry"}
+
+
+def _transport_badges(options: list[dict], option: dict) -> list[str]:
+    badges = []
+    prices = [float(o.get("total_price", 0) or 0) for o in options if o.get("total_price")]
+    durations = [_duration_to_minutes(o) for o in options if _duration_to_minutes(o) > 0]
+
+    if prices and float(option.get("total_price", 0) or 0) == min(prices):
+        badges.append("Best price")
+    if durations and _duration_to_minutes(option) == min(durations):
+        badges.append("Shortest")
+    if option.get("stops") == 0:
+        badges.append("Direct")
+    return badges
+
+
+def transport_option_cards(options: list[dict], currency: str) -> list[dict[str, object]]:
+    cards = []
+    for index, option in enumerate(options):
+        mode_label = _MODE_LABELS.get(option.get("mode", ""), option.get("mode", "").title())
+        details = [
+            f"Route: {option.get('segments_summary', '')}",
+            f"Depart: {option.get('departure_time', '?')} · Arrive: {option.get('arrival_time', '?')}",
+            f"Duration: {option.get('duration', '?')} · {_format_stops(option.get('stops', 0))}",
+            f"Price: {_format_option_price(option, currency)}",
+        ]
+        booking_url = option.get("booking_url")
+        if booking_url:
+            details.append(
+                f"🔗 <a href='{html.escape(booking_url)}' target='_blank' style='color:#60a5fa;'>View on Google Maps Transit</a>"
+            )
+        cards.append({
+            "title": f"Option {index + 1}: {mode_label} — {option.get('operator', 'Unknown operator')}",
+            "badges": _transport_badges(options, option),
+            "details": details,
+        })
+    return cards
+
+
 def hotel_option_cards(hotels: list[dict], currency: str) -> list[dict[str, object]]:
     cards = []
     for index, hotel in enumerate(hotels):
@@ -540,6 +580,21 @@ def render_review_actions() -> None:
     else:
         st.session_state.pop("selected_return_option_index", None)
 
+    # Ground transport selection (optional, side-by-side with flights)
+    transport_options = state.get("transport_options", [])[:5]
+    selected_transport_idx = None
+    if transport_options:
+        st.subheader("🚆 Ground Transport (optional)")
+        st.caption("Compare trains, buses, and ferries alongside flights. Leave unselected if you'd rather fly.")
+        selected_transport_idx = render_selectable_cards(
+            selection_key="selected_transport_option_index",
+            cards=transport_option_cards(transport_options, currency),
+        )
+        if st.button("Clear transport selection", key="clear_transport_selection"):
+            st.session_state.pop("selected_transport_option_index", None)
+            selected_transport_idx = None
+            st.rerun()
+
     # Hotel selection
     st.subheader("🏨 Select a Hotel")
     st.caption("Hotel totals use the destination dates and traveller count from your trip request.")
@@ -565,6 +620,8 @@ def render_review_actions() -> None:
         sel_flight_price = sel_flight.get("total_price", sel_flight.get("price", 0)) if sel_flight else 0
         selected_hotel = hotels[selected_hotel_idx] if selected_hotel_idx is not None else {}
         sel_hotel_price = selected_hotel.get("total_price", 0) if selected_hotel else 0
+        selected_transport = transport_options[selected_transport_idx] if selected_transport_idx is not None else {}
+        sel_transport_price = float(selected_transport.get("total_price", 0) or 0) if selected_transport else 0
         daily_expenses = budget.get("estimated_daily_expenses", 0)
         daily_days = budget.get("daily_expense_days", 0)
         daily_travelers = budget.get("daily_expense_travelers", 0)
@@ -580,12 +637,19 @@ def render_review_actions() -> None:
             )
         flight_detail = _budget_flight_detail(sel_flight, currency)
         hotel_detail = _budget_hotel_detail(selected_hotel, budget, currency)
-        total = sel_flight_price + sel_hotel_price + daily_expenses
+        total = sel_flight_price + sel_transport_price + sel_hotel_price + daily_expenses
+
+        transport_row = ""
+        if selected_transport:
+            mode_label = _MODE_LABELS.get(selected_transport.get("mode", ""), "Ground transport")
+            transport_detail = f"{selected_transport.get('operator', '')} — {selected_transport.get('segments_summary', '')}"
+            transport_row = f"| {mode_label} | {transport_detail} | {format_currency(sel_transport_price, currency)} |\n"
 
         budget_md = (
             "| Category | What It Covers | Amount |\n"
             "|:---|:---|---:|\n"
             f"| ✈️ {flight_label} | {flight_detail} | {format_currency(sel_flight_price, currency)} |\n"
+            f"{transport_row}"
             f"| 🏨 Hotel | {hotel_detail} | {format_currency(sel_hotel_price, currency)} |\n"
             f"| 🍽️ Daily expenses | {daily_expense_detail} | {format_currency(daily_expenses, currency)} |\n"
             f"| **🧳 Total** | **Selected trip estimate** | **{format_currency(total, currency)}** |"
@@ -634,6 +698,11 @@ def render_review_actions() -> None:
         else:
             state["selected_flight"] = {}
         state["selected_hotel"] = hotels[selected_hotel_idx] if selected_hotel_idx is not None else {}
+        state["selected_transport"] = (
+            transport_options[selected_transport_idx]
+            if selected_transport_idx is not None
+            else {}
+        )
         st.session_state.graph_state = state
         st.session_state.awaiting_review = False
         st.session_state.awaiting_interests = True
