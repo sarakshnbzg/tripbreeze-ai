@@ -22,6 +22,28 @@ def _escape_xml(text: str) -> str:
     )
 
 
+def _convert_inline_markdown(text: str) -> str:
+    """Convert inline markdown (bold, italic) to reportlab XML tags.
+
+    Handles **bold** and *italic* patterns within text.
+    """
+    import re
+
+    # First escape XML special characters
+    text = _escape_xml(text)
+
+    # Convert **bold** to <b>bold</b>
+    text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
+
+    # Convert *italic* to <i>italic</i> (but not inside already converted bold)
+    text = re.sub(r'(?<!\*)\*([^*]+?)\*(?!\*)', r'<i>\1</i>', text)
+
+    # Convert _italic_ to <i>italic</i>
+    text = re.sub(r'_(.+?)_', r'<i>\1</i>', text)
+
+    return text
+
+
 def generate_trip_pdf(
     final_itinerary: str,
     graph_state: dict[str, Any],
@@ -217,7 +239,7 @@ def generate_trip_pdf(
         nonlocal current_bullets
         if current_bullets:
             for bullet_text in current_bullets:
-                story.append(Paragraph(f"<bullet>&bull;</bullet> {_escape_xml(bullet_text)}", bullet_style))
+                story.append(Paragraph(f"<bullet>&bull;</bullet> {_convert_inline_markdown(bullet_text)}", bullet_style))
             current_bullets = []
 
     for para in itinerary_paragraphs:
@@ -225,16 +247,24 @@ def generate_trip_pdf(
         if not para:
             flush_bullets()
             story.append(Spacer(1, 0.05*inch))
+        elif para.startswith('##### '):
+            # Level 5 heading - treat as bold text
+            flush_bullets()
+            story.append(Paragraph(f"<b>{_convert_inline_markdown(para[6:])}</b>", normal_style))
+        elif para.startswith('#### '):
+            # Level 4 heading - treat as bold text
+            flush_bullets()
+            story.append(Paragraph(f"<b>{_convert_inline_markdown(para[5:])}</b>", normal_style))
+        elif para.startswith('### '):
+            flush_bullets()
+            story.append(Paragraph(f"<b>{_convert_inline_markdown(para[4:])}</b>", normal_style))
+        elif para.startswith('## '):
+            flush_bullets()
+            story.append(Paragraph(_convert_inline_markdown(para[3:]), subheading_style))
         elif para.startswith('# '):
             flush_bullets()
             story.append(Spacer(1, 0.1*inch))
-            story.append(Paragraph(_escape_xml(para[2:]), heading_style))
-        elif para.startswith('## '):
-            flush_bullets()
-            story.append(Paragraph(_escape_xml(para[3:]), subheading_style))
-        elif para.startswith('### '):
-            flush_bullets()
-            story.append(Paragraph(f"<b>{_escape_xml(para[4:])}</b>", normal_style))
+            story.append(Paragraph(_convert_inline_markdown(para[2:]), heading_style))
         elif para.startswith('**') and para.endswith('**'):
             flush_bullets()
             story.append(Paragraph(f"<b>{_escape_xml(para[2:-2])}</b>", normal_style))
@@ -243,7 +273,7 @@ def generate_trip_pdf(
             current_bullets.append(para[2:])
         else:
             flush_bullets()
-            story.append(Paragraph(_escape_xml(para), normal_style))
+            story.append(Paragraph(_convert_inline_markdown(para), normal_style))
 
     # Flush any remaining bullets
     flush_bullets()

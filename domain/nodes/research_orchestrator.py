@@ -7,8 +7,8 @@ from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
-from domain.agents.flight_agent import search_flights
-from domain.agents.hotel_agent import search_hotels
+from domain.agents.flight_agent import search_flights, search_leg_flights
+from domain.agents.hotel_agent import search_hotels, search_leg_hotels
 from infrastructure.llms.model_factory import create_chat_model, extract_token_usage, invoke_with_retry
 from infrastructure.logging_utils import get_logger
 from infrastructure.rag.vectorstore import retrieve
@@ -135,10 +135,126 @@ def _format_destination_info(final_result: dict[str, Any]) -> str:
 
     # Backward-compatible fallback for older model/tool outputs.
     return str(final_result.get("destination_briefing", "")).strip()
+
+
+def _research_multi_city_legs(state: dict) -> dict:
+    """Search flights and hotels for each leg of a multi-city trip."""
+    trip_legs = state.get("trip_legs", [])
+    trip_request = state.get("trip_request", {})
+    user_profile = state.get("user_profile", {})
+
+    logger.info("Multi-city research started with %d legs", len(trip_legs))
+
+    flight_options_by_leg: list[list[dict]] = []
+    hotel_options_by_leg: list[list[dict]] = []
+
+    for leg in trip_legs:
+        leg_idx = leg.get("leg_index", 0)
+        logger.info(
+            "Researching leg %d: %s → %s (%s, %d nights)",
+            leg_idx, leg.get("origin"), leg.get("destination"),
+            leg.get("departure_date"), leg.get("nights", 0),
+        )
+
+        # Search flights for this leg
+        leg_flights = search_leg_flights(leg, trip_request, user_profile)
+        flight_options_by_leg.append(leg_flights)
+
+        # Search hotels if this leg needs accommodation
+        if leg.get("needs_hotel"):
+            leg_hotels = search_leg_hotels(leg, trip_request)
+        else:
+            leg_hotels = []
+        hotel_options_by_leg.append(leg_hotels)
+
+    # Summary message
+    total_flights = sum(len(f) for f in flight_options_by_leg)
+    total_hotels = sum(len(h) for h in hotel_options_by_leg)
+    summary = f"Multi-city research complete: found {total_flights} flights and {total_hotels} hotels across {len(trip_legs)} legs."
+
+    logger.info(
+        "Multi-city research finished: %d legs, %d total flights, %d total hotels",
+        len(trip_legs), total_flights, total_hotels,
+    )
+
+    return {
+        "flight_options_by_leg": flight_options_by_leg,
+        "hotel_options_by_leg": hotel_options_by_leg,
+        # Backward compat: populate legacy fields with first leg
+        "flight_options": flight_options_by_leg[0] if flight_options_by_leg else [],
+        "hotel_options": hotel_options_by_leg[0] if hotel_options_by_leg else [],
+        "messages": [{"role": "assistant", "content": summary}],
+    }
+
+
 def research_orchestrator(state: dict) -> dict:
     """LangGraph node: let the LLM choose which research tools to run."""
     trip_request = state.get("trip_request", {})
+    trip_legs = state.get("trip_legs", [])
     user_profile = state.get("user_profile", {})
+
+    # Multi-city trips: search each leg separately, then do RAG for destination info
+    if trip_legs:
+        logger.info(
+            "Research orchestrator handling multi-city trip with %d legs",
+            len(trip_legs),
+        )
+        multi_city_result = _research_multi_city_legs(state)
+
+        # Now do RAG retrieval for unique destinations
+        unique_destinations = list(set(
+            leg["destination"] for leg in trip_legs if leg.get("needs_hotel")
+        ))
+        rag_sources: list[str] = []
+        destination_sections = []
+
+        for destination in unique_destinations:
+            # Query for overview
+            overview_query = f"travel guide for {destination} attractions things to do"
+            overview_results = retrieve(overview_query, provider=state.get("llm_provider"))
+
+            # Query for entry requirements
+            passport_country = user_profile.get("passport_country", "")
+            entry_query = f"visa entry requirements {destination}"
+            if passport_country:
+                entry_query += f" for {passport_country} passport"
+            entry_results = retrieve(entry_query, provider=state.get("llm_provider"))
+
+            # Build section for this destination
+            section_parts = [f"### {destination}"]
+
+            # Overview
+            if overview_results:
+                overview_content = overview_results[0]["content"][:600]
+                section_parts.append(f"#### 🌍 Overview\n{overview_content}")
+                for r in overview_results:
+                    if r["source"] not in rag_sources:
+                        rag_sources.append(r["source"])
+
+            # Entry requirements
+            if entry_results:
+                entry_content = entry_results[0]["content"][:400]
+                section_parts.append(f"#### 🛂 Entry Requirements\n{entry_content}")
+                for r in entry_results:
+                    if r["source"] not in rag_sources:
+                        rag_sources.append(r["source"])
+
+            if len(section_parts) > 1:  # Has more than just the header
+                destination_sections.append("\n\n".join(section_parts))
+
+        if destination_sections:
+            intro = "A quick travel snapshot for each destination to help you compare options and plan your stay:"
+            multi_city_result["destination_info"] = intro + "\n\n" + "\n\n---\n\n".join(destination_sections)
+        else:
+            multi_city_result["destination_info"] = ""
+
+        multi_city_result["rag_used"] = bool(rag_sources)
+        multi_city_result["rag_sources"] = rag_sources
+        multi_city_result["token_usage"] = []  # No LLM calls for multi-city flight/hotel search
+        multi_city_result["current_step"] = "research_complete"
+        return multi_city_result
+
+    # Single-destination trip: use existing ReAct orchestration
     logger.info(
         "Research orchestrator started destination=%s departure=%s return=%s",
         trip_request.get("destination"),

@@ -307,11 +307,151 @@ def _is_budget_status_note(note: str) -> bool:
     return "within budget" in lowered or "exceeds your budget" in lowered or "to spare" in lowered
 
 
+def _render_multi_city_review(state: dict) -> None:
+    """Render per-leg selection UI for multi-city trips."""
+    trip_legs = state.get("trip_legs", [])
+    flight_options_by_leg = state.get("flight_options_by_leg", [])
+    hotel_options_by_leg = state.get("hotel_options_by_leg", [])
+    budget = state.get("budget", {})
+    trip_request = state.get("trip_request", {})
+    currency = normalise_currency(
+        budget.get("currency") or trip_request.get("currency")
+    )
+
+    st.subheader("🌍 Multi-City Trip Selection")
+    st.caption(
+        "Select a flight and hotel (where needed) for each leg of your trip."
+    )
+
+    selected_flights: list[dict] = []
+    selected_hotels: list[dict] = []
+    all_selections_complete = True
+
+    for leg in trip_legs:
+        leg_idx = leg.get("leg_index", 0)
+        origin = leg.get("origin", "?")
+        destination = leg.get("destination", "?")
+        departure_date = leg.get("departure_date", "?")
+        nights = leg.get("nights", 0)
+        needs_hotel = leg.get("needs_hotel", False)
+
+        # Leg header
+        leg_label = f"Leg {leg_idx + 1}: {origin} → {destination}"
+        if nights > 0:
+            leg_label += f" ({nights} night{'s' if nights != 1 else ''})"
+        else:
+            leg_label += " (Return)"
+
+        with st.expander(leg_label, expanded=(leg_idx == 0)):
+            st.markdown(f"**📅 Departure:** {departure_date}")
+
+            # Flight selection for this leg
+            leg_flights = flight_options_by_leg[leg_idx] if leg_idx < len(flight_options_by_leg) else []
+            if leg_flights:
+                st.markdown("**✈️ Flight Options:**")
+                flight_idx = render_selectable_cards(
+                    selection_key=f"selected_flight_leg_{leg_idx}",
+                    cards=flight_option_cards(leg_flights[:5], currency, "Outbound"),
+                )
+                if flight_idx is not None:
+                    selected_flights.append(leg_flights[flight_idx])
+                else:
+                    selected_flights.append({})
+                    all_selections_complete = False
+            else:
+                st.warning("No flights found for this leg.")
+                selected_flights.append({})
+                all_selections_complete = False
+
+            # Hotel selection if needed
+            if needs_hotel:
+                leg_hotels = hotel_options_by_leg[leg_idx] if leg_idx < len(hotel_options_by_leg) else []
+                if leg_hotels:
+                    st.markdown("**🏨 Hotel Options:**")
+                    hotel_idx = render_selectable_cards(
+                        selection_key=f"selected_hotel_leg_{leg_idx}",
+                        cards=hotel_option_cards(leg_hotels[:5], currency),
+                    )
+                    if hotel_idx is not None:
+                        selected_hotels.append(leg_hotels[hotel_idx])
+                    else:
+                        selected_hotels.append({})
+                        all_selections_complete = False
+                else:
+                    st.warning("No hotels found for this destination.")
+                    selected_hotels.append({})
+                    all_selections_complete = False
+            else:
+                st.info("No hotel needed for this leg (return flight).")
+                selected_hotels.append({})
+
+    # Budget summary for multi-city
+    if budget:
+        st.subheader("💰 Budget Summary")
+
+        # Calculate totals from selections
+        total_flight_cost = sum(
+            f.get("total_price", f.get("price", 0)) for f in selected_flights if f
+        )
+        total_hotel_cost = sum(
+            h.get("total_price", 0) for h in selected_hotels if h
+        )
+        daily_expenses = budget.get("estimated_daily_expenses", 0)
+        total = total_flight_cost + total_hotel_cost + daily_expenses
+
+        budget_md = (
+            "| Category | Amount |\n"
+            "|:---|---:|\n"
+            f"| ✈️ Flights ({len(trip_legs)} legs) | {format_currency(total_flight_cost, currency)} |\n"
+            f"| 🏨 Hotels | {format_currency(total_hotel_cost, currency)} |\n"
+            f"| 🍽️ Daily expenses | {format_currency(daily_expenses, currency)} |\n"
+            f"| **🧳 Total** | **{format_currency(total, currency)}** |"
+        )
+        st.markdown(budget_md)
+
+        budget_limit = trip_request.get("budget_limit", 0) or 0
+        if budget_limit > 0:
+            remaining = budget_limit - total
+            if remaining >= 0:
+                st.success(f"Selected options are within budget with {format_currency(remaining, currency)} to spare.")
+            else:
+                st.warning(f"Selected options are over budget by {format_currency(abs(remaining), currency)}.")
+
+    st.divider()
+
+    # Approve button
+    if not all_selections_complete:
+        st.warning("Please select a flight and hotel for each leg before approving.")
+
+    if st.button(
+        "Approve Selections",
+        type="primary",
+        use_container_width=True,
+        disabled=not all_selections_complete,
+    ):
+        state["selected_flights"] = selected_flights
+        state["selected_hotels"] = selected_hotels
+        # Backward compat: populate legacy fields with first leg
+        state["selected_flight"] = selected_flights[0] if selected_flights else {}
+        state["selected_hotel"] = selected_hotels[0] if selected_hotels else {}
+        st.session_state.graph_state = state
+        st.session_state.awaiting_review = False
+        st.session_state.awaiting_interests = True
+        st.rerun()
+
+
 def render_review_actions() -> None:
     state = st.session_state.graph_state
     if not state:
         return
 
+    # Check for multi-city trip
+    trip_legs = state.get("trip_legs", [])
+    if trip_legs:
+        _render_multi_city_review(state)
+        return
+
+    # Single-destination trip: existing UI
     st.caption(
         "Review the options below, choose your preferred flight and hotel, then approve to generate the final itinerary."
     )

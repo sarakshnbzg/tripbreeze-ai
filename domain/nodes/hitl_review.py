@@ -11,6 +11,45 @@ def _markdown_table_value(value: object) -> str:
     return str(value).replace("|", "\\|").replace("\n", " ")
 
 
+def _format_multi_city_summary(trip: dict, trip_legs: list[dict]) -> str:
+    """Format a summary for multi-city trips."""
+    legs_route = " → ".join(
+        leg.get("destination", "?") for leg in trip_legs
+    )
+    full_route = f"{trip.get('origin', '?')} → {legs_route}"
+
+    total_nights = sum(leg.get("nights", 0) for leg in trip_legs)
+    travelers = trip.get("num_travelers", 1)
+    class_name = str(trip.get("travel_class", "ECONOMY")).replace("_", " ").title()
+
+    rows = [
+        "### Multi-City Trip Summary",
+        "",
+        "| Detail | Selection |",
+        "|:---|:---|",
+        f"| Route | {_markdown_table_value(full_route)} |",
+        f"| Legs | {_markdown_table_value(len(trip_legs))} |",
+        f"| Total nights | {_markdown_table_value(total_nights)} |",
+        f"| Travelers | {_markdown_table_value(travelers)} |",
+        f"| Cabin class | {_markdown_table_value(class_name)} |",
+        "",
+        "#### Leg Details",
+        "",
+        "| Leg | Route | Date | Nights |",
+        "|:---|:---|:---|:---|",
+    ]
+
+    for leg in trip_legs:
+        leg_num = leg.get("leg_index", 0) + 1
+        route = f"{leg.get('origin', '?')} → {leg.get('destination', '?')}"
+        date = leg.get("departure_date", "?")
+        nights = leg.get("nights", 0)
+        nights_str = f"{nights} night(s)" if nights > 0 else "Return"
+        rows.append(f"| {leg_num} | {_markdown_table_value(route)} | {_markdown_table_value(date)} | {_markdown_table_value(nights_str)} |")
+
+    return "\n".join(rows)
+
+
 def _format_trip_summary(trip: dict, flights: list[dict], hotels: list[dict]) -> str:
     route = f"{trip.get('origin', '?')} -> {trip.get('destination', '?')}"
     if trip.get("return_date"):
@@ -43,17 +82,22 @@ def hitl_review(state: dict) -> dict:
     """Prepare the review summary for the user to approve or adjust."""
     flights = state.get("flight_options", [])
     hotels = state.get("hotel_options", [])
+    trip_legs = state.get("trip_legs", [])
     budget = state.get("budget", {})
     dest_info = state.get("destination_info", "")
     rag_used = state.get("rag_used", False)
     rag_sources = state.get("rag_sources", [])
     trip = state.get("trip_request", {})
+
+    is_multi_city = bool(trip_legs)
     logger.info(
-        "Preparing HITL review with %s flights, %s hotels, budget_present=%s, destination_info_present=%s",
+        "Preparing HITL review with %s flights, %s hotels, budget_present=%s, destination_info_present=%s, multi_city=%s legs=%s",
         len(flights),
         len(hotels),
         bool(budget),
         bool(dest_info),
+        is_multi_city,
+        len(trip_legs) if is_multi_city else 0,
     )
 
     parts = []
@@ -70,7 +114,12 @@ def hitl_review(state: dict) -> dict:
             "Local knowledge retrieval was used for this search, but no destination briefing text was produced."
         )
 
-    parts.append(_format_trip_summary(trip, flights, hotels))
+    # Use multi-city or single-destination summary
+    if is_multi_city:
+        parts.append(_format_multi_city_summary(trip, trip_legs))
+    else:
+        parts.append(_format_trip_summary(trip, flights, hotels))
+
     if budget.get("budget_notes"):
         parts.append(f"### Budget Note\n\n> {budget['budget_notes']}")
 

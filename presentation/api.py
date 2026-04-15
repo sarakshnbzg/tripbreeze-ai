@@ -70,8 +70,12 @@ class SearchRequest(BaseModel):
 
 class ApproveRequest(BaseModel):
     user_feedback: str = ""
+    # Legacy single-selection (backward compat)
     selected_flight: dict[str, Any] = {}
     selected_hotel: dict[str, Any] = {}
+    # Multi-city selections (one per leg)
+    selected_flights: list[dict[str, Any]] = []
+    selected_hotels: list[dict[str, Any]] = []
     trip_request: dict[str, Any] | None = None
     llm_provider: str = "openai"
     llm_model: str = "gpt-4o-mini"
@@ -356,12 +360,23 @@ async def approve(thread_id: str, req: ApproveRequest):
     state_updates = {
         "user_approved": True,
         "user_feedback": req.user_feedback,
-        "selected_flight": req.selected_flight,
-        "selected_hotel": req.selected_hotel,
         "llm_provider": req.llm_provider,
         "llm_model": req.llm_model,
         "llm_temperature": req.llm_temperature,
     }
+
+    # Multi-city takes precedence over legacy single-selection
+    if req.selected_flights:
+        state_updates["selected_flights"] = req.selected_flights
+        state_updates["selected_hotels"] = req.selected_hotels
+        # Backward compat: populate legacy fields with first leg
+        state_updates["selected_flight"] = req.selected_flights[0] if req.selected_flights else {}
+        state_updates["selected_hotel"] = req.selected_hotels[0] if req.selected_hotels else {}
+    else:
+        # Legacy single-selection
+        state_updates["selected_flight"] = req.selected_flight
+        state_updates["selected_hotel"] = req.selected_hotel
+
     if req.trip_request:
         state_updates["trip_request"] = req.trip_request
 

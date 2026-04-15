@@ -183,3 +183,86 @@ def fetch_return_flights(
         currency=currency,
         return_time_window=return_time_window,
     )
+
+
+def search_leg_flights(
+    leg: dict,
+    trip_request: dict,
+    user_profile: dict,
+) -> list[dict]:
+    """Search one-way flights for a single leg of a multi-city trip.
+
+    Args:
+        leg: Leg dict with origin, destination, departure_date
+        trip_request: Full trip request for shared settings (travelers, class, filters)
+        user_profile: User profile for preferred airlines and time windows
+
+    Returns:
+        List of flight options for this leg
+    """
+    origin = leg.get("origin", "")
+    destination = leg.get("destination", "")
+    departure_date = leg.get("departure_date", "")
+
+    if not all([origin, destination, departure_date]):
+        logger.warning(
+            "Leg flight search missing required details origin=%s destination=%s departure_date=%s",
+            bool(origin), bool(destination), bool(departure_date),
+        )
+        return []
+
+    try:
+        outbound_time_window = _normalise_time_window(
+            user_profile.get("preferred_outbound_time_window")
+        )
+        stops = trip_request.get("stops")
+        num_travelers = trip_request.get("num_travelers", 1)
+
+        max_flight_price = trip_request.get("max_flight_price") or 0
+        budget_limit = trip_request.get("budget_limit") or 0
+        if max_flight_price > 0:
+            max_price = int(max_flight_price)
+        elif budget_limit > 0:
+            max_price = int(budget_limit / num_travelers * 0.3)  # 30% for multi-city (split across legs)
+        else:
+            max_price = None
+
+        logger.info(
+            "Searching leg flights origin=%s destination=%s departure=%s travelers=%s class=%s stops=%s",
+            origin, destination, departure_date, num_travelers,
+            trip_request.get("travel_class", "ECONOMY"), stops,
+        )
+
+        flights = api_search_flights(
+            origin=origin,
+            destination=destination,
+            departure_date=departure_date,
+            return_date=None,  # One-way for multi-city legs
+            adults=num_travelers,
+            travel_class=trip_request.get("travel_class", "ECONOMY"),
+            currency=trip_request.get("currency", "EUR"),
+            outbound_time_window=outbound_time_window,
+            return_time_window=None,
+            stops=stops,
+            max_price=max_price,
+            max_duration=trip_request.get("max_duration") or None,
+            bags=trip_request.get("bags") or None,
+            emissions=bool(trip_request.get("emissions")),
+            layover_duration_min=trip_request.get("layover_duration_min") or None,
+            layover_duration_max=trip_request.get("layover_duration_max") or None,
+            include_airlines=trip_request.get("include_airlines") or None,
+            exclude_airlines=trip_request.get("exclude_airlines") or None,
+        )
+
+        flights = _rank_flights_by_preferred_airlines(
+            flights,
+            user_profile.get("preferred_airlines", []),
+        )
+        flights = flights[:MAX_FLIGHT_RESULTS]
+
+        logger.info("Leg flight search returned %s options for %s → %s", len(flights), origin, destination)
+        return flights
+
+    except Exception as e:
+        logger.exception("Leg flight search failed for %s → %s", origin, destination)
+        return []

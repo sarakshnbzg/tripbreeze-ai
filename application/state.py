@@ -48,6 +48,13 @@ class TravelState(TypedDict, total=False):
     selected_flight: dict[str, Any]
     selected_hotel: dict[str, Any]
 
+    # Multi-city support
+    trip_legs: list[dict[str, Any]]  # [{origin, destination, departure_date, nights, needs_hotel}, ...]
+    flight_options_by_leg: list[list[dict]]  # Per-leg flight options
+    hotel_options_by_leg: list[list[dict]]  # Per-leg hotel options
+    selected_flights: list[dict[str, Any]]  # User selection per leg
+    selected_hotels: list[dict[str, Any]]  # User selection per leg (empty dict if no hotel)
+
     # Final output
     final_itinerary: str
     itinerary_data: dict[str, Any]

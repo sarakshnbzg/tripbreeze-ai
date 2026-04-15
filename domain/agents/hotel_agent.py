@@ -64,3 +64,59 @@ def search_hotels(state: dict) -> dict:
             "hotel_options": [],
             "messages": [{"role": "assistant", "content": f"Hotel search failed: {e}"}],
         }
+
+
+def search_leg_hotels(
+    leg: dict,
+    trip_request: dict,
+) -> list[dict]:
+    """Search hotels for a single leg of a multi-city trip.
+
+    Args:
+        leg: Leg dict with destination, departure_date (check-in), check_out_date, nights
+        trip_request: Full trip request for shared settings (travelers, stars, currency)
+
+    Returns:
+        List of hotel options for this leg
+    """
+    destination = leg.get("destination", "")
+    check_in = leg.get("departure_date", "")
+    check_out = leg.get("check_out_date", "")
+
+    if not leg.get("needs_hotel"):
+        logger.info("Skipping hotel search for leg %s (no hotel needed)", leg.get("leg_index"))
+        return []
+
+    if not all([destination, check_in, check_out]):
+        logger.warning(
+            "Leg hotel search missing required details destination=%s check_in=%s check_out=%s",
+            bool(destination), bool(check_in), bool(check_out),
+        )
+        return []
+
+    try:
+        hotel_stars = trip_request.get("hotel_stars", [])
+        if isinstance(hotel_stars, int):
+            hotel_stars = [hotel_stars]
+        hotel_stars = [star for star in hotel_stars if star in HOTEL_STARS]
+
+        logger.info(
+            "Searching leg hotels destination=%s check_in=%s check_out=%s nights=%s travelers=%s stars=%s",
+            destination, check_in, check_out, leg.get("nights"), trip_request.get("num_travelers", 1), hotel_stars,
+        )
+
+        hotels = api_search_hotels(
+            destination=destination,
+            check_in=check_in,
+            check_out=check_out,
+            adults=trip_request.get("num_travelers", 1),
+            hotel_stars=hotel_stars,
+            currency=trip_request.get("currency", "EUR"),
+        )
+
+        logger.info("Leg hotel search returned %s options for %s", len(hotels), destination)
+        return hotels
+
+    except Exception as e:
+        logger.exception("Leg hotel search failed for %s", destination)
+        return []

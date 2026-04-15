@@ -60,6 +60,92 @@ def _filter_options_within_budget(
 def budget_aggregator(state: dict) -> dict:
     """LangGraph node: aggregate flight + hotel costs and compare to budget."""
     trip = state.get("trip_request", {})
+    trip_legs = state.get("trip_legs", [])
+    budget_limit = trip.get("budget_limit", 0)
+    currency = trip.get("currency", "EUR")
+    prefix = currency_prefix(currency)
+    num_travelers = max(1, int(trip.get("num_travelers", 1) or 1))
+
+    # Multi-city trips: aggregate costs across all legs
+    if trip_legs:
+        flight_options_by_leg = state.get("flight_options_by_leg", [])
+        hotel_options_by_leg = state.get("hotel_options_by_leg", [])
+
+        total_flight_cost = 0.0
+        total_hotel_cost = 0.0
+        total_daily_expenses = 0.0
+        per_leg_breakdown = []
+
+        for leg in trip_legs:
+            leg_idx = leg.get("leg_index", 0)
+            destination = leg.get("destination", "")
+            nights = leg.get("nights", 0)
+
+            # Get flight options for this leg
+            leg_flights = flight_options_by_leg[leg_idx] if leg_idx < len(flight_options_by_leg) else []
+            leg_flight_cost = min((_flight_total(f) for f in leg_flights), default=0.0)
+            total_flight_cost += leg_flight_cost
+
+            # Get hotel options if this leg needs accommodation
+            leg_hotel_cost = 0.0
+            if leg.get("needs_hotel"):
+                leg_hotels = hotel_options_by_leg[leg_idx] if leg_idx < len(hotel_options_by_leg) else []
+                leg_hotel_cost = min((h["total_price"] for h in leg_hotels), default=0.0)
+                total_hotel_cost += leg_hotel_cost
+
+                # Daily expenses for this destination
+                daily_rate = _destination_daily_rate(destination, currency)
+                leg_daily = daily_rate * nights * num_travelers
+                total_daily_expenses += leg_daily
+            else:
+                leg_daily = 0.0
+
+            per_leg_breakdown.append({
+                "leg_index": leg_idx,
+                "origin": leg.get("origin", ""),
+                "destination": destination,
+                "nights": nights,
+                "flight_cost": leg_flight_cost,
+                "hotel_cost": leg_hotel_cost,
+                "daily_expenses": leg_daily,
+                "leg_total": leg_flight_cost + leg_hotel_cost + leg_daily,
+            })
+
+        total = total_flight_cost + total_hotel_cost + total_daily_expenses
+        within_budget = budget_limit <= 0 or total <= budget_limit
+
+        notes = ""
+        if budget_limit > 0 and not within_budget:
+            over = total - budget_limit
+            notes = (
+                f"Estimated total ({prefix}{total:.0f}) exceeds your budget "
+                f"({prefix}{budget_limit:.0f}) by {prefix}{over:.0f}. "
+                f"Consider cheaper options or fewer destinations."
+            )
+        elif budget_limit > 0:
+            notes = f"You're within budget with ~{prefix}{budget_limit - total:.0f} to spare."
+
+        logger.info(
+            "Multi-city budget aggregated legs=%s total_flights=%s total_hotels=%s daily=%s total=%s within_budget=%s",
+            len(trip_legs), total_flight_cost, total_hotel_cost, total_daily_expenses, total, within_budget,
+        )
+
+        return {
+            "budget": {
+                "flight_cost": total_flight_cost,
+                "hotel_cost": total_hotel_cost,
+                "estimated_daily_expenses": total_daily_expenses,
+                "total_estimated": total,
+                "currency": currency,
+                "within_budget": within_budget,
+                "budget_notes": notes,
+                "per_leg_breakdown": per_leg_breakdown,
+                "is_multi_city": True,
+            },
+            "current_step": "budget_done",
+        }
+
+    # Single-destination trip: existing logic
     flights = state.get("flight_options", [])
     hotels = state.get("hotel_options", [])
     budget_limit = trip.get("budget_limit", 0)

@@ -13,6 +13,7 @@ TripBreeze is deployed on Streamlit Community Cloud:
 - 🎙️ Accepts voice input — describe your trip by speaking and it's transcribed via OpenAI Whisper
 - ✈️ Searches flights with SerpAPI / Google Flights
 - 🏨 Searches hotels with SerpAPI / Google Hotels
+- 🌍 Supports **multi-city itineraries** — plan trips like "Paris for 3 days, then Barcelona for 4 days" with per-leg flight and hotel selection
 - 📚 Retrieves destination tips, visa info, and travel guidance from a local RAG knowledge base
 - 🌤️ Shows weather forecasts for each day of the trip (via Open-Meteo, no API key needed)
 - 💸 Tracks budget against the trip request
@@ -202,6 +203,26 @@ Business class, exclude Ryanair, and keep the flight under 10 hours.
 ```text
 4-star hotels and max flight price of 800 EUR per person.
 ```
+
+### Multi-City Trips
+
+TripBreeze automatically detects multi-city itineraries:
+
+```text
+Paris for 3 days, then Barcelona for 4 days, then fly home.
+```
+
+```text
+Rome → Florence → Venice, 2 nights each, starting June 10.
+```
+
+```text
+Visit Tokyo for a week then Kyoto for 5 days. 2 travelers, budget 5000 USD.
+```
+
+For multi-city trips, the app searches flights and hotels for each leg separately, letting you select options per destination before generating the combined itinerary.
+
+Multi-city trips can be **round-trip** (return to origin, the default) or **open-jaw / one-way** (no return leg). In the form, tick both "Multi-city" and "One-way" to skip the return. In free text, phrases like "not coming back" or "ending in Rome" trigger the same behaviour via `return_to_origin=false`.
 
 ## 📁 Project Structure
 

@@ -56,10 +56,11 @@ Tool      Tool       Tool
 | **Implementation** | `research_orchestrator(...)` |
 | **Purpose** | ReAct agent that dynamically chooses which research tools to call for the current trip |
 | **LLM** | User-selected OpenAI or Google Gemini chat model with tool calling |
-| **Reads from state** | `trip_request`, `user_profile`, `llm_provider`, `llm_model` |
-| **Writes to state** | `flight_options`, `hotel_options`, `destination_info` (overview + entry requirements only), `rag_sources`, research summary message |
+| **Reads from state** | `trip_request`, `trip_legs` (for multi-city), `user_profile`, `llm_provider`, `llm_model` |
+| **Writes to state** | `flight_options`, `hotel_options`, `destination_info` (overview + entry requirements only), `rag_sources`, research summary message; for multi-city: `flight_options_by_leg`, `hotel_options_by_leg` |
 | **Tool choices** | `search_flights`, `search_hotels`, `retrieve_knowledge`, `SubmitResearchResult` |
 | **Routing behavior** | May call any subset of tools, including skipping retrieval entirely or calling it multiple times, and finishes by calling `SubmitResearchResult` |
+| **Multi-city** | When `trip_legs` is present, searches flights and hotels per leg (one-way flights) and aggregates results into `*_by_leg` fields |
 | **RAG output** | Only extracts `destination_overview` and `entry_requirements` from RAG — transport, safety, and budget tips are deferred to the finaliser |
 
 ### Flight Tool
@@ -67,11 +68,12 @@ Tool      Tool       Tool
 | Field | Detail |
 |-------|--------|
 | **File** | `domain/agents/flight_agent.py` |
-| **Callable name** | `search_flights` |
+| **Callable name** | `search_flights` (single-destination), `search_leg_flights` (per-leg for multi-city) |
 | **Purpose** | Search real flights for the requested route and dates |
 | **Infrastructure** | `infrastructure/apis/serpapi_client.search_flights` (Google Flights) |
 | **Reads from state** | `trip_request` (origin, destination, dates, class, travellers, currency) |
 | **Writes to state** | `flight_options` — list of dicts with airline, times, duration, stops, price |
+| **Multi-city** | `search_leg_flights` searches one-way flights for a single leg, used when iterating over `trip_legs` |
 | **Error handling** | Returns empty list + status message on missing inputs or API failure |
 
 ### Hotel Tool
@@ -79,11 +81,12 @@ Tool      Tool       Tool
 | Field | Detail |
 |-------|--------|
 | **File** | `domain/agents/hotel_agent.py` |
-| **Callable name** | `search_hotels` |
+| **Callable name** | `search_hotels` (single-destination), `search_leg_hotels` (per-leg for multi-city) |
 | **Purpose** | Search real hotels in the destination city |
 | **Infrastructure** | `infrastructure/apis/serpapi_client.search_hotels` (Google Hotels) |
 | **Reads from state** | `trip_request` (destination, check-in/out, star rating, travellers, currency) |
 | **Writes to state** | `hotel_options` — list of dicts with name, description, rating, price, amenities |
+| **Multi-city** | `search_leg_hotels` searches hotels for a single leg's destination and dates |
 | **Error handling** | Returns empty list + status message on missing inputs or API failure |
 
 ### Knowledge Retrieval Tool
@@ -121,9 +124,10 @@ Tool      Tool       Tool
 | **Node name** | `trip_intake` |
 | **Purpose** | Build trip request from structured form fields and/or free text, classify out-of-domain requests, and validate trip details |
 | **LLM** | User-selected OpenAI or Google Gemini chat model with tool calling |
-| **Tool schema** | `EvaluateDomain`, `ExtractTripDetails`, `ExtractPreferences` |
+| **Tool schema** | `EvaluateDomain`, `ExtractTripDetails` (single-destination), `ExtractMultiCityTrip` (multi-city), `ExtractPreferences` |
 | **Reads from state** | `structured_fields` (form inputs), `user_profile` (for defaults), `llm_provider`, `llm_model` |
-| **Writes to state** | `trip_request` — dict with origin, destination, dates, class, budget, stops, max_flight_price, airlines, etc. |
+| **Writes to state** | `trip_request` — dict with origin, destination, dates, class, budget, stops, max_flight_price, airlines, etc.; `trip_legs` — list of leg dicts for multi-city trips |
+| **Multi-city detection** | LLM chooses `ExtractMultiCityTrip` for queries like "Paris for 3 days, then Barcelona for 4 days"; builds `trip_legs` with origin, destination, departure_date, nights, needs_hotel per leg. The final return-to-origin leg is appended only when `return_to_origin=true` (default); open-jaw / one-way multi-city trips skip it. The form UI exposes this via the "One-way" checkbox when multi-city is enabled |
 | **Behavior notes** | Free text can provide the whole trip request, structured fields take precedence when both are present, and one-way trips default to a 7-night stay if no check-out date is given |
 
 ### Budget Aggregator
@@ -134,8 +138,9 @@ Tool      Tool       Tool
 | **Node name** | `aggregate_budget` |
 | **Purpose** | Sum cheapest flight + hotel + estimated daily expenses; check vs budget limit |
 | **Pure logic** | No LLM, no API — arithmetic only |
-| **Reads from state** | `trip_request`, `flight_options`, `hotel_options` |
-| **Writes to state** | `budget` — dict with cost breakdown, total, within_budget flag, notes |
+| **Reads from state** | `trip_request`, `trip_legs`, `flight_options`, `hotel_options`, `flight_options_by_leg`, `hotel_options_by_leg` |
+| **Writes to state** | `budget` — dict with cost breakdown, total, within_budget flag, notes; for multi-city includes `per_leg_breakdown` |
+| **Multi-city** | Aggregates costs per leg (flight + hotel + daily expenses per destination) and calculates grand total |
 | **Daily estimate** | Configurable via `config.DEFAULT_DAILY_EXPENSE` (default $80/day) |
 
 ### HITL Review
@@ -146,9 +151,10 @@ Tool      Tool       Tool
 | **Node name** | `review` |
 | **Purpose** | Format research results for human review; pause for approval |
 | **Pure logic** | String formatting only |
-| **Reads from state** | `flight_options`, `hotel_options`, `budget`, `destination_info`, `rag_sources`, `trip_request` |
+| **Reads from state** | `flight_options`, `hotel_options`, `trip_legs`, `flight_options_by_leg`, `hotel_options_by_leg`, `budget`, `destination_info`, `rag_sources`, `trip_request` |
 | **Writes to state** | Formatted review message |
 | **What's shown** | Destination overview, entry requirements, trip summary, budget notes — transport/safety/budget tips are generated later by the finaliser |
+| **Multi-city** | Shows leg-by-leg summary table with route, dates, and nights per destination |
 | **Routing** | If `user_approved` → `finalise`; otherwise → `END` (UI waits for input) |
 
 ### Trip Finaliser
@@ -159,10 +165,11 @@ Tool      Tool       Tool
 | **Node name** | `finalise` |
 | **Purpose** | ReAct agent that generates a polished, professional itinerary document with grounded destination tips |
 | **LLM** | User-selected OpenAI or Google Gemini chat model with tool calling (temperature 0.5) |
-| **Tool choices** | `retrieve_knowledge` (for transport, safety, budget tips), `Itinerary` (final submission) |
-| **Reads from state** | `trip_request`, `selected_flight`, `selected_hotel`, `destination_info`, `budget`, `user_feedback`, `attraction_candidates`, `rag_sources`, `llm_provider`, `llm_model` |
+| **Tool choices** | `retrieve_knowledge` (for transport, safety, budget tips), `Itinerary` (single-destination), `MultiCityItinerary` (multi-city) |
+| **Reads from state** | `trip_request`, `trip_legs`, `selected_flight`, `selected_hotel`, `selected_flights`, `selected_hotels`, `destination_info`, `budget`, `user_feedback`, `attraction_candidates`, `rag_sources`, `llm_provider`, `llm_model` |
 | **Writes to state** | `final_itinerary` — complete markdown itinerary, `itinerary_data` — structured data, `rag_sources` — updated with any new sources |
-| **Behavior** | Can call RAG to get grounded transport/safety/budget tips before generating the final itinerary; submits via `Itinerary` tool call |
+| **Behavior** | Can call RAG to get grounded transport/safety/budget tips before generating the final itinerary; submits via `Itinerary` or `MultiCityItinerary` tool call |
+| **Multi-city** | Uses `_finalise_multi_city()` when `trip_legs` present; generates per-leg flight/hotel details and combined itinerary |
 | **Weather** | After LLM generates the itinerary, enriches each daily plan with weather forecasts from Open-Meteo (forecasts up to 16 days, historical data for dates beyond) |
 
 ### Memory Updater
@@ -184,6 +191,20 @@ Tool      Tool       Tool
 Defined in `application/state.py` as `TravelState` (TypedDict).
 The state includes `structured_fields` (form inputs passed directly from the UI), `llm_provider` and `llm_model` so the user-selected OpenAI or Google Gemini model flows through the graph.
 The `messages` field uses `operator.add` for append-only accumulation across nodes.
+
+### Multi-City State Fields
+
+For multi-city trips, additional fields are populated:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `trip_legs` | `list[dict]` | List of leg dicts with `origin`, `destination`, `departure_date`, `nights`, `needs_hotel`, `check_out_date` |
+| `flight_options_by_leg` | `list[list[dict]]` | Flight options indexed by leg number |
+| `hotel_options_by_leg` | `list[list[dict]]` | Hotel options indexed by leg number |
+| `selected_flights` | `list[dict]` | User-selected flight per leg |
+| `selected_hotels` | `list[dict]` | User-selected hotel per leg (empty dict if no hotel needed) |
+
+The trip intake's `structured_fields` payload may also carry `return_to_origin: bool` (defaults to `true`). When `false`, the intake skips the synthetic return leg, producing an open-jaw / one-way multi-city itinerary.
 
 ## Configuration
 

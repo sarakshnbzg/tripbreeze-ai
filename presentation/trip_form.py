@@ -14,15 +14,30 @@ def build_trip_message(fields: dict) -> str:
     """Compose a natural-language trip request from structured form fields."""
     parts = []
     currency = normalise_currency(fields.get("currency"))
-    if fields.get("origin") and fields.get("destination"):
-        parts.append(f"Fly from {fields['origin']} to {fields['destination']}")
-    elif fields.get("destination"):
-        parts.append(f"Trip to {fields['destination']}")
 
-    if fields.get("departure_date") and fields.get("return_date"):
-        parts.append(f"from {fields['departure_date']} to {fields['return_date']}")
-    elif fields.get("departure_date"):
-        parts.append(f"departing {fields['departure_date']} (one-way)")
+    # Multi-city trip message
+    if fields.get("multi_city_legs"):
+        legs = fields["multi_city_legs"]
+        origin = fields.get("origin", "")
+        if origin:
+            parts.append(f"Starting from {origin}:")
+        leg_descriptions = [f"{leg['destination']} for {leg['nights']} nights" for leg in legs if leg.get("destination")]
+        parts.append(", then ".join(leg_descriptions))
+        if fields.get("departure_date"):
+            parts.append(f"departing {fields['departure_date']}")
+        if fields.get("return_to_origin") is False:
+            parts.append("(one-way, not returning to origin)")
+    else:
+        # Single destination
+        if fields.get("origin") and fields.get("destination"):
+            parts.append(f"Fly from {fields['origin']} to {fields['destination']}")
+        elif fields.get("destination"):
+            parts.append(f"Trip to {fields['destination']}")
+
+        if fields.get("departure_date") and fields.get("return_date"):
+            parts.append(f"from {fields['departure_date']} to {fields['return_date']}")
+        elif fields.get("departure_date"):
+            parts.append(f"departing {fields['departure_date']} (one-way)")
 
     if fields.get("num_travelers", 1) > 1:
         parts.append(f"for {fields['num_travelers']} travelers")
@@ -56,6 +71,9 @@ def build_structured_fields_from_form(
     default_departure_date: date,
     default_return_date: date,
     default_currency: str,
+    multi_city: bool = False,
+    multi_city_legs: list[dict] | None = None,
+    multi_city_return_to_origin: bool = True,
 ) -> dict[str, Any]:
     """Build structured form fields, ignoring untouched defaults when free text is present."""
     has_free_text = bool(free_text.strip())
@@ -63,8 +81,16 @@ def build_structured_fields_from_form(
 
     if origin and (not has_free_text or origin != default_origin):
         fields["origin"] = origin
-    if destination:
+
+    # Multi-city: include legs instead of single destination
+    if multi_city and multi_city_legs:
+        valid_legs = [leg for leg in multi_city_legs if leg.get("destination")]
+        if valid_legs:
+            fields["multi_city_legs"] = valid_legs
+            fields["return_to_origin"] = multi_city_return_to_origin
+    elif destination:
         fields["destination"] = destination
+
     if num_travelers > 1:
         fields["num_travelers"] = num_travelers
     if budget_limit > 0:
@@ -76,7 +102,12 @@ def build_structured_fields_from_form(
     if not has_free_text or currency != default_currency:
         fields["currency"] = currency
 
-    if one_way:
+    # Date handling
+    if multi_city:
+        # Multi-city: only departure date, return is calculated
+        if not has_free_text or departure_date != default_departure_date:
+            fields["departure_date"] = str(departure_date)
+    elif one_way:
         if not has_free_text or departure_date != default_departure_date or (num_nights or 7) != 7:
             fields["departure_date"] = str(departure_date)
             check_out = departure_date + timedelta(days=num_nights or 7)
@@ -123,8 +154,8 @@ def render_trip_form() -> None:
         free_text = st.text_area(
             "Describe your trip",
             value=st.session_state.get("trip_description", ""),
-            placeholder="e.g. I want to fly from London to Tokyo, June 10-17, budget $3000, direct flights only",
-            help="Type your trip request in plain English, or click the mic to use voice input.",
+            placeholder="e.g. London to Tokyo, June 10-17, budget $3000 — or multi-city: Paris 3 days, then Barcelona 4 days",
+            help="Type your trip request in plain English, or click the mic to use voice input. Multi-city trips are automatically detected.",
             height=100,
         )
         st.session_state["trip_description"] = free_text
@@ -137,31 +168,19 @@ def render_trip_form() -> None:
     default_return_date = date.today() + timedelta(days=21)
     default_currency = normalise_currency(DEFAULT_CURRENCY)
     with st.expander("Refine your search (optional)"):
-        col1, col2 = st.columns(2)
-        with col1:
-            origin_options = [""] + (CITIES if default_origin in CITIES else [default_origin] + CITIES)
-            origin = st.selectbox(
-                "From (Origin City)",
-                options=origin_options,
-                index=origin_options.index(default_origin) if default_origin in origin_options else 0,
-                help="Leave blank to use the origin from your text above.",
+        # Trip type options first (they affect other fields)
+        opt_col1, opt_col2, opt_col3 = st.columns(3)
+        with opt_col1:
+            multi_city = st.checkbox(
+                "Multi-city trip",
+                value=st.session_state.get("multi_city_saved", False),
+                on_change=lambda: st.session_state.update(
+                    multi_city_saved=st.session_state["multi_city_widget"]
+                ),
+                key="multi_city_widget",
+                help="Plan a trip visiting multiple destinations (e.g., Paris then Barcelona).",
             )
-        with col2:
-            destination_options = [""] + DESTINATIONS
-            destination = st.selectbox(
-                "To (Destination City)",
-                options=destination_options,
-                index=0,
-                help="Leave blank to use the destination from your text above.",
-            )
-
-        col5a, col5b = st.columns(2)
-        with col5a:
-            direct_only = st.checkbox(
-                "Direct flights only",
-                help="Only show nonstop flights.",
-            )
-        with col5b:
+        with opt_col2:
             one_way = st.checkbox(
                 "One-way trip",
                 value=st.session_state.get("one_way_saved", False),
@@ -169,40 +188,126 @@ def render_trip_form() -> None:
                     one_way_saved=st.session_state["one_way_widget"]
                 ),
                 key="one_way_widget",
+                help=(
+                    "For multi-city, skip the final return leg back to origin (open-jaw)."
+                    if multi_city
+                    else None
+                ),
+            )
+        with opt_col3:
+            direct_only = st.checkbox(
+                "Direct flights only",
+                help="Only show nonstop flights.",
             )
 
-        col3, col4 = st.columns(2)
-        with col3:
+        # Origin and destination
+        origin_options = [""] + (CITIES if default_origin in CITIES else [default_origin] + CITIES)
+        if multi_city:
+            origin = st.selectbox(
+                "From (Origin City)",
+                options=origin_options,
+                index=origin_options.index(default_origin) if default_origin in origin_options else 0,
+                help="Leave blank to use the origin from your text above.",
+            )
+            destination = ""  # Not used for multi-city
+
+            st.markdown("**Add destinations in order of visit:**")
+
+            # Initialize multi-city legs in session state
+            if "multi_city_legs" not in st.session_state:
+                st.session_state.multi_city_legs = [{"destination": "", "nights": 3}]
+
+            legs = st.session_state.multi_city_legs
+            destination_options = [""] + DESTINATIONS
+
+            for i, leg in enumerate(legs):
+                leg_col1, leg_col2, leg_col3 = st.columns([3, 2, 1])
+                with leg_col1:
+                    leg["destination"] = st.selectbox(
+                        f"Destination {i + 1}",
+                        options=destination_options,
+                        index=destination_options.index(leg["destination"]) if leg["destination"] in destination_options else 0,
+                        key=f"mc_dest_{i}",
+                    )
+                with leg_col2:
+                    leg["nights"] = st.number_input(
+                        f"Nights",
+                        min_value=1,
+                        max_value=30,
+                        value=leg.get("nights", 3),
+                        key=f"mc_nights_{i}",
+                    )
+                with leg_col3:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if len(legs) > 1 and st.button("✕", key=f"mc_remove_{i}", help="Remove this destination"):
+                        legs.pop(i)
+                        st.rerun()
+
+            if len(legs) < 5:
+                if st.button("+ Add another destination", key="mc_add"):
+                    legs.append({"destination": "", "nights": 3})
+                    st.rerun()
+
+            st.session_state.multi_city_legs = legs
+        else:
+            # Single destination: origin and destination side by side
+            loc_col1, loc_col2 = st.columns(2)
+            with loc_col1:
+                origin = st.selectbox(
+                    "From (Origin City)",
+                    options=origin_options,
+                    index=origin_options.index(default_origin) if default_origin in origin_options else 0,
+                    help="Leave blank to use the origin from your text above.",
+                )
+            with loc_col2:
+                destination_options = [""] + DESTINATIONS
+                destination = st.selectbox(
+                    "To (Destination City)",
+                    options=destination_options,
+                    index=0,
+                    help="Leave blank to use the destination from your text above.",
+                )
+
+        # Dates
+        date_col1, date_col2 = st.columns(2, vertical_alignment="bottom")
+        with date_col1:
             departure_date = st.date_input(
                 "Departure Date",
                 value=default_departure_date,
                 min_value=date.today(),
             )
-        with col4:
-            if one_way:
+        with date_col2:
+            if multi_city:
+                st.info("Return date is calculated from your destinations and nights.")
+                return_date = None
+                raw_num_nights = ""
+            elif one_way:
                 raw_num_nights = st.text_input(
                     "Number of Nights",
                     value="",
                     help="Required for one-way trips so hotel search and budget can be calculated.",
                     placeholder="e.g. 5",
                 )
+                return_date = None
             else:
                 return_date = st.date_input(
                     "Return Date",
                     value=default_return_date,
                     min_value=date.today(),
                 )
+                raw_num_nights = ""
 
-        col5, col6, col7 = st.columns(3)
-        with col5:
+        # Travelers and budget
+        budget_col1, budget_col2, budget_col3 = st.columns(3)
+        with budget_col1:
             num_travelers = st.number_input(
                 "Travelers", min_value=1, max_value=10, value=1,
             )
-        with col6:
+        with budget_col2:
             budget_limit = st.number_input(
                 "Budget (0 = flexible)", min_value=0, max_value=100000, value=0, step=500,
             )
-        with col7:
+        with budget_col3:
             currency = st.selectbox(
                 "Currency",
                 options=CURRENCIES,
@@ -211,7 +316,7 @@ def render_trip_form() -> None:
 
         preferences = st.text_input(
             "Special Requests (optional)",
-            placeholder="e.g. direct flights only, near city centre",
+            placeholder="e.g. near city centre, wheelchair accessible",
         )
 
     submitted = st.button(
@@ -220,15 +325,21 @@ def render_trip_form() -> None:
 
     if submitted:
         has_free_text = bool(free_text.strip())
-        num_nights = parse_num_nights(raw_num_nights) if one_way else None
+        # one_way for single-destination means no return flight + nights input;
+        # for multi-city it means open-jaw (no return-to-origin leg).
+        num_nights = parse_num_nights(raw_num_nights) if (one_way and not multi_city) else None
+
+        # Get multi-city legs if in multi-city mode
+        mc_legs = st.session_state.get("multi_city_legs", []) if multi_city else None
+
         fields = build_structured_fields_from_form(
             free_text=free_text,
             origin=origin,
             destination=destination,
             departure_date=departure_date,
-            return_date=return_date if not one_way else None,
-            one_way=one_way,
-            num_nights=num_nights if one_way else None,
+            return_date=return_date if not one_way and not multi_city else None,
+            one_way=one_way and not multi_city,
+            num_nights=num_nights,
             num_travelers=num_travelers,
             budget_limit=budget_limit,
             currency=currency,
@@ -238,6 +349,9 @@ def render_trip_form() -> None:
             default_departure_date=default_departure_date,
             default_return_date=default_return_date,
             default_currency=default_currency,
+            multi_city=multi_city,
+            multi_city_legs=mc_legs,
+            multi_city_return_to_origin=not one_way,
         )
         has_structured = bool(fields)
 
@@ -245,14 +359,22 @@ def render_trip_form() -> None:
             st.warning("Please describe your trip or fill in at least a destination.")
             return
 
-        if not has_free_text and not fields.get("destination"):
+        # Validation for multi-city
+        if multi_city and not has_free_text:
+            valid_legs = [leg for leg in (mc_legs or []) if leg.get("destination")]
+            if not valid_legs:
+                st.warning("Please add at least one destination for your multi-city trip.")
+                return
+
+        # Validation for single destination
+        if not multi_city and not has_free_text and not fields.get("destination"):
             st.warning("Please select a destination or describe your trip in the text box above.")
             return
 
-        if not one_way and return_date <= departure_date:
+        if not multi_city and not one_way and return_date and return_date <= departure_date:
             st.warning("Return date must be after departure date.")
             return
-        if one_way and num_nights is None and not has_free_text:
+        if one_way and not multi_city and num_nights is None and not has_free_text:
             st.warning("One-way trips require the number of nights so hotel search and budget can be calculated.")
             return
 
