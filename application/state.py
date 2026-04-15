@@ -61,6 +61,7 @@ class TravelState(TypedDict, total=False):
     # Final output
     final_itinerary: str
     itinerary_data: dict[str, Any]
+    finaliser_metadata: dict[str, Any]
 
     # Conversation history (append-only via operator.add)
     messages: Annotated[list[dict], operator.add]

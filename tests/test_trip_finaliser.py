@@ -18,6 +18,7 @@ from domain.nodes.trip_finaliser import (
     _selected_flight_context,
     _selected_hotel_context,
     _traveler_preference_context,
+    trip_finaliser,
 )
 
 
@@ -471,3 +472,149 @@ class TestSelectedHotelContext:
         )
         assert "Hotel Le Marais" in context
         assert "Preference matches: matches preferred hotel class, offers breakfast" in context
+
+
+class TestFinaliserFallbacks:
+    def _single_city_state(self, **overrides):
+        state = {
+            "trip_request": {
+                "origin": "Berlin",
+                "destination": "Paris",
+                "departure_date": "2026-06-11",
+                "return_date": "2026-06-14",
+                "currency": "EUR",
+                "num_travelers": 2,
+                "interests": ["art", "food"],
+                "pace": "moderate",
+            },
+            "selected_flight": {
+                "airline": "Air France",
+                "departure_time": "08:35",
+                "arrival_time": "10:25",
+                "duration": "1h 50m",
+                "stops": 0,
+                "total_price": 117,
+            },
+            "selected_hotel": {
+                "name": "Hotel Le Marais",
+                "rating": 4,
+                "address": "Paris Center",
+            },
+            "destination_info": (
+                "#### 🌍 Overview\nParis is a strong city-break choice. (Source: Destinations)\n\n"
+                "#### 🛂 Entry Requirements\nUS citizens can visit visa-free. (Source: Visa Requirements)"
+            ),
+            "budget": {"total_estimated": 1184},
+            "llm_provider": "openai",
+            "llm_model": "gpt-4o-mini",
+            "llm_temperature": 0.5,
+            "user_profile": {},
+            "rag_sources": ["Destinations", "Visa Requirements"],
+            "attraction_candidates": [],
+        }
+        state.update(overrides)
+        return state
+
+    @patch("domain.nodes.trip_finaliser.fetch_weather_for_trip", return_value={})
+    @patch("domain.nodes.trip_finaliser.create_chat_model")
+    def test_single_city_falls_back_when_final_tool_missing(self, mock_create, _mock_weather):
+        response = MagicMock()
+        response.tool_calls = []
+        response.usage_metadata = {"input_tokens": 10, "output_tokens": 5}
+
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+        mock_llm.invoke.return_value = response
+        mock_create.return_value = mock_llm
+
+        result = trip_finaliser(self._single_city_state())
+
+        assert "Trip Overview" in result["final_itinerary"]
+        assert "Paris" in result["final_itinerary"]
+        assert result["finaliser_metadata"]["used_fallback"] is True
+        assert result["finaliser_metadata"]["fallback_reason"] == "no_tool_calls"
+        assert result["finaliser_metadata"]["react_loop"]["final_tool_emitted"] is False
+        assert result["itinerary_data"]["visa_entry_info"] == "US citizens can visit visa-free."
+
+    @patch("domain.nodes.trip_finaliser.fetch_weather_for_trip", return_value={})
+    @patch("domain.nodes.trip_finaliser.create_chat_model")
+    def test_google_malformed_output_falls_back_after_failed_parse(self, mock_create, _mock_weather):
+        response = MagicMock()
+        response.tool_calls = [
+            {
+                "id": "bad-1",
+                "name": "Itinerary",
+                "args": {
+                    "trip_overview": "Berlin to Paris",
+                    "flight_details": "Air France direct",
+                    "hotel_details": "Hotel Le Marais",
+                    "destination_highlights": "Paris highlights",
+                    "daily_plans": "not-an-array",
+                    "budget_breakdown": {"total": "EUR 1184"},
+                    "visa_entry_info": ["visa-free"],
+                    "packing_tips": None,
+                    "sources": "not-valid",
+                },
+            }
+        ]
+        response.usage_metadata = {"input_tokens": 20, "output_tokens": 30}
+
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+        mock_llm.invoke.return_value = response
+        mock_create.return_value = mock_llm
+
+        state = self._single_city_state(llm_provider="google", llm_model="gemini-2.5-flash")
+        result = trip_finaliser(state)
+
+        assert "Trip Overview" in result["final_itinerary"]
+        assert result["finaliser_metadata"]["provider"] == "google"
+        assert result["finaliser_metadata"]["used_fallback"] is True
+        assert result["finaliser_metadata"]["fallback_reason"] == "structured_parse_failed"
+        assert result["finaliser_metadata"]["react_loop"]["final_tool_emitted"] is True
+        assert result["itinerary_data"]["trip_overview"].startswith("Berlin to Paris")
+
+    @patch("domain.nodes.trip_finaliser.fetch_weather_for_trip", return_value={})
+    @patch("domain.nodes.trip_finaliser.create_chat_model")
+    def test_multi_city_missing_final_tool_builds_fallback_itinerary(self, mock_create, _mock_weather):
+        response = MagicMock()
+        response.tool_calls = []
+        response.usage_metadata = {"input_tokens": 12, "output_tokens": 6}
+
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+        mock_llm.invoke.return_value = response
+        mock_create.return_value = mock_llm
+
+        state = {
+            "trip_legs": [
+                {"origin": "Berlin", "destination": "Paris", "departure_date": "2026-06-11", "nights": 2},
+                {"origin": "Paris", "destination": "Rome", "departure_date": "2026-06-13", "nights": 2},
+                {"origin": "Rome", "destination": "Berlin", "departure_date": "2026-06-15", "nights": 0},
+            ],
+            "trip_request": {
+                "origin": "Berlin",
+                "departure_date": "2026-06-11",
+                "return_date": "2026-06-15",
+                "currency": "EUR",
+                "num_travelers": 2,
+            },
+            "selected_flights": [{"airline": "Air France", "outbound_summary": "BER 08:00 → CDG 10:00"}],
+            "selected_hotels": [{"name": "Hotel Le Marais"}],
+            "destination_info": "### Paris\n\n#### 🌍 Overview\nParis overview.\n\n#### 🛂 Entry Requirements\n- US citizens: Visa-free.",
+            "budget": {"total_estimated": 1884, "currency": "EUR"},
+            "llm_provider": "openai",
+            "llm_model": "gpt-4o-mini",
+            "llm_temperature": 0.5,
+            "user_profile": {},
+            "rag_sources": [],
+            "attraction_candidates": [],
+        }
+
+        result = trip_finaliser(state)
+
+        assert "Trip Legs" in result["final_itinerary"]
+        assert "Leg 1: Berlin → Paris" in result["final_itinerary"]
+        assert result["finaliser_metadata"]["mode"] == "multi_city"
+        assert result["finaliser_metadata"]["used_fallback"] is True
+        assert result["finaliser_metadata"]["fallback_reason"] == "no_tool_calls"
