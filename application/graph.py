@@ -4,6 +4,8 @@ Dependency direction:  application → domain → infrastructure
 This module only imports from the domain layer (nodes & agents).
 """
 
+import re
+
 from langgraph.graph import StateGraph, START, END
 
 from application.state import TravelState
@@ -18,6 +20,13 @@ from domain.nodes.research_orchestrator import research_orchestrator
 from infrastructure.logging_utils import get_logger
 
 logger = get_logger(__name__)
+
+
+def _iter_text_chunks(text: str):
+    """Yield markdown text in word-sized chunks for a smoother UI reveal."""
+    for chunk in re.split(r"(\s+)", text):
+        if chunk:
+            yield chunk
 
 
 # ── Routing ──
@@ -97,7 +106,7 @@ def run_finalisation_streaming(graph, thread_id: str, state_updates: dict):
     into the checkpoint as_node="finalise" so the graph resumes at update_memory
     without re-running the finaliser.
 
-    Yields the final state dict (no longer streams token by token).
+    Yields itinerary text chunks first, then the final state dict.
     """
     logger.info("Resuming graph for finalisation thread_id=%s", thread_id)
     config = {"configurable": {"thread_id": thread_id}}
@@ -115,6 +124,10 @@ def run_finalisation_streaming(graph, thread_id: str, state_updates: dict):
 
     # Run the finaliser (ReAct-style with RAG tool access)
     final_node_output = trip_finaliser(merged_state)
+
+    itinerary_markdown = str((final_node_output or {}).get("final_itinerary") or "")
+    if itinerary_markdown:
+        yield from _iter_text_chunks(itinerary_markdown)
 
     # Inject the finaliser result as if the node ran — graph will resume at update_memory
     if final_node_output:

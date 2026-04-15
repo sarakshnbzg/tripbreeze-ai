@@ -218,3 +218,32 @@ class TestRunFinalisationStreaming:
         sig = inspect.signature(run_finalisation_streaming)
         params = list(sig.parameters)
         assert params == ["graph", "thread_id", "state_updates"]
+
+    def test_streams_itinerary_chunks_before_final_state(self, monkeypatch):
+        class DummyGraph:
+            def __init__(self):
+                self.state = {"trip_request": {"destination": "Paris"}}
+
+            def update_state(self, config, updates, as_node=None):
+                self.state.update(updates)
+
+            def get_state(self, config):
+                from types import SimpleNamespace
+                return SimpleNamespace(values=self.state)
+
+            def stream(self, initial_state, config):
+                yield {}
+
+        monkeypatch.setattr(
+            "domain.nodes.attractions_research.attractions_research",
+            lambda state: {"attraction_candidates": []},
+        )
+        monkeypatch.setattr(
+            "application.graph.trip_finaliser",
+            lambda state: {"final_itinerary": "Hello Paris", "current_step": "finalised"},
+        )
+
+        items = list(run_finalisation_streaming(DummyGraph(), "thread-123", {"user_approved": True}))
+
+        assert items[:-1] == ["Hello", " ", "Paris"]
+        assert items[-1]["final_itinerary"] == "Hello Paris"

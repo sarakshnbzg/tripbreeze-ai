@@ -400,9 +400,12 @@ class TestRunFinalisation:
             }
             items = list(run_finalisation_streaming(graph, thread_id, state_updates))
 
+        streamed_text = "".join(item for item in items if isinstance(item, str))
         final_state = next((i for i in items if isinstance(i, dict)), None)
+        assert streamed_text
         assert final_state is not None
         assert final_state.get("final_itinerary")
+        assert streamed_text == final_state["final_itinerary"]
 
     def test_memory_updater_called(self):
         with _patch_all() as mocks:

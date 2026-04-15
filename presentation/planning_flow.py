@@ -297,7 +297,8 @@ def run_finalisation(feedback: str = "") -> None:
                 elif event_type == "error":
                     raise RuntimeError(data.get("detail", "Unknown error"))
 
-        st.write_stream(_itinerary_chunks())
+        with st.chat_message("assistant"):
+            st.write_stream(_itinerary_chunks())
     except Exception as exc:
         logger.exception("Finalisation failed")
         _append_assistant_message(f"I hit an error while generating the itinerary: {exc}")
