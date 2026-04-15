@@ -55,14 +55,20 @@ Streamlit is a thin UI client. All LangGraph orchestration, LLM calls, and API i
 
 ## 🛠️ Stack
 
-- `FastAPI` + `uvicorn` for the backend API (SSE streaming)
-- `LangGraph` for workflow orchestration
-- `Streamlit` for the UI
-- `OpenAI` or `Google Gemini` for intake, research, and final itinerary generation
+- `Python 3.13`
+- `FastAPI` + `uvicorn` + `sse-starlette` for the backend API and SSE streaming
+- `Streamlit` for the frontend UI
+- `LangGraph` + `LangChain` for workflow orchestration, tool calling, and structured LLM interactions
+- `OpenAI` or `Google Gemini` for trip intake, research, and itinerary generation
 - `OpenAI Whisper` for voice-to-text transcription
-- `SerpAPI` for live flight and hotel data
-- `ChromaDB` for local retrieval
-- Neon Postgres-backed long-term memory for user preferences
+- `SerpAPI` / Google Flights / Google Hotels for live flight, hotel, and attraction data
+- `ChromaDB` + `BM25` hybrid retrieval for the local RAG knowledge base
+- `Open-Meteo` for trip weather forecasts and historical fallback weather data
+- Neon Postgres + `psycopg` / `psycopg_pool` for long-term memory and LangGraph checkpoint persistence
+- `httpx` for Streamlit-to-FastAPI communication
+- `ReportLab` for PDF itinerary export
+- SMTP for itinerary email delivery
+- `Docker` for containerized deployment
 - `LangSmith` for observability and trace dashboards
 
 ## 🚀 Quick Start
