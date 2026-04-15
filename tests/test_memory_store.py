@@ -273,6 +273,22 @@ class TestAuthentication:
         assert stored["password_hash"].startswith("$2")
         assert verify_user("secure_user", "long-password") is True
 
+    def test_register_user_persists_initial_profile(self, monkeypatch):
+        fake_connection = FakeConnection()
+        monkeypatch.setattr("infrastructure.persistence.memory_store._get_pool", lambda: FakePool(fake_connection))
+
+        created = register_user(
+            "secure_user",
+            "long-password",
+            {"home_city": "Berlin", "passport_country": "Germany", "preferred_airlines": ["Lufthansa"]},
+        )
+
+        assert created is True
+        profile = load_profile("secure_user")
+        assert profile["home_city"] == "Berlin"
+        assert profile["passport_country"] == "Germany"
+        assert profile["preferred_airlines"] == ["Lufthansa"]
+
     def test_register_user_rejects_short_password(self, monkeypatch):
         fake_connection = FakeConnection()
         monkeypatch.setattr("infrastructure.persistence.memory_store._get_pool", lambda: FakePool(fake_connection))

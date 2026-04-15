@@ -4,8 +4,10 @@ from datetime import date
 
 from presentation.streamlit_app import (
     _build_token_usage_label,
+    _build_profile_payload,
     _logout,
     _planning_progress_markdown,
+    _select_options_with_blank,
     _start_authenticated_session,
     _summarise_token_usage,
 )
@@ -65,6 +67,41 @@ class TestBuildTokenUsageLabel:
 
     def test_falls_back_to_search_index(self):
         assert _build_token_usage_label({}, index=2) == "Search 2"
+
+
+class TestProfileHelpers:
+    def test_select_options_with_blank_preserves_empty_choice(self):
+        options = _select_options_with_blank("", ["Berlin", "Paris"])
+
+        assert options[0] == ""
+        assert options[1:] == ["Berlin", "Paris"]
+
+    def test_select_options_with_blank_includes_saved_custom_value_once(self):
+        options = _select_options_with_blank("Munich", ["Berlin", "Paris"])
+
+        assert options == ["", "Munich", "Berlin", "Paris"]
+
+    def test_build_profile_payload_normalises_profile_fields(self):
+        payload = _build_profile_payload(
+            {"user_id": "alice", "past_trips": []},
+            {
+                "home_city": "Berlin",
+                "passport_country": "Germany",
+                "travel_class": "BUSINESS",
+                "preferred_airlines": ["Lufthansa"],
+                "preferred_hotel_stars": [3],
+                "preferred_outbound_time_window": (6, 12),
+                "preferred_return_time_window": (14, 20),
+            },
+        )
+
+        assert payload["home_city"] == "Berlin"
+        assert payload["passport_country"] == "Germany"
+        assert payload["travel_class"] == "BUSINESS"
+        assert payload["preferred_airlines"] == ["Lufthansa"]
+        assert payload["preferred_hotel_stars"] == [3, 4, 5]
+        assert payload["preferred_outbound_time_window"] == [6, 12]
+        assert payload["preferred_return_time_window"] == [14, 20]
 
 
 class TestPlanningProgressMarkdown:

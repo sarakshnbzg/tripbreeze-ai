@@ -124,6 +124,98 @@ def _start_authenticated_session(user_id: str) -> None:
     st.session_state.authenticated = True
 
 
+def _select_options_with_blank(saved_value: str, options: list[str]) -> list[str]:
+    values = [""] + list(options)
+    if saved_value and saved_value not in values:
+        values.insert(1, saved_value)
+    return values
+
+
+def _profile_form_fields(profile: dict[str, Any], prefix: str) -> dict[str, Any]:
+    saved_city = profile.get("home_city", "")
+    home_city = st.selectbox(
+        "Home City",
+        options=_select_options_with_blank(saved_city, CITIES),
+        index=_select_options_with_blank(saved_city, CITIES).index(saved_city or ""),
+        key=f"{prefix}_home_city",
+    )
+    saved_country = profile.get("passport_country", "")
+    passport_country = st.selectbox(
+        "Passport Country",
+        options=_select_options_with_blank(saved_country, COUNTRIES),
+        index=_select_options_with_blank(saved_country, COUNTRIES).index(saved_country or ""),
+        key=f"{prefix}_passport_country",
+    )
+    travel_class_value = profile.get("travel_class", "ECONOMY")
+    travel_class = st.selectbox(
+        "Preferred Class",
+        options=TRAVEL_CLASSES,
+        index=TRAVEL_CLASSES.index(travel_class_value) if travel_class_value in TRAVEL_CLASSES else 0,
+        key=f"{prefix}_travel_class",
+    )
+    saved_airlines = profile.get("preferred_airlines", [])
+    preferred_airlines = st.multiselect(
+        "Preferred Airlines",
+        options=AIRLINES,
+        default=[airline for airline in saved_airlines if airline in AIRLINES],
+        key=f"{prefix}_preferred_airlines",
+    )
+    saved_hotel_stars = profile.get("preferred_hotel_stars", [])
+    saved_hotel_star_thresholds = _compress_star_preferences(saved_hotel_stars)
+    preferred_hotel_stars = st.multiselect(
+        "Preferred Hotel Stars",
+        options=HOTEL_STARS,
+        default=[star for star in saved_hotel_star_thresholds if star in HOTEL_STARS],
+        format_func=lambda star: f"{star}-star and up",
+        help="Choose one or more default hotel tiers like `3-star and up`.",
+        placeholder="Select preferred hotel tiers",
+        key=f"{prefix}_preferred_hotel_stars",
+    )
+    saved_outbound_window = profile.get("preferred_outbound_time_window", [0, 23])
+    preferred_outbound_time_window = st.slider(
+        "Preferred Outbound Flight Time",
+        min_value=0,
+        max_value=23,
+        value=(saved_outbound_window[0], saved_outbound_window[1]),
+        format="%02d:00",
+        help="Default departure-time window for outbound flights.",
+        key=f"{prefix}_preferred_outbound_time_window",
+    )
+    saved_return_window = profile.get("preferred_return_time_window", [0, 23])
+    preferred_return_time_window = st.slider(
+        "Preferred Return Flight Time",
+        min_value=0,
+        max_value=23,
+        value=(saved_return_window[0], saved_return_window[1]),
+        format="%02d:00",
+        help="Default departure-time window for return flights.",
+        key=f"{prefix}_preferred_return_time_window",
+    )
+
+    return {
+        "home_city": home_city,
+        "passport_country": passport_country,
+        "travel_class": travel_class,
+        "preferred_airlines": preferred_airlines,
+        "preferred_hotel_stars": preferred_hotel_stars,
+        "preferred_outbound_time_window": preferred_outbound_time_window,
+        "preferred_return_time_window": preferred_return_time_window,
+    }
+
+
+def _build_profile_payload(profile: dict[str, Any], form_values: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **profile,
+        "home_city": form_values["home_city"],
+        "passport_country": form_values["passport_country"],
+        "travel_class": form_values["travel_class"],
+        "preferred_airlines": form_values["preferred_airlines"],
+        "preferred_hotel_stars": _expand_star_thresholds(form_values["preferred_hotel_stars"]),
+        "preferred_outbound_time_window": list(form_values["preferred_outbound_time_window"]),
+        "preferred_return_time_window": list(form_values["preferred_return_time_window"]),
+    }
+
+
 def _render_login_screen() -> None:
     """Show a login / register form and block until the user authenticates."""
     st.title("Welcome to TripBreeze AI")
@@ -145,10 +237,13 @@ def _render_login_screen() -> None:
                 st.error("Invalid username or password.")
 
     with register_tab:
+        registration_profile = load_profile("registration_defaults")
         with st.form("register_form"):
             reg_id = st.text_input("Choose a Username").strip()
             reg_pw = st.text_input("Choose a Password", type="password")
             reg_pw2 = st.text_input("Confirm Password", type="password")
+            st.caption("Set up your travel profile now, or leave anything blank and update it later.")
+            registration_form_values = _profile_form_fields(registration_profile, prefix="register")
             reg_submitted = st.form_submit_button("Register")
         if reg_submitted:
             if not reg_id or not reg_pw:
@@ -157,7 +252,11 @@ def _render_login_screen() -> None:
                 st.error("Passwords do not match.")
             else:
                 try:
-                    registered = register_user(reg_id, reg_pw)
+                    registered = register_user(
+                        reg_id,
+                        reg_pw,
+                        _build_profile_payload(registration_profile, registration_form_values),
+                    )
                 except ValueError as exc:
                     st.error(str(exc))
                 else:
@@ -341,74 +440,11 @@ def _render_profile_sidebar() -> None:
 
     with st.expander("Edit Profile", expanded=False):
         with st.form("profile_form"):
-            saved_city = profile.get("home_city", "")
-            home_city = st.selectbox(
-                "Home City",
-                options=CITIES if saved_city in CITIES else [saved_city] + CITIES,
-                index=0 if saved_city == "" else (
-                    CITIES.index(saved_city) if saved_city in CITIES else 0
-                ),
-            )
-            saved_country = profile.get("passport_country", "")
-            passport_country = st.selectbox(
-                "Passport Country",
-                options=COUNTRIES if saved_country in COUNTRIES else [saved_country] + COUNTRIES,
-                index=0 if saved_country == "" else (
-                    COUNTRIES.index(saved_country) if saved_country in COUNTRIES else 0
-                ),
-            )
-            travel_class = st.selectbox(
-                "Preferred Class",
-                options=TRAVEL_CLASSES,
-                index=TRAVEL_CLASSES.index(profile.get("travel_class", "ECONOMY")),
-            )
-            saved_airlines = profile.get("preferred_airlines", [])
-            preferred_airlines = st.multiselect(
-                "Preferred Airlines",
-                options=AIRLINES,
-                default=[a for a in saved_airlines if a in AIRLINES],
-            )
-            saved_hotel_stars = profile.get("preferred_hotel_stars", [])
-            saved_hotel_star_thresholds = _compress_star_preferences(saved_hotel_stars)
-            preferred_hotel_stars = st.multiselect(
-                "Preferred Hotel Stars",
-                options=HOTEL_STARS,
-                default=[star for star in saved_hotel_star_thresholds if star in HOTEL_STARS],
-                format_func=lambda star: f"{star}-star and up",
-                help="Choose one or more default hotel tiers like `3-star and up`.",
-                placeholder="Select preferred hotel tiers",
-            )
-            saved_outbound_window = profile.get("preferred_outbound_time_window", [0, 23])
-            preferred_outbound_time_window = st.slider(
-                "Preferred Outbound Flight Time",
-                min_value=0,
-                max_value=23,
-                value=(saved_outbound_window[0], saved_outbound_window[1]),
-                format="%02d:00",
-                help="Default departure-time window for outbound flights.",
-            )
-            saved_return_window = profile.get("preferred_return_time_window", [0, 23])
-            preferred_return_time_window = st.slider(
-                "Preferred Return Flight Time",
-                min_value=0,
-                max_value=23,
-                value=(saved_return_window[0], saved_return_window[1]),
-                format="%02d:00",
-                help="Default departure-time window for return flights.",
-            )
+            profile_form_values = _profile_form_fields(profile, prefix="profile")
             submitted = st.form_submit_button("Save Profile")
 
         if submitted:
-            updated_profile = {
-                **profile,
-                "home_city": home_city,
-                "passport_country": passport_country,
-                "travel_class": travel_class,
-                "preferred_airlines": preferred_airlines,
-                "preferred_hotel_stars": _expand_star_thresholds(preferred_hotel_stars),
-                "preferred_outbound_time_window": list(preferred_outbound_time_window),
-                "preferred_return_time_window": list(preferred_return_time_window),
-            }
+            updated_profile = _build_profile_payload(profile, profile_form_values)
             save_profile(st.session_state.user_id, updated_profile)
             st.success("Profile saved.")
 

@@ -218,7 +218,7 @@ def _store_credentials(connection, user_id: str, password_hash: str, salt: str) 
         )
 
 
-def register_user(user_id: str, password: str) -> bool:
+def register_user(user_id: str, password: str, profile: dict | None = None) -> bool:
     """Create credentials for a new user. Returns False if user_id already exists."""
     safe_user_id = _sanitise_user_id(user_id)
     if not _password_meets_minimum(password):
@@ -233,7 +233,8 @@ def register_user(user_id: str, password: str) -> bool:
             _store_credentials(conn, safe_user_id, password_hash, "")
         conn.commit()
     # Ensure a profile row exists for the new user.
-    save_profile(safe_user_id, load_profile(safe_user_id))
+    initial_profile = {**load_profile(safe_user_id), **(profile or {}), "user_id": safe_user_id}
+    save_profile(safe_user_id, initial_profile)
     logger.info("Registered new user user_id=%s", safe_user_id)
     return True
 
