@@ -353,6 +353,7 @@ class TestMultiCityDerivedSections:
         assert "Berlin → Paris → Rome → Berlin for 4 nights." in result["final_itinerary"]
         assert "Arrive in Paris" in result["final_itinerary"]
         assert result["itinerary_data"]["daily_plans"][0]["date"] == "2026-06-11"
+        assert result["rag_trace"] == []
         assert mock_llm.invoke.call_count == 1
 
 

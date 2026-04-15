@@ -9,6 +9,9 @@ from dotenv import load_dotenv
 PROJECT_ROOT = Path(__file__).parent
 KNOWLEDGE_BASE_DIR = PROJECT_ROOT / "knowledge_base"
 CHROMA_ROOT_DIR = PROJECT_ROOT / "chroma_db"
+EVALS_DIR = PROJECT_ROOT / "evals"
+RAG_EVAL_DATASET_PATH = EVALS_DIR / "rag_eval_dataset.jsonl"
+RAG_EVAL_OUTPUT_DIR = EVALS_DIR / "results"
 
 # Environment
 load_dotenv(PROJECT_ROOT / ".env")

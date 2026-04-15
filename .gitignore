@@ -9,3 +9,4 @@ __pycache__/
 **/__pycache__/
 .DS_Store
 *.egg-info/
+evals/results/

@@ -41,6 +41,10 @@ dependencies = [
 dev = [
     "pytest>=8.0.0",
 ]
+eval = [
+    "datasets>=2.20.0",
+    "ragas>=0.2.0",
+]
 
 [tool.setuptools]
 packages = ["application", "domain", "infrastructure", "presentation"]

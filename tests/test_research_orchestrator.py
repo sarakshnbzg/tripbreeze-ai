@@ -160,6 +160,46 @@ class TestPreciseDestinationBriefing:
         assert "Italy (Schengen Area)" not in result["destination_info"]
 
 
+class TestRagTrace:
+    @patch("domain.nodes.research_orchestrator.retrieve")
+    @patch("domain.nodes.research_orchestrator.search_hotels")
+    @patch("domain.nodes.research_orchestrator.search_flights")
+    @patch("domain.nodes.research_orchestrator.create_chat_model")
+    def test_retrieve_knowledge_records_rag_trace(
+        self, mock_create, mock_sf, mock_sh, mock_retrieve
+    ):
+        call_rag = _make_ai_message(
+            tool_calls=[{"name": "retrieve_knowledge", "args": {"query": "Paris visa info"}, "id": "call_1"}]
+        )
+        submit_call = _make_ai_message(
+            tool_calls=[{
+                "name": "SubmitResearchResult",
+                "args": {"summary": "Done."},
+                "id": "call_2",
+            }]
+        )
+
+        mock_retrieve.return_value = [
+            {"content": "US citizens can visit visa-free.", "source": "Visa Requirements"},
+        ]
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+        mock_llm.invoke.side_effect = [call_rag, submit_call]
+        mock_create.return_value = mock_llm
+
+        result = research_orchestrator(
+            {
+                **_base_state(),
+                "user_profile": {"passport_country": "US"},
+            }
+        )
+
+        assert len(result["rag_trace"]) == 1
+        assert result["rag_trace"][0]["node"] == "research_orchestrator"
+        assert "Paris" in result["rag_trace"][0]["query"]
+        assert result["rag_trace"][0]["results"][0]["source"] == "Visa Requirements"
+
+
 class TestIterationExhaustion:
     @patch("domain.nodes.research_orchestrator.retrieve")
     @patch("domain.nodes.research_orchestrator.search_hotels")

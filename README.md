@@ -164,6 +164,28 @@ uv run pytest -q
 
 GitHub Actions also runs the test suite automatically on every push and pull request.
 
+### 6. Evaluate RAG
+
+Install the optional evaluation dependencies:
+
+```bash
+uv sync --group eval
+```
+
+Then run the offline evaluator against the sample dataset in [`evals/rag_eval_dataset.jsonl`](evals/rag_eval_dataset.jsonl):
+
+```bash
+uv run python scripts/evaluate_rag.py --provider openai
+```
+
+Use retrieval-only mode if you just want to inspect fetched chunks without generating answers or scoring:
+
+```bash
+uv run python scripts/evaluate_rag.py --provider openai --retrieval-only
+```
+
+The script writes retrieval snapshots and score summaries to `evals/results/`.
+
 ## 🐳 Docker Setup
 
 ### 1. Build the image

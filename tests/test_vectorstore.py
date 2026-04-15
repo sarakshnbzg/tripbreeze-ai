@@ -1,6 +1,14 @@
 """Tests for infrastructure/rag/vectorstore.py."""
 
-from infrastructure.rag.vectorstore import _chroma_dir_for_provider, _build_vectorstore, retrieve
+from types import SimpleNamespace
+
+from infrastructure.rag.vectorstore import (
+    _build_vectorstore,
+    _chroma_dir_for_provider,
+    _extract_doc_metadata,
+    _rerank_docs_for_query,
+    retrieve,
+)
 
 
 class TestChromaDirForProvider:
@@ -97,9 +105,127 @@ class TestRetrieve:
         result = retrieve("visa query", provider="google", k=2)
 
         assert calls["provider"] == "google"
-        assert calls["search_kwargs"] == {"k": 2}
+        assert calls["search_kwargs"] == {"k": 8}
         assert calls["query"] == "visa query"
         assert result == [
             {"content": "chunk 1", "source": "Destinations"},
             {"content": "chunk 2", "source": "Visa Requirements"},
         ]
+
+
+class TestMetadataExtraction:
+    def test_extracts_destination_metadata_and_topics(self):
+        metadata = _extract_doc_metadata(
+            "knowledge_base/destinations.md",
+            "## Amsterdam, Netherlands\n- **Local transport:** Cycling is king.\n- **Budget tip:** Walk the canals.",
+        )
+
+        assert metadata["source_type"] == "destinations"
+        assert metadata["city"] == "Amsterdam"
+        assert metadata["country"] == "Netherlands"
+        assert "transport" in metadata["topics"]
+        assert "budget" in metadata["topics"]
+
+
+class TestReranking:
+    def test_city_and_topic_match_beats_wrong_city_chunk(self):
+        docs = [
+            SimpleNamespace(
+                page_content="- **Local transport:** RapidKL is cheap.",
+                metadata={
+                    "source": "knowledge_base/destinations.md",
+                    "source_type": "destinations",
+                    "city": "Kuala Lumpur",
+                    "country": "Malaysia",
+                    "topics": ["transport", "budget"],
+                },
+            ),
+            SimpleNamespace(
+                page_content="- **Local transport:** Cycling is king in Amsterdam.",
+                metadata={
+                    "source": "knowledge_base/destinations.md",
+                    "source_type": "destinations",
+                    "city": "Amsterdam",
+                    "country": "Netherlands",
+                    "topics": ["transport", "budget"],
+                },
+            ),
+        ]
+
+        result = _rerank_docs_for_query(docs, "Give me budget and transport tips for Amsterdam.", 2)
+
+        assert result[0].metadata["city"] == "Amsterdam"
+
+    def test_entry_requirements_prefers_visa_documents(self):
+        docs = [
+            SimpleNamespace(
+                page_content="## Paris, France\n- **Best time to visit:** Spring.",
+                metadata={
+                    "source": "knowledge_base/destinations.md",
+                    "source_type": "destinations",
+                    "city": "Paris",
+                    "country": "France",
+                    "topics": ["destination_overview"],
+                },
+            ),
+            SimpleNamespace(
+                page_content="## France (Schengen Area)\n- **US citizens:** Visa-free for up to 90 days.",
+                metadata={
+                    "source": "knowledge_base/visa_requirements.md",
+                    "source_type": "visa_requirements",
+                    "city": "",
+                    "country": "France",
+                    "topics": ["entry_requirements"],
+                },
+            ),
+        ]
+
+        result = _rerank_docs_for_query(docs, "What are the entry requirements for a US passport holder visiting Paris?", 2)
+
+        assert result[0].metadata["source_type"] == "visa_requirements"
+
+    def test_diversifies_when_supporting_source_is_relevant(self):
+        docs = [
+            SimpleNamespace(
+                page_content="## France (Schengen Area)\n- **US citizens:** Visa-free for up to 90 days.",
+                metadata={
+                    "source": "knowledge_base/visa_requirements.md",
+                    "source_type": "visa_requirements",
+                    "heading": "France (Schengen Area)",
+                    "city": "",
+                    "country": "France",
+                    "topics": ["entry_requirements"],
+                },
+            ),
+            SimpleNamespace(
+                page_content="- **Documents needed:** Passport valid 3+ months beyond stay, return ticket.",
+                metadata={
+                    "source": "knowledge_base/visa_requirements.md",
+                    "source_type": "visa_requirements",
+                    "heading": "France (Schengen Area)",
+                    "city": "",
+                    "country": "France",
+                    "topics": ["entry_requirements"],
+                },
+            ),
+            SimpleNamespace(
+                page_content="## General Travel Tips\n- Keep digital and physical copies of all travel documents.",
+                metadata={
+                    "source": "knowledge_base/travel_tips.md",
+                    "source_type": "travel_tips",
+                    "heading": "General Travel Tips",
+                    "city": "",
+                    "country": "",
+                    "topics": ["entry_requirements", "packing"],
+                },
+            ),
+        ]
+
+        result = _rerank_docs_for_query(
+            docs,
+            "What are the entry requirements for a US passport holder visiting Paris?",
+            3,
+        )
+
+        assert result[0].metadata["source_type"] == "visa_requirements"
+        assert any(item.metadata["source_type"] == "travel_tips" for item in result[1:])

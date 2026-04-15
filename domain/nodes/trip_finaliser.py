@@ -18,6 +18,7 @@ from infrastructure.llms.model_factory import (
     invoke_with_retry,
 )
 from infrastructure.logging_utils import get_logger
+from infrastructure.rag.evaluation import record_rag_event
 from infrastructure.rag.vectorstore import retrieve
 
 logger = get_logger(__name__)
@@ -377,6 +378,7 @@ def _make_retrieve_knowledge_tool(
     *,
     state: dict,
     rag_sources: list[str],
+    rag_trace: list[dict],
     query_enricher,
     log_prefix: str,
 ):
@@ -386,6 +388,13 @@ def _make_retrieve_knowledge_tool(
         query = query_enricher(query)
         logger.info("%s invoking retrieve_knowledge query=%s", log_prefix, query)
         results = retrieve(query, provider=state.get("llm_provider"))
+        record_rag_event(
+            rag_trace,
+            node=log_prefix.lower().replace(" ", "_"),
+            query=query,
+            provider=state.get("llm_provider"),
+            results=results,
+        )
         for r in results:
             if r["source"] not in rag_sources:
                 rag_sources.append(r["source"])
@@ -535,6 +544,7 @@ def _finaliser_success_response(
     itinerary,
     render_markdown,
     rag_sources: list[str],
+    rag_trace: list[dict],
     token_usage: list[dict],
 ) -> dict:
     markdown = render_markdown(itinerary)
@@ -542,6 +552,7 @@ def _finaliser_success_response(
         "final_itinerary": markdown,
         "itinerary_data": itinerary.model_dump(),
         "rag_sources": rag_sources,
+        "rag_trace": rag_trace,
         "token_usage": token_usage,
         "messages": [{"role": "assistant", "content": markdown}],
         "current_step": "finalised",
@@ -978,6 +989,7 @@ def _finalise_multi_city(state: dict) -> dict:
     user_profile = state.get("user_profile", {})
     feedback = state.get("user_feedback", "") or "None"
     rag_sources: list[str] = list(state.get("rag_sources", []))
+    rag_trace: list[dict] = list(state.get("rag_trace", []))
 
     logger.info(
         "Multi-city finaliser started with %d legs, %d flights, %d hotels",
@@ -991,6 +1003,7 @@ def _finalise_multi_city(state: dict) -> dict:
     retrieve_knowledge_tool = _make_retrieve_knowledge_tool(
         state=state,
         rag_sources=rag_sources,
+        rag_trace=rag_trace,
         log_prefix="Multi-city finaliser",
         query_enricher=lambda query: (
             f"{query} {' '.join(missing)}".strip()
@@ -1053,6 +1066,7 @@ def _finalise_multi_city(state: dict) -> dict:
         itinerary=itinerary,
         render_markdown=render_multi_city_itinerary_markdown,
         rag_sources=rag_sources,
+        rag_trace=rag_trace,
         token_usage=token_usage,
     )
 
@@ -1074,10 +1088,12 @@ def _finalise_single_city(state: dict) -> dict:
 
     # Track RAG sources from both research phase and finaliser retrieval
     rag_sources: list[str] = list(state.get("rag_sources", []))
+    rag_trace: list[dict] = list(state.get("rag_trace", []))
     destination = trip_request.get("destination", "")
     retrieve_knowledge_tool = _make_retrieve_knowledge_tool(
         state=state,
         rag_sources=rag_sources,
+        rag_trace=rag_trace,
         log_prefix="Finaliser",
         query_enricher=lambda query: f"{query} {destination}".strip()
         if destination and destination.lower() not in query.lower()
@@ -1137,6 +1153,7 @@ def _finalise_single_city(state: dict) -> dict:
         itinerary=itinerary,
         render_markdown=render_itinerary_markdown,
         rag_sources=rag_sources,
+        rag_trace=rag_trace,
         token_usage=token_usage,
     )
 

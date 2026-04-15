@@ -16,6 +16,7 @@ from domain.agents.ground_transport_agent import search_ground_transport
 from domain.agents.hotel_agent import search_hotels, search_leg_hotels
 from infrastructure.llms.model_factory import create_chat_model, extract_token_usage, invoke_with_retry
 from infrastructure.logging_utils import get_logger
+from infrastructure.rag.evaluation import record_rag_event
 from infrastructure.rag.vectorstore import retrieve
 
 logger = get_logger(__name__)
@@ -353,12 +354,20 @@ def research_orchestrator(state: dict) -> dict:
             leg["destination"] for leg in trip_legs if leg.get("needs_hotel")
         ))
         rag_sources: list[str] = []
+        rag_trace: list[dict[str, Any]] = list(state.get("rag_trace", []))
         destination_sections = []
 
         for destination in unique_destinations:
             # Query for overview
             overview_query = f"travel guide for {destination} attractions things to do"
             overview_results = retrieve(overview_query, provider=state.get("llm_provider"))
+            record_rag_event(
+                rag_trace,
+                node="research_orchestrator_multi_city",
+                query=overview_query,
+                provider=state.get("llm_provider"),
+                results=overview_results,
+            )
 
             # Query for entry requirements
             passport_country = _resolve_passport_country(trip_request, user_profile)
@@ -366,6 +375,13 @@ def research_orchestrator(state: dict) -> dict:
             if passport_country:
                 entry_query += f" for {passport_country} passport"
             entry_results = retrieve(entry_query, provider=state.get("llm_provider"))
+            record_rag_event(
+                rag_trace,
+                node="research_orchestrator_multi_city",
+                query=entry_query,
+                provider=state.get("llm_provider"),
+                results=entry_results,
+            )
 
             # Build section for this destination
             section_parts = [f"### {destination}"]
@@ -404,6 +420,7 @@ def research_orchestrator(state: dict) -> dict:
 
         multi_city_result["rag_used"] = bool(rag_sources)
         multi_city_result["rag_sources"] = rag_sources
+        multi_city_result["rag_trace"] = rag_trace
         multi_city_result["token_usage"] = []  # No LLM calls for multi-city flight/hotel search
         multi_city_result["current_step"] = "research_complete"
         return multi_city_result
@@ -423,6 +440,7 @@ def research_orchestrator(state: dict) -> dict:
         "destination_info": state.get("destination_info", ""),
         "rag_used": False,
         "rag_sources": [],
+        "rag_trace": list(state.get("rag_trace", [])),
     }
 
     tool_state = {
@@ -481,6 +499,13 @@ def research_orchestrator(state: dict) -> dict:
         )
         collected["rag_used"] = True
         results = retrieve(effective_query, provider=state.get("llm_provider"))
+        record_rag_event(
+            collected["rag_trace"],
+            node="research_orchestrator",
+            query=effective_query,
+            provider=state.get("llm_provider"),
+            results=results,
+        )
         # Track unique sources across all retrieval calls
         for r in results:
             if r["source"] not in collected["rag_sources"]:
@@ -595,6 +620,7 @@ def research_orchestrator(state: dict) -> dict:
         "destination_info": collected.get("destination_info") or "",
         "rag_used": bool(collected.get("rag_used")),
         "rag_sources": collected.get("rag_sources") or [],
+        "rag_trace": collected.get("rag_trace") or [],
         "token_usage": token_usage,
         "messages": [{"role": "assistant", "content": summary}],
         "current_step": "research_complete",

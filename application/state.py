@@ -38,6 +38,7 @@ class TravelState(TypedDict, total=False):
     destination_info: str
     rag_used: bool
     rag_sources: list[str]
+    rag_trace: list[dict[str, Any]]
     attraction_candidates: list[dict]
 
     # Budget analysis
