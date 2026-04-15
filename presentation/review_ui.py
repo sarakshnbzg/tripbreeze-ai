@@ -92,7 +92,7 @@ def _badge_pills_html(badges: list[str]) -> str:
 
 def _render_option_card(title: str, badges: list[str], details: list[str]) -> str:
     details_html = "".join(
-        f"<div style='margin-top:0.25rem;color:#d1d5db;'>{html.escape(detail)}</div>"
+        f"<div style='margin-top:0.25rem;color:#d1d5db;'>{detail if detail.startswith(('🔗 <a', '<a')) else html.escape(detail)}</div>"
         for detail in details
         if detail
     )
@@ -160,18 +160,22 @@ def render_selectable_cards(
 
 def flight_option_cards(options: list[dict], currency: str, leg_label: str) -> list[dict[str, object]]:
     summary_key = "return_summary" if leg_label == "Return" else "outbound_summary"
-    return [
-        {
+    cards = []
+    for index, option in enumerate(options):
+        details = [
+            f"{leg_label}: {option.get(summary_key, 'Details unavailable')}",
+            f"Duration: {option.get('duration', 'Unknown duration')} · {_format_stops(option.get('stops', 0))}",
+            f"Price: {_format_option_price(option, currency)}",
+        ]
+        booking_url = option.get("booking_url")
+        if booking_url:
+            details.append(f"🔗 <a href='{html.escape(booking_url)}' target='_blank' style='color:#60a5fa;'>View on Google Flights</a>")
+        cards.append({
             "title": f"Option {index + 1}: {option.get('airline', 'Unknown airline')}",
             "badges": _flight_badges(options, option),
-            "details": [
-                f"{leg_label}: {option.get(summary_key, 'Details unavailable')}",
-                f"Duration: {option.get('duration', 'Unknown duration')} · {_format_stops(option.get('stops', 0))}",
-                f"Price: {_format_option_price(option, currency)}",
-            ],
-        }
-        for index, option in enumerate(options)
-    ]
+            "details": details,
+        })
+    return cards
 
 
 def hotel_option_cards(hotels: list[dict], currency: str) -> list[dict[str, object]]:
@@ -185,6 +189,9 @@ def hotel_option_cards(hotels: list[dict], currency: str) -> list[dict[str, obje
         details.append(f"Rating: {hotel.get('rating', '?')}")
         details.append(f"Per night: {format_currency(hotel.get('price_per_night', 0), currency)}")
         details.append(f"Total: {format_currency(hotel.get('total_price', 0), currency)}")
+        booking_url = hotel.get("booking_url")
+        if booking_url:
+            details.append(f"🔗 <a href='{html.escape(booking_url)}' target='_blank' style='color:#60a5fa;'>View on Google Hotels</a>")
         cards.append({
             "title": f"Option {index + 1}: {hotel.get('name', 'Unknown Hotel')}",
             "badges": _hotel_badges(hotels, hotel),
