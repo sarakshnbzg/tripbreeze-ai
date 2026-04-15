@@ -162,6 +162,11 @@ class TestOptionCardRendering:
         assert _normalise_selected_index(1, 3) == 1
         assert _normalise_selected_index(None, 0) is None
 
+    def test_normalise_selected_index_can_allow_no_selection(self):
+        assert _normalise_selected_index(None, 3, default_to_first=False) is None
+        assert _normalise_selected_index(9, 3, default_to_first=False) is None
+        assert _normalise_selected_index(1, 3, default_to_first=False) == 1
+
     def test_flight_option_cards_build_display_data(self):
         cards = flight_option_cards(
             [

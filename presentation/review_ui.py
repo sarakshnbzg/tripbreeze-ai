@@ -108,13 +108,20 @@ def _render_option_card(title: str, badges: list[str], details: list[str]) -> st
     )
 
 
-def _normalise_selected_index(selected_index: int | None, num_options: int) -> int | None:
+def _normalise_selected_index(
+    selected_index: int | None,
+    num_options: int,
+    *,
+    default_to_first: bool = True,
+) -> int | None:
     """Return a safe selected index for a fixed-size option list."""
     if num_options <= 0:
         return None
     if selected_index is None:
-        return 0
-    return selected_index if 0 <= selected_index < num_options else 0
+        return 0 if default_to_first else None
+    if 0 <= selected_index < num_options:
+        return selected_index
+    return 0 if default_to_first else None
 
 
 def _selection_button_label(is_selected: bool) -> str:
@@ -125,11 +132,18 @@ def render_selectable_cards(
     *,
     selection_key: str,
     cards: list[dict[str, object]],
+    default_to_first: bool = True,
 ) -> int | None:
     """Render simple selectable cards and return the chosen index."""
-    selected_index = _normalise_selected_index(st.session_state.get(selection_key), len(cards))
+    selected_index = _normalise_selected_index(
+        st.session_state.get(selection_key),
+        len(cards),
+        default_to_first=default_to_first,
+    )
     if selected_index is not None:
         st.session_state[selection_key] = selected_index
+    else:
+        st.session_state.pop(selection_key, None)
 
     for index, card in enumerate(cards):
         is_selected = index == selected_index
@@ -589,6 +603,7 @@ def render_review_actions() -> None:
         selected_transport_idx = render_selectable_cards(
             selection_key="selected_transport_option_index",
             cards=transport_option_cards(transport_options, currency),
+            default_to_first=False,
         )
         if st.button("Clear transport selection", key="clear_transport_selection"):
             st.session_state.pop("selected_transport_option_index", None)
