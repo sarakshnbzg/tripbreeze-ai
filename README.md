@@ -34,6 +34,7 @@ Profile Loader
   -> Research Orchestrator (ReAct agent: flights, ground transport, hotels, RAG for overview + entry requirements)
   -> Budget Aggregator
   -> Review (HITL pause)
+  -> Attractions Research (fetches real attraction candidates after approval)
   -> Trip Finaliser (ReAct agent: RAG for transport/safety/budget tips, generates itinerary)
   -> Memory Updater
 ```
@@ -199,7 +200,7 @@ If you want to use the same hosted database in Docker, keep `DATABASE_URL` in `.
 3. The intake step merges structured fields with free text, validates dates, and extracts travel filters such as nonstop flights, airline exclusions, hotel stars, or max flight price.
 4. The ReAct-style research orchestrator decides which tools to call for this request: flights, hotels, knowledge retrieval, or any combination of them.
 5. Review flight, ground transport, hotel, destination, and budget results. Ground transport is optional — pick a train/bus/ferry alongside (or instead of) your flight.
-6. Approve to generate the final itinerary.
+6. Approve to generate the final itinerary. After approval, the app fetches attraction candidates for the destination and uses them to ground the day-by-day plan.
 7. Download the itinerary as a PDF or email it directly to yourself.
 
 ## 💬 Free-Text Examples
