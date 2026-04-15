@@ -56,20 +56,20 @@ Streamlit is a thin UI client. All LangGraph orchestration, LLM calls, and API i
 ## 🛠️ Stack
 
 - `Python 3.13`
-- `FastAPI` + `uvicorn` + `sse-starlette` for the backend API and SSE streaming
-- `Streamlit` for the frontend UI
-- `LangGraph` + `LangChain` for workflow orchestration, tool calling, and structured LLM interactions
-- `OpenAI` or `Google Gemini` for trip intake, research, and itinerary generation
-- `OpenAI Whisper` for voice-to-text transcription
-- `SerpAPI` / Google Flights / Google Hotels for live flight, hotel, and attraction data
-- `ChromaDB` + `BM25` hybrid retrieval for the local RAG knowledge base
-- `Open-Meteo` for trip weather forecasts and historical fallback weather data
-- Neon Postgres + `psycopg` / `psycopg_pool` for long-term memory and LangGraph checkpoint persistence
-- `httpx` for Streamlit-to-FastAPI communication
-- `ReportLab` for PDF itinerary export
-- SMTP for itinerary email delivery
-- `Docker` for containerized deployment
-- `LangSmith` for observability and trace dashboards
+- `FastAPI`, `uvicorn`, `sse-starlette`: backend API and SSE streaming
+- `Streamlit`: frontend UI
+- `LangGraph`, `LangChain`: workflow orchestration, tool calling, and structured LLM interactions
+- `OpenAI`, `Google Gemini`: trip intake, research, and itinerary generation
+- `OpenAI Whisper`: voice-to-text transcription
+- `SerpAPI`, `Google Flights`, `Google Hotels`: live flight, hotel, and attraction data
+- `ChromaDB`, `BM25`: hybrid retrieval for the local RAG knowledge base
+- `Open-Meteo`: trip weather forecasts and historical fallback weather data
+- `Neon Postgres`, `psycopg`, `psycopg_pool`: long-term memory and LangGraph checkpoint persistence
+- `httpx`: Streamlit-to-FastAPI communication
+- `ReportLab`: PDF itinerary export
+- `SMTP`: itinerary email delivery
+- `Docker`: containerized deployment
+- `LangSmith`: observability and trace dashboards
 
 ## 🚀 Quick Start
 
