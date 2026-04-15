@@ -2903,6 +2903,7 @@ name = "tripbreeze-ai"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "bcrypt" },
     { name = "chromadb" },
     { name = "fastapi" },
     { name = "google-search-results" },
@@ -2933,6 +2934,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "bcrypt", specifier = ">=4.1.0" },
     { name = "chromadb", specifier = ">=0.5.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "google-search-results", specifier = ">=2.4.0" },

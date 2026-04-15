@@ -9,8 +9,10 @@ from infrastructure.persistence.memory_store import (
     _sanitise_user_id,
     list_profiles,
     load_profile,
+    register_user,
     save_profile,
     update_profile_from_trip,
+    verify_user,
 )
 
 
@@ -50,6 +52,26 @@ class FakeCursor:
             self._results = []
             return
 
+        if normalised.startswith("SELECT 1 FROM user_credentials WHERE user_id = %s"):
+            user_id = params[0]
+            self._results = [(1,)] if user_id in self.connection.credentials else []
+            return
+
+        if normalised.startswith("SELECT password_hash, salt FROM user_credentials WHERE user_id = %s"):
+            user_id = params[0]
+            payload = self.connection.credentials.get(user_id)
+            self._results = [] if payload is None else [(payload["password_hash"], payload["salt"])]
+            return
+
+        if normalised.startswith("INSERT INTO user_credentials"):
+            user_id, password_hash, salt = params
+            self.connection.credentials[user_id] = {
+                "password_hash": password_hash,
+                "salt": salt,
+            }
+            self._results = []
+            return
+
         raise AssertionError(f"Unexpected query: {normalised}")
 
     def fetchone(self):
@@ -62,6 +84,7 @@ class FakeCursor:
 class FakeConnection:
     def __init__(self):
         self.rows = {}
+        self.credentials = {}
         self.queries = []
         self.commit_count = 0
 
@@ -235,3 +258,41 @@ class TestUpdateProfileFromTrip:
 
         assert profile["past_trips"] == []
         assert profile["travel_class"] == "FIRST"
+
+
+class TestAuthentication:
+    def test_register_user_stores_bcrypt_hash(self, monkeypatch):
+        fake_connection = FakeConnection()
+        monkeypatch.setattr("infrastructure.persistence.memory_store._get_pool", lambda: FakePool(fake_connection))
+
+        created = register_user("secure_user", "long-password")
+
+        assert created is True
+        stored = fake_connection.credentials["secure_user"]
+        assert stored["salt"] == ""
+        assert stored["password_hash"].startswith("$2")
+        assert verify_user("secure_user", "long-password") is True
+
+    def test_register_user_rejects_short_password(self, monkeypatch):
+        fake_connection = FakeConnection()
+        monkeypatch.setattr("infrastructure.persistence.memory_store._get_pool", lambda: FakePool(fake_connection))
+
+        with pytest.raises(ValueError, match="at least 8 characters"):
+            register_user("secure_user", "short")
+
+    def test_verify_user_rejects_wrong_password(self, monkeypatch):
+        fake_connection = FakeConnection()
+        monkeypatch.setattr("infrastructure.persistence.memory_store._get_pool", lambda: FakePool(fake_connection))
+        register_user("secure_user", "long-password")
+
+        assert verify_user("secure_user", "wrong-password") is False
+
+    def test_verify_user_rejects_non_bcrypt_stored_hash(self, monkeypatch):
+        fake_connection = FakeConnection()
+        fake_connection.credentials["legacy_user"] = {
+            "password_hash": "not-a-bcrypt-hash",
+            "salt": "pepper",
+        }
+        monkeypatch.setattr("infrastructure.persistence.memory_store._get_pool", lambda: FakePool(fake_connection))
+
+        assert verify_user("legacy_user", "long-password") is False

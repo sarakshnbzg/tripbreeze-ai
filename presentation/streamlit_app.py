@@ -117,6 +117,13 @@ def _init_session_state() -> None:
     st.session_state.llm_model = model
 
 
+def _start_authenticated_session(user_id: str) -> None:
+    """Start a fresh authenticated session for a user."""
+    _reset_trip_flow()
+    st.session_state.user_id = user_id
+    st.session_state.authenticated = True
+
+
 def _render_login_screen() -> None:
     """Show a login / register form and block until the user authenticates."""
     st.title("Welcome to TripBreeze AI")
@@ -132,8 +139,7 @@ def _render_login_screen() -> None:
             if not login_id or not login_pw:
                 st.warning("Please enter both username and password.")
             elif verify_user(login_id, login_pw):
-                st.session_state.user_id = login_id
-                st.session_state.authenticated = True
+                _start_authenticated_session(login_id)
                 st.rerun()
             else:
                 st.error("Invalid username or password.")
@@ -149,14 +155,17 @@ def _render_login_screen() -> None:
                 st.warning("Please fill in all fields.")
             elif reg_pw != reg_pw2:
                 st.error("Passwords do not match.")
-            elif len(reg_pw) < 4:
-                st.error("Password must be at least 4 characters.")
-            elif register_user(reg_id, reg_pw):
-                st.session_state.user_id = reg_id
-                st.session_state.authenticated = True
-                st.rerun()
             else:
-                st.error(f"Username `{reg_id}` is already taken.")
+                try:
+                    registered = register_user(reg_id, reg_pw)
+                except ValueError as exc:
+                    st.error(str(exc))
+                else:
+                    if registered:
+                        _start_authenticated_session(reg_id)
+                        st.rerun()
+                    else:
+                        st.error("Username is already taken.")
 
 
 def _summarise_token_usage(usage_list: list[dict]) -> dict[str, Any]:
@@ -582,9 +591,10 @@ def _render_main_area() -> None:
 
 
 def _logout() -> None:
+    _reset_trip_flow()
     st.session_state.authenticated = False
     st.session_state.user_id = "default_user"
-    _reset_trip_flow()
+    st.session_state.messages = []
 
 
 def main() -> None:

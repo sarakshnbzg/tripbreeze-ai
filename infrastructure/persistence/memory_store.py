@@ -6,9 +6,8 @@ use and reused for the lifetime of the process.
 """
 
 import atexit
-import hashlib
+import bcrypt
 import json
-import os
 import re
 
 from config import MEMORY_DATABASE_URL
@@ -134,7 +133,7 @@ def load_profile(user_id: str) -> dict:
     if stored_profile is not None:
         logger.info("Loading persisted profile from Postgres for user_id=%s", safe_user_id)
         return {"user_id": safe_user_id, **_DEFAULT_PROFILE, **stored_profile}
-    logger.info("No persisted profile found for user_id=%s; using defaults", user_id)
+    logger.info("No persisted profile found for user_id=%s; using defaults", safe_user_id)
     return {"user_id": safe_user_id, **_DEFAULT_PROFILE}
 
 
@@ -190,24 +189,48 @@ def update_profile_from_trip(user_id: str, trip_data: dict) -> dict:
 # ── Authentication ────────────────────────────────────────────────
 
 
-def _hash_password(password: str, salt: str) -> str:
-    return hashlib.sha256((salt + password).encode()).hexdigest()
+def _hash_password_bcrypt(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def _verify_bcrypt_password(password: str, stored_hash: str) -> bool:
+    try:
+        return bcrypt.checkpw(password.encode("utf-8"), stored_hash.encode("utf-8"))
+    except ValueError:
+        logger.warning("Encountered invalid bcrypt hash during verification")
+        return False
+
+
+def _password_meets_minimum(password: str) -> bool:
+    return len(password) >= 8
+
+
+def _store_credentials(connection, user_id: str, password_hash: str, salt: str) -> None:
+    with connection.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO user_credentials (user_id, password_hash, salt)
+            VALUES (%s, %s, %s)
+            ON CONFLICT(user_id) DO UPDATE
+            SET password_hash = excluded.password_hash, salt = excluded.salt
+            """,
+            (user_id, password_hash, salt),
+        )
 
 
 def register_user(user_id: str, password: str) -> bool:
     """Create credentials for a new user. Returns False if user_id already exists."""
     safe_user_id = _sanitise_user_id(user_id)
-    salt = os.urandom(16).hex()
-    password_hash = _hash_password(password, salt)
+    if not _password_meets_minimum(password):
+        raise ValueError("Password must be at least 8 characters.")
+
+    password_hash = _hash_password_bcrypt(password)
     with _get_pool().connection() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT 1 FROM user_credentials WHERE user_id = %s", (safe_user_id,))
             if cur.fetchone() is not None:
                 return False
-            cur.execute(
-                "INSERT INTO user_credentials (user_id, password_hash, salt) VALUES (%s, %s, %s)",
-                (safe_user_id, password_hash, salt),
-            )
+            _store_credentials(conn, safe_user_id, password_hash, "")
         conn.commit()
     # Ensure a profile row exists for the new user.
     save_profile(safe_user_id, load_profile(safe_user_id))
@@ -227,5 +250,5 @@ def verify_user(user_id: str, password: str) -> bool:
             row = cur.fetchone()
     if row is None:
         return False
-    stored_hash, salt = row
-    return _hash_password(password, salt) == stored_hash
+    stored_hash, _salt = row
+    return _verify_bcrypt_password(password, stored_hash)

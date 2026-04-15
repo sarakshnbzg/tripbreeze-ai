@@ -4,7 +4,9 @@ from datetime import date
 
 from presentation.streamlit_app import (
     _build_token_usage_label,
+    _logout,
     _planning_progress_markdown,
+    _start_authenticated_session,
     _summarise_token_usage,
 )
 from presentation.review_ui import (
@@ -259,3 +261,45 @@ class TestIsBudgetStatusNote:
         assert _is_budget_status_note(
             "No flight and hotel combinations fit the selected budget. Try changing the dates."
         ) is False
+
+
+class TestSessionHelpers:
+    def test_start_authenticated_session_resets_trip_flow_and_sets_user(self, monkeypatch):
+        calls = []
+
+        monkeypatch.setattr(
+            "presentation.streamlit_app._reset_trip_flow",
+            lambda: calls.append("reset"),
+        )
+
+        import streamlit as st
+
+        st.session_state.user_id = "default_user"
+        st.session_state.authenticated = False
+
+        _start_authenticated_session("alice")
+
+        assert calls == ["reset"]
+        assert st.session_state.user_id == "alice"
+        assert st.session_state.authenticated is True
+
+    def test_logout_clears_authentication(self, monkeypatch):
+        calls = []
+
+        monkeypatch.setattr(
+            "presentation.streamlit_app._reset_trip_flow",
+            lambda: calls.append("reset"),
+        )
+
+        import streamlit as st
+
+        st.session_state.user_id = "alice"
+        st.session_state.authenticated = True
+        st.session_state.messages = [{"role": "user", "content": "hello"}]
+
+        _logout()
+
+        assert calls == ["reset"]
+        assert st.session_state.user_id == "default_user"
+        assert st.session_state.authenticated is False
+        assert st.session_state.messages == []
