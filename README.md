@@ -236,3 +236,7 @@ tripbreeze-ai/
   <https://console.neon.tech/app/projects/autumn-cherry-20180503/branches/br-green-morning-alh1r6cy/tables>
 - If retrieval looks stale, rebuild the RAG index with `uv run python scripts/rebuild_rag.py`.
 - If commands are missing, run them through `uv run` or make sure the project's virtual environment is active.
+
+## 🔮 Future Work
+
+- [ ] **Replace hardcoded collections with a scalable data source** — Move `DESTINATIONS`, `CITIES`, `COUNTRIES`, `AIRLINES`, `CITY_TO_AIRPORT`, `DAILY_EXPENSE_BY_DESTINATION`, and similar lists in `config.py` to a database or external API (e.g., Airtable, Amadeus, or a custom backend) to enable updates without code changes.
