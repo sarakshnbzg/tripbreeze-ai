@@ -37,6 +37,11 @@ dependencies = [
     "bcrypt>=4.1.0",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]
+
 [tool.setuptools]
 packages = ["application", "domain", "infrastructure", "presentation"]
 py-modules = ["app", "config"]

@@ -19,10 +19,12 @@ TripBreeze is deployed on Streamlit Community Cloud:
 - 🌤️ Shows weather forecasts for each day of the trip (via Open-Meteo, no API key needed)
 - 💸 Tracks budget against the trip request
 - ✅ Lets the user review results before finalising
+- 🔐 Supports user accounts with securely hashed passwords (`bcrypt`)
 - 🧠 Remembers preferences such as home airport, class, and trip history (with PDF download for past trips)
 - 📄 Exports final itinerary as a downloadable PDF
 - 📧 Sends itinerary via email with PDF attachment (requires SMTP configuration)
 - 📈 Supports LangSmith tracing for LLM observability
+- ✅ Runs automated tests in GitHub Actions on every push and pull request
 
 ## 🧭 Workflow
 
@@ -65,6 +67,7 @@ Streamlit is a thin UI client. All LangGraph orchestration, LLM calls, and API i
 - `ChromaDB`, `BM25`: hybrid retrieval for the local RAG knowledge base
 - `Open-Meteo`: trip weather forecasts and historical fallback weather data
 - `Neon Postgres`, `psycopg`, `psycopg_pool`: long-term memory and LangGraph checkpoint persistence
+- `bcrypt`: secure password hashing for user authentication
 - `httpx`: Streamlit-to-FastAPI communication
 - `ReportLab`: PDF itinerary export
 - `SMTP`: itinerary email delivery
@@ -151,6 +154,14 @@ uv run streamlit run app.py
 ```
 
 This starts both the Streamlit UI on `http://localhost:8501` and the FastAPI backend on `http://localhost:8100` (background thread). The FastAPI interactive docs are available at `http://localhost:8100/docs`.
+
+### 5. Run tests
+
+```bash
+uv run pytest -q
+```
+
+GitHub Actions also runs the test suite automatically on every push and pull request.
 
 ## 🐳 Docker Setup
 
@@ -260,6 +271,7 @@ tripbreeze-ai/
 
 - Model names, API keys, paths, and defaults are centralised in `config.py`.
 - Long-term profile memory requires `DATABASE_URL` or `NEON_DATABASE_URL`.
+- Authentication uses `bcrypt` for password hashing. If you previously created local accounts before this change, recreate them after clearing old credentials.
 - Neon Postgres is the app's long-term memory store; the current project database is managed in the Neon console:
   <https://console.neon.tech/app/projects/autumn-cherry-20180503/branches/br-green-morning-alh1r6cy/tables>
 - If retrieval looks stale, rebuild the RAG index with `uv run python scripts/rebuild_rag.py`.
