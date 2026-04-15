@@ -29,11 +29,60 @@ class TestMemoryUpdater:
         call_args = mock_update.call_args
         assert call_args[0][0] == "alice"
         trip_data = call_args[0][1]
-        assert trip_data["destination"] == "Paris"
+        assert trip_data["destination"] == "Paris from London"
         assert trip_data["passport_country"] == "UK"
 
         assert result["user_profile"] == fake_profile
         assert result["current_step"] == "done"
+
+    def test_uses_multi_city_history_label(self):
+        with patch(
+            "domain.nodes.memory_updater.update_profile_from_trip",
+            return_value={"past_trips": []},
+        ) as mock_update:
+            memory_updater({
+                "user_id": "alice",
+                "trip_request": {
+                    "destination": "Paris",
+                    "departure_date": "2026-07-01",
+                    "return_date": "2026-07-08",
+                    "origin": "Berlin",
+                    "travel_class": "ECONOMY",
+                },
+                "trip_legs": [
+                    {"origin": "Berlin", "destination": "Paris"},
+                    {"origin": "Paris", "destination": "Barcelona"},
+                    {"origin": "Barcelona", "destination": "Berlin"},
+                ],
+                "user_profile": {"passport_country": "Germany"},
+            })
+
+        trip_data = mock_update.call_args[0][1]
+        assert trip_data["destination"] == "Paris -> Barcelona from Berlin"
+
+    def test_uses_open_jaw_multi_city_history_label(self):
+        with patch(
+            "domain.nodes.memory_updater.update_profile_from_trip",
+            return_value={"past_trips": []},
+        ) as mock_update:
+            memory_updater({
+                "user_id": "alice",
+                "trip_request": {
+                    "destination": "Paris",
+                    "departure_date": "2026-07-01",
+                    "return_date": "2026-07-05",
+                    "origin": "Berlin",
+                    "travel_class": "ECONOMY",
+                },
+                "trip_legs": [
+                    {"origin": "Berlin", "destination": "Paris"},
+                    {"origin": "Paris", "destination": "Barcelona"},
+                ],
+                "user_profile": {"passport_country": "Germany"},
+            })
+
+        trip_data = mock_update.call_args[0][1]
+        assert trip_data["destination"] == "Paris -> Barcelona from Berlin"
 
     def test_skips_when_no_trip_request(self):
         result = memory_updater({"user_id": "alice", "trip_request": {}})
