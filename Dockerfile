@@ -1,28 +1,38 @@
 FROM python:3.13-slim
 
-# Install uv for fast dependency management
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_LINK_MODE=copy \
+    STREAMLIT_HOST=0.0.0.0 \
+    STREAMLIT_PORT=8501 \
+    API_HOST=0.0.0.0 \
+    API_PORT=8100
 
 WORKDIR /app
 
-# Install dependencies first (layer caching)
-COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy application code
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev
+
 COPY . .
 
-# Create non-root user and ensure writable dirs for runtime data.
-RUN useradd --create-home appuser \
+RUN useradd --create-home --shell /bin/bash appuser \
     && mkdir -p /app/chroma_db \
-    && chown -R appuser:appuser /app
+    && chown -R appuser:appuser /app \
+    && chmod +x /app/docker-entrypoint.sh
+
 USER appuser
 
 VOLUME ["/app/chroma_db"]
 
-EXPOSE 8501
+EXPOSE 8501 8100
 
-HEALTHCHECK CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD sh -c 'curl --fail "http://127.0.0.1:${STREAMLIT_PORT}/_stcore/health" || exit 1'
 
-ENTRYPOINT ["uv", "run", "streamlit", "run", "app.py", \
-    "--server.port=8501", "--server.address=0.0.0.0"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]

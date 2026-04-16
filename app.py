@@ -32,8 +32,8 @@ def start_backend():
         target=uvicorn.run,
         kwargs={
             "app": fastapi_app,
-            "host": "127.0.0.1",
-            "port": 8100,
+            "host": config.API_HOST,
+            "port": config.API_PORT,
             "log_level": "warning",
         },
         daemon=True,

@@ -106,3 +106,10 @@ MODEL_COSTS: dict[str, dict[str, float]] = {
 
 # Logging
 LOG_LEVEL = _get_config_value("LOG_LEVEL", "INFO").upper()
+
+# Runtime / server settings
+STREAMLIT_HOST = _get_config_value("STREAMLIT_HOST", "0.0.0.0")
+STREAMLIT_PORT = int(_get_config_value("STREAMLIT_PORT", "8501"))
+API_HOST = _get_config_value("API_HOST", "127.0.0.1")
+API_PORT = int(_get_config_value("API_PORT", "8100"))
+API_BASE_URL = _get_config_value("API_BASE_URL", f"http://{API_HOST}:{API_PORT}")

@@ -9,11 +9,12 @@ from typing import Any, Generator
 
 import httpx
 
+from config import API_BASE_URL
 from infrastructure.logging_utils import get_logger
 
 logger = get_logger(__name__)
 
-API_BASE = "http://127.0.0.1:8100"
+API_BASE = API_BASE_URL
 
 # Generous timeout: planning can take minutes (multiple LLM + API calls).
 _STREAM_TIMEOUT = httpx.Timeout(timeout=300.0, connect=10.0)

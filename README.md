@@ -201,6 +201,12 @@ The script writes retrieval snapshots and score summaries to `evals/results/`.
 docker build -t tripbreeze-ai .
 ```
 
+Or start it with Docker Compose:
+
+```bash
+docker compose up --build
+```
+
 ### 2. Run the container
 
 Use your local `.env` file:
@@ -221,6 +227,19 @@ Then open `http://localhost:8501`.
 TripBreeze stores long-term profile memory in Neon Postgres using `DATABASE_URL` or `NEON_DATABASE_URL`.
 
 If you want to use the same hosted database in Docker, keep `DATABASE_URL` in `.env` and pass that file with `--env-file`.
+
+On first container startup, TripBreeze will rebuild the RAG indexes automatically for any configured provider whose persisted directory is missing. Mounting `./chroma_db:/app/chroma_db` keeps those indexes between restarts and avoids rebuilding each time.
+
+You can also force a rebuild on every start:
+
+```bash
+docker run --rm -p 8501:8501 -p 8100:8100 --env-file .env \
+  -e REBUILD_RAG_ON_START=1 \
+  -v "$(pwd)/chroma_db:/app/chroma_db" \
+  tripbreeze-ai
+```
+
+With the default Docker settings, the FastAPI docs are also reachable at `http://localhost:8100/docs`.
 
 ## 🧳 Typical Flow
 
