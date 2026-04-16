@@ -144,8 +144,6 @@ def render_trip_form() -> None:
     profile = load_profile(st.session_state.user_id)
     default_origin = profile.get("home_city", "")
 
-    st.subheader("Plan Your Trip")
-
     # Primary input: free-text query + mic button on the right
     from presentation.mic_button import mic_button
     text_col, mic_col = st.columns([0.9, 0.1], vertical_alignment="bottom")

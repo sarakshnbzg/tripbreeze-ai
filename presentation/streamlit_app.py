@@ -437,7 +437,6 @@ def _render_token_usage() -> None:
 
 
 def _render_profile_sidebar() -> None:
-    st.divider()
     st.header("My Profile")
 
     profile = load_profile(st.session_state.user_id)
@@ -474,10 +473,6 @@ def _render_profile_sidebar() -> None:
                         )
                     except Exception:
                         pass
-    st.divider()
-    if st.button("New Trip", use_container_width=True):
-        _reset_trip_flow()
-        st.rerun()
 
 
 def _personalisation_destination_label(state: dict[str, Any]) -> str:
@@ -565,15 +560,25 @@ def _render_clarification_input() -> None:
         st.rerun()
 
 
+def _render_trip_workspace_header() -> None:
+    title_col, action_col = st.columns([0.8, 0.2], vertical_alignment="center")
+    with title_col:
+        st.subheader("Plan Your Trip")
+    with action_col:
+        if st.session_state.messages or st.session_state.graph_state or st.session_state.trip_complete:
+            if st.button("New Trip", use_container_width=True):
+                _reset_trip_flow()
+                st.rerun()
+
+
 def _render_main_area() -> None:
     st.title("TripBreeze AI")
-    st.caption(
-        "Describe your trip below and I'll find flights, hotels, and destination info for you."
-    )
+    st.caption("Describe your trip below and I'll find flights, hotels, and destination info for you.")
+    _render_trip_workspace_header()
     _display_messages()
 
     if st.session_state.trip_complete:
-        st.success("Your trip itinerary is ready. Click New Trip in the sidebar to plan another.")
+        st.success("Your trip itinerary is ready. Use New Trip next to Plan Your Trip to plan another.")
 
         if st.session_state.graph_state:
             final_itinerary = st.session_state.graph_state.get("final_itinerary", "")
@@ -667,8 +672,13 @@ def main() -> None:
         if st.button("Log Out"):
             _logout()
             st.rerun()
-        _render_model_settings()
-        _render_token_usage()
-        _render_profile_sidebar()
+        profile_tab, settings_tab = st.tabs(["Profile", "Settings"])
+
+        with profile_tab:
+            _render_profile_sidebar()
+
+        with settings_tab:
+            _render_model_settings()
+            _render_token_usage()
 
     _render_main_area()
