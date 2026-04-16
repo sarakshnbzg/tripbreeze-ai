@@ -15,6 +15,59 @@ from infrastructure.logging_utils import get_logger
 
 logger = get_logger(__name__)
 
+_DEFAULT_PLACE_ALIASES = (
+    {"normalized_name": "amsterdam", "display_name": "Amsterdam", "city_name": "Amsterdam", "country_name": "Netherlands"},
+    {"normalized_name": "athens", "display_name": "Athens", "city_name": "Athens", "country_name": "Greece"},
+    {"normalized_name": "bali", "display_name": "Bali", "city_name": "Bali", "country_name": "Indonesia"},
+    {"normalized_name": "bangkok", "display_name": "Bangkok", "city_name": "Bangkok", "country_name": "Thailand"},
+    {"normalized_name": "barcelona", "display_name": "Barcelona", "city_name": "Barcelona", "country_name": "Spain"},
+    {"normalized_name": "berlin", "display_name": "Berlin", "city_name": "Berlin", "country_name": "Germany"},
+    {"normalized_name": "budapest", "display_name": "Budapest", "city_name": "Budapest", "country_name": "Hungary"},
+    {"normalized_name": "copenhagen", "display_name": "Copenhagen", "city_name": "Copenhagen", "country_name": "Denmark"},
+    {"normalized_name": "croatia", "display_name": "Croatia", "city_name": "Croatia", "country_name": "Croatia"},
+    {"normalized_name": "cork", "display_name": "Cork", "city_name": "Cork", "country_name": "Ireland"},
+    {"normalized_name": "dubai", "display_name": "Dubai", "city_name": "Dubai", "country_name": "UAE"},
+    {"normalized_name": "dubrovnik", "display_name": "Dubrovnik", "city_name": "Dubrovnik", "country_name": "Croatia"},
+    {"normalized_name": "dublin", "display_name": "Dublin", "city_name": "Dublin", "country_name": "Ireland"},
+    {"normalized_name": "edinburgh", "display_name": "Edinburgh", "city_name": "Edinburgh", "country_name": "United Kingdom"},
+    {"normalized_name": "france", "display_name": "France", "city_name": "France", "country_name": "France"},
+    {"normalized_name": "geneva", "display_name": "Geneva", "city_name": "Geneva", "country_name": "Switzerland"},
+    {"normalized_name": "germany", "display_name": "Germany", "city_name": "Germany", "country_name": "Germany"},
+    {"normalized_name": "greece", "display_name": "Greece", "city_name": "Greece", "country_name": "Greece"},
+    {"normalized_name": "hong kong", "display_name": "Hong Kong", "city_name": "Hong Kong", "country_name": "Hong Kong"},
+    {"normalized_name": "iceland", "display_name": "Iceland", "city_name": "Iceland", "country_name": "Iceland"},
+    {"normalized_name": "indonesia", "display_name": "Indonesia", "city_name": "Indonesia", "country_name": "Indonesia"},
+    {"normalized_name": "istanbul", "display_name": "Istanbul", "city_name": "Istanbul", "country_name": "Turkey"},
+    {"normalized_name": "italy", "display_name": "Italy", "city_name": "Italy", "country_name": "Italy"},
+    {"normalized_name": "japan", "display_name": "Japan", "city_name": "Japan", "country_name": "Japan"},
+    {"normalized_name": "lisbon", "display_name": "Lisbon", "city_name": "Lisbon", "country_name": "Portugal"},
+    {"normalized_name": "london", "display_name": "London", "city_name": "London", "country_name": "United Kingdom"},
+    {"normalized_name": "lucerne", "display_name": "Lucerne", "city_name": "Lucerne", "country_name": "Switzerland"},
+    {"normalized_name": "madrid", "display_name": "Madrid", "city_name": "Madrid", "country_name": "Spain"},
+    {"normalized_name": "manila", "display_name": "Manila", "city_name": "Manila", "country_name": "Philippines"},
+    {"normalized_name": "netherlands", "display_name": "Netherlands", "city_name": "Netherlands", "country_name": "Netherlands"},
+    {"normalized_name": "new york", "display_name": "New York", "city_name": "New York", "country_name": "United States"},
+    {"normalized_name": "oslo", "display_name": "Oslo", "city_name": "Oslo", "country_name": "Norway"},
+    {"normalized_name": "paris", "display_name": "Paris", "city_name": "Paris", "country_name": "France"},
+    {"normalized_name": "portugal", "display_name": "Portugal", "city_name": "Portugal", "country_name": "Portugal"},
+    {"normalized_name": "prague", "display_name": "Prague", "city_name": "Prague", "country_name": "Czech Republic"},
+    {"normalized_name": "reykjavik", "display_name": "Reykjavik", "city_name": "Reykjavik", "country_name": "Iceland"},
+    {"normalized_name": "rome", "display_name": "Rome", "city_name": "Rome", "country_name": "Italy"},
+    {"normalized_name": "seoul", "display_name": "Seoul", "city_name": "Seoul", "country_name": "South Korea"},
+    {"normalized_name": "singapore", "display_name": "Singapore", "city_name": "Singapore", "country_name": "Singapore"},
+    {"normalized_name": "spain", "display_name": "Spain", "city_name": "Spain", "country_name": "Spain"},
+    {"normalized_name": "sydney", "display_name": "Sydney", "city_name": "Sydney", "country_name": "Australia"},
+    {"normalized_name": "thailand", "display_name": "Thailand", "city_name": "Thailand", "country_name": "Thailand"},
+    {"normalized_name": "tokyo", "display_name": "Tokyo", "city_name": "Tokyo", "country_name": "Japan"},
+    {"normalized_name": "turkey", "display_name": "Turkey", "city_name": "Turkey", "country_name": "Turkey"},
+    {"normalized_name": "uae", "display_name": "UAE", "city_name": "UAE", "country_name": "UAE"},
+    {"normalized_name": "united kingdom", "display_name": "United Kingdom", "city_name": "United Kingdom", "country_name": "United Kingdom"},
+    {"normalized_name": "united states", "display_name": "United States", "city_name": "United States", "country_name": "United States"},
+    {"normalized_name": "usa", "display_name": "USA", "city_name": "USA", "country_name": "United States"},
+    {"normalized_name": "vienna", "display_name": "Vienna", "city_name": "Vienna", "country_name": "Austria"},
+    {"normalized_name": "zurich", "display_name": "Zurich", "city_name": "Zurich", "country_name": "Switzerland"},
+)
+
 _DEFAULT_PROFILE = {
     "preferred_airlines": [],
     "preferred_hotel_stars": [],
@@ -92,6 +145,27 @@ def _get_pool():
                 )
                 """
             )
+            for alias in _DEFAULT_PLACE_ALIASES:
+                cur.execute(
+                    """
+                    INSERT INTO place_aliases (
+                        normalized_name,
+                        display_name,
+                        city_name,
+                        country_name,
+                        source
+                    )
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT(normalized_name) DO NOTHING
+                    """,
+                    (
+                        alias["normalized_name"],
+                        alias["display_name"],
+                        alias["city_name"],
+                        alias["country_name"],
+                        "seed",
+                    ),
+                )
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS destination_daily_expenses (
@@ -319,9 +393,46 @@ def load_place_country(destination: str) -> str:
                 (normalized_name,),
             )
             row = cursor.fetchone()
-    if row is None:
-        return ""
-    return str(row[0] or "").strip()
+    if row is not None:
+        return str(row[0] or "").strip()
+
+    for alias in _DEFAULT_PLACE_ALIASES:
+        if alias["normalized_name"] == normalized_name:
+            return str(alias["country_name"]).strip()
+    return ""
+
+
+def list_place_aliases() -> list[dict[str, str]]:
+    """Return all known place aliases from Postgres, or seed defaults on fallback."""
+    try:
+        pool = _get_pool()
+        try:
+            connection_context = pool.connection(timeout=1)
+        except TypeError:
+            connection_context = pool.connection()
+
+        with connection_context as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT normalized_name, display_name, city_name, country_name
+                    FROM place_aliases
+                    ORDER BY normalized_name
+                    """
+                )
+                rows = cursor.fetchall()
+    except Exception:
+        return [dict(alias) for alias in _DEFAULT_PLACE_ALIASES]
+
+    return [
+        {
+            "normalized_name": str(row[0]),
+            "display_name": str(row[1]),
+            "city_name": str(row[2]),
+            "country_name": str(row[3]),
+        }
+        for row in rows
+    ]
 
 
 def save_place_alias(

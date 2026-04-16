@@ -9,6 +9,7 @@ from infrastructure.persistence.memory_store import (
     _normalise_place_name,
     _sanitise_user_id,
     list_profiles,
+    list_place_aliases,
     load_destination_daily_expense,
     load_place_country,
     load_profile,
@@ -69,6 +70,18 @@ class FakeCursor:
             normalized_name = params[0]
             payload = self.connection.place_aliases.get(normalized_name)
             self._results = [] if payload is None else [(payload["country_name"],)]
+            return
+
+        if normalised.startswith("SELECT normalized_name, display_name, city_name, country_name FROM place_aliases ORDER BY normalized_name"):
+            self._results = [
+                (
+                    normalized_name,
+                    payload["display_name"],
+                    payload["city_name"],
+                    payload["country_name"],
+                )
+                for normalized_name, payload in sorted(self.connection.place_aliases.items())
+            ]
             return
 
         if normalised.startswith("INSERT INTO place_aliases"):
@@ -400,6 +413,22 @@ class TestPlaceAliases:
         monkeypatch.setattr("infrastructure.persistence.memory_store._get_pool", lambda: FakePool(fake_connection))
 
         assert load_place_country("Unknown City") == ""
+
+    def test_list_place_aliases_returns_saved_aliases(self, monkeypatch):
+        fake_connection = FakeConnection()
+        monkeypatch.setattr("infrastructure.persistence.memory_store._get_pool", lambda: FakePool(fake_connection))
+
+        save_place_alias("Marrakesh", country_name="Morocco", source="geocoder")
+
+        aliases = list_place_aliases()
+        assert aliases == [
+            {
+                "normalized_name": "marrakesh",
+                "display_name": "Marrakesh",
+                "city_name": "Marrakesh",
+                "country_name": "Morocco",
+            }
+        ]
 
 
 class TestDestinationDailyExpenses:

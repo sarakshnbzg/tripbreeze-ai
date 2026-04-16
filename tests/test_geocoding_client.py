@@ -33,16 +33,6 @@ class TestResolveDestinationCountry:
 
         assert geocoding_client.resolve_destination_country("Paris") == "France"
 
-    def test_uses_local_mapping_before_api(self, monkeypatch):
-        monkeypatch.setattr(geocoding_client, "load_place_country", lambda destination: "")
-
-        def fail_get(*args, **kwargs):
-            raise AssertionError("API should not be called for local matches")
-
-        monkeypatch.setattr(geocoding_client.requests, "get", fail_get)
-
-        assert geocoding_client.resolve_destination_country("Paris") == "France"
-
     def test_falls_back_to_geocoder_for_unknown_city(self, monkeypatch):
         saved = {}
         monkeypatch.setattr(geocoding_client, "load_place_country", lambda destination: "")

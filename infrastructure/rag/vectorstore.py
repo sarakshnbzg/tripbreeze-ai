@@ -25,85 +25,13 @@ from config import (
 )
 from infrastructure.llms.model_factory import create_embeddings, normalise_llm_selection
 from infrastructure.logging_utils import get_logger
+from infrastructure.persistence.memory_store import list_place_aliases
 
 logger = get_logger(__name__)
 
 # Module-level caches
 _cached_chunks: list | None = None
 _cached_vectorstores: dict[str, Chroma] = {}
-
-_MANUAL_PLACE_ALIASES: tuple[tuple[str, str, str], ...] = (
-    ("paris", "city", "Paris"),
-    ("barcelona", "city", "Barcelona"),
-    ("madrid", "city", "Madrid"),
-    ("rome", "city", "Rome"),
-    ("tokyo", "city", "Tokyo"),
-    ("bangkok", "city", "Bangkok"),
-    ("bali", "city", "Bali"),
-    ("dubai", "city", "Dubai"),
-    ("london", "city", "London"),
-    ("berlin", "city", "Berlin"),
-    ("vienna", "city", "Vienna"),
-    ("prague", "city", "Prague"),
-    ("lisbon", "city", "Lisbon"),
-    ("amsterdam", "city", "Amsterdam"),
-    ("athens", "city", "Athens"),
-    ("budapest", "city", "Budapest"),
-    ("copenhagen", "city", "Copenhagen"),
-    ("new york", "city", "New York"),
-    ("sydney", "city", "Sydney"),
-    ("seoul", "city", "Seoul"),
-    ("singapore", "city", "Singapore"),
-    ("edinburgh", "city", "Edinburgh"),
-    ("istanbul", "city", "Istanbul"),
-    ("reykjavik", "city", "Reykjavik"),
-    ("dubrovnik", "city", "Dubrovnik"),
-    ("dublin", "city", "Dublin"),
-    ("cork", "city", "Cork"),
-    ("zurich", "city", "Zurich"),
-    ("geneva", "city", "Geneva"),
-    ("lucerne", "city", "Lucerne"),
-    ("oslo", "city", "Oslo"),
-    ("bergen", "city", "Bergen"),
-    ("manila", "city", "Manila"),
-)
-
-_MANUAL_CITY_TO_COUNTRY: dict[str, str] = {
-    "Paris": "France",
-    "Barcelona": "Spain",
-    "Madrid": "Spain",
-    "Rome": "Italy",
-    "Tokyo": "Japan",
-    "Bangkok": "Thailand",
-    "Bali": "Indonesia",
-    "Dubai": "UAE",
-    "London": "United Kingdom",
-    "Berlin": "Germany",
-    "Vienna": "Austria",
-    "Prague": "Czech Republic",
-    "Lisbon": "Portugal",
-    "Amsterdam": "Netherlands",
-    "Athens": "Greece",
-    "Budapest": "Hungary",
-    "Copenhagen": "Denmark",
-    "New York": "United States",
-    "Sydney": "Australia",
-    "Seoul": "South Korea",
-    "Singapore": "Singapore",
-    "Edinburgh": "United Kingdom",
-    "Istanbul": "Turkey",
-    "Reykjavik": "Iceland",
-    "Dubrovnik": "Croatia",
-    "Dublin": "Ireland",
-    "Cork": "Ireland",
-    "Zurich": "Switzerland",
-    "Geneva": "Switzerland",
-    "Lucerne": "Switzerland",
-    "Oslo": "Norway",
-    "Bergen": "Norway",
-    "Manila": "Philippines",
-}
-
 
 def _normalise_text(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", (value or "").lower()).strip()
@@ -167,7 +95,17 @@ def _known_places() -> list[tuple[str, str, str]]:
                 country = heading.split("(", 1)[0].strip()
                 if country:
                     places.append((_normalise_text(country), "country", country))
-    places.extend(_MANUAL_PLACE_ALIASES)
+    try:
+        for alias in list_place_aliases():
+            normalized_name = _normalise_text(alias.get("normalized_name", ""))
+            city_name = str(alias.get("city_name", "")).strip()
+            country_name = str(alias.get("country_name", "")).strip()
+            if normalized_name and city_name:
+                places.append((normalized_name, "city", city_name))
+            if normalized_name and country_name and _normalise_text(country_name) == normalized_name:
+                places.append((normalized_name, "country", country_name))
+    except Exception:
+        logger.warning("Falling back to knowledge-base place metadata only")
     return places
 
 
@@ -183,7 +121,13 @@ def _infer_query_metadata(query: str) -> dict[str, str | list[str]]:
                 country = canonical
 
     if city and not country:
-        country = _MANUAL_CITY_TO_COUNTRY.get(city, "")
+        try:
+            for alias in list_place_aliases():
+                if str(alias.get("city_name", "")).strip() == city:
+                    country = str(alias.get("country_name", "")).strip()
+                    break
+        except Exception:
+            logger.warning("Unable to resolve city-to-country mapping from place aliases")
 
     intents: list[str] = []
     intent_patterns = {
