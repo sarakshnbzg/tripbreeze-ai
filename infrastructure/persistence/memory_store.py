@@ -9,9 +9,18 @@ import atexit
 import bcrypt
 import json
 import re
+from functools import lru_cache
 
-from config import DAILY_EXPENSE_BY_DESTINATION, MEMORY_DATABASE_URL
+from config import (
+    MEMORY_DATABASE_URL,
+)
 from infrastructure.logging_utils import get_logger
+from infrastructure.apis.country_state_city_client import fetch_all_city_names, fetch_countries
+from infrastructure.persistence.reference_seed_data import (
+    AIRLINES,
+    CITY_TO_AIRPORT,
+    DAILY_EXPENSE_BY_DESTINATION,
+)
 
 logger = get_logger(__name__)
 
@@ -84,6 +93,7 @@ _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
 # ── Connection pool (lazy singleton) ────────────────────────────────
 
 _pool = None
+
 
 
 def _get_pool():
@@ -176,6 +186,18 @@ def _get_pool():
                 )
                 """
             )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS reference_options (
+                    category TEXT NOT NULL,
+                    normalized_name TEXT NOT NULL,
+                    display_name TEXT NOT NULL,
+                    value_code TEXT,
+                    source TEXT NOT NULL DEFAULT 'seed',
+                    PRIMARY KEY (category, normalized_name)
+                )
+                """
+            )
             for normalized_name, daily_expense_eur in DAILY_EXPENSE_BY_DESTINATION.items():
                 cur.execute(
                     """
@@ -195,6 +217,28 @@ def _get_pool():
                         "seed",
                     ),
                 )
+            for category, records in _REFERENCE_SEED_DATA.items():
+                for normalized_name, display_name, value_code in records:
+                    cur.execute(
+                        """
+                        INSERT INTO reference_options (
+                            category,
+                            normalized_name,
+                            display_name,
+                            value_code,
+                            source
+                        )
+                        VALUES (%s, %s, %s, %s, %s)
+                        ON CONFLICT(category, normalized_name) DO NOTHING
+                        """,
+                        (
+                            category,
+                            normalized_name,
+                            display_name,
+                            value_code,
+                            "seed",
+                        ),
+                    )
         conn.commit()
     logger.info("Postgres connection pool initialised (min=1, max=5)")
     return _pool
@@ -229,6 +273,86 @@ def _load_profile_row(connection, user_id: str) -> dict | None:
 def _normalise_place_name(name: str) -> str:
     """Normalise destination aliases for consistent DB lookups."""
     return " ".join((name or "").lower().replace(",", " ").split())
+
+
+_REFERENCE_SEED_DATA: dict[str, list[tuple[str, str, str | None]]] = {
+    "airlines": [
+        (_normalise_place_name(value), value, None)
+        for value in AIRLINES
+        if value
+    ],
+    "airport_cities": [
+        (_normalise_place_name(city), city, airport_code)
+        for city, airport_code in CITY_TO_AIRPORT.items()
+    ],
+}
+
+
+def _sync_country_state_city_reference_options() -> None:
+    """Populate countries and cities reference options from Country State City API."""
+    countries = fetch_countries()
+    city_names = fetch_all_city_names(countries)
+
+    pool = _get_pool()
+    try:
+        connection_context = pool.connection(timeout=1)
+    except TypeError:
+        connection_context = pool.connection()
+
+    with connection_context as conn:
+        with conn.cursor() as cursor:
+            for country in countries:
+                name = str(country.get("name", "")).strip()
+                if not name:
+                    continue
+                cursor.execute(
+                    """
+                    INSERT INTO reference_options (
+                        category,
+                        normalized_name,
+                        display_name,
+                        value_code,
+                        source
+                    )
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT(category, normalized_name) DO NOTHING
+                    """,
+                    (
+                        "countries",
+                        _normalise_place_name(name),
+                        name,
+                        str(country.get("iso2", "")).strip() or None,
+                        "csc",
+                    ),
+                )
+            for city_name in city_names:
+                cursor.execute(
+                    """
+                    INSERT INTO reference_options (
+                        category,
+                        normalized_name,
+                        display_name,
+                        value_code,
+                        source
+                    )
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT(category, normalized_name) DO NOTHING
+                    """,
+                    (
+                        "cities",
+                        _normalise_place_name(city_name),
+                        city_name,
+                        None,
+                        "csc",
+                    ),
+                )
+        conn.commit()
+
+
+def sync_country_state_city_reference_options() -> None:
+    """Public wrapper for syncing CSC-backed country and city reference data."""
+    list_reference_values.cache_clear()
+    _sync_country_state_city_reference_options()
 
 
 # ── Public API ───────────────────────────────────────────────────────
@@ -433,6 +557,123 @@ def list_place_aliases() -> list[dict[str, str]]:
         }
         for row in rows
     ]
+
+
+@lru_cache(maxsize=16)
+def list_reference_values(category: str) -> list[str]:
+    """Return display values for a reference-data category.
+
+    For `cities` and `countries`, syncs from Country State City API on demand
+    when the database category is empty. Other categories fall back to the
+    local seed data if the database is unavailable.
+    """
+    normalized_category = str(category or "").strip().lower()
+    if not normalized_category:
+        return []
+
+    fallback = [display_name for _, display_name, _ in _REFERENCE_SEED_DATA.get(normalized_category, [])]
+
+    try:
+        pool = _get_pool()
+        try:
+            connection_context = pool.connection(timeout=1)
+        except TypeError:
+            connection_context = pool.connection()
+
+        with connection_context as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT display_name
+                    FROM reference_options
+                    WHERE category = %s
+                    ORDER BY display_name
+                    """,
+                    (normalized_category,),
+                )
+                rows = cursor.fetchall()
+    except Exception:
+        return fallback
+
+    values = [str(row[0]) for row in rows]
+    if values:
+        return values
+
+    if normalized_category in {"cities", "countries"}:
+        try:
+            _sync_country_state_city_reference_options()
+        except Exception as exc:
+            logger.warning(
+                "Country State City sync failed for category '%s': %s",
+                normalized_category,
+                exc,
+            )
+            return fallback
+
+        try:
+            pool = _get_pool()
+            try:
+                connection_context = pool.connection(timeout=1)
+            except TypeError:
+                connection_context = pool.connection()
+
+            with connection_context as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT display_name
+                        FROM reference_options
+                        WHERE category = %s
+                        ORDER BY display_name
+                        """,
+                        (normalized_category,),
+                    )
+                    rows = cursor.fetchall()
+        except Exception:
+            return fallback
+        return [str(row[0]) for row in rows]
+
+    return fallback
+
+
+@lru_cache(maxsize=256)
+def lookup_airport_code(city_name: str) -> str:
+    """Resolve a city name to an airport code using DB-backed reference data."""
+    normalized_name = _normalise_place_name(city_name)
+    if not normalized_name:
+        return ""
+
+    fallback = CITY_TO_AIRPORT.get(city_name, "")
+    if not fallback:
+        for configured_city, airport_code in CITY_TO_AIRPORT.items():
+            if _normalise_place_name(configured_city) == normalized_name:
+                fallback = airport_code
+                break
+
+    try:
+        pool = _get_pool()
+        try:
+            connection_context = pool.connection(timeout=1)
+        except TypeError:
+            connection_context = pool.connection()
+
+        with connection_context as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT value_code
+                    FROM reference_options
+                    WHERE category = %s AND normalized_name = %s
+                    """,
+                    ("airport_cities", normalized_name),
+                )
+                row = cursor.fetchone()
+    except Exception:
+        return fallback
+
+    if row is None:
+        return fallback
+    return str(row[0] or "").strip() or fallback
 
 
 def save_place_alias(

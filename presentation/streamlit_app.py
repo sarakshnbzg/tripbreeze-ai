@@ -10,9 +10,6 @@ import streamlit as st
 from typing import Any
 
 from config import (
-    AIRLINES,
-    CITIES,
-    COUNTRIES,
     HOTEL_STARS,
     TRAVEL_CLASSES,
     SMTP_HOST,
@@ -29,6 +26,7 @@ from infrastructure.llms.model_factory import (
     normalise_llm_selection,
 )
 from infrastructure.persistence.memory_store import (
+    list_reference_values,
     load_profile,
     save_profile,
     register_user,
@@ -132,18 +130,21 @@ def _select_options_with_blank(saved_value: str, options: list[str]) -> list[str
 
 
 def _profile_form_fields(profile: dict[str, Any], prefix: str) -> dict[str, Any]:
+    cities = list_reference_values("cities")
+    countries = list_reference_values("countries")
+    airlines = list_reference_values("airlines")
     saved_city = profile.get("home_city", "")
     home_city = st.selectbox(
         "Home City",
-        options=_select_options_with_blank(saved_city, CITIES),
-        index=_select_options_with_blank(saved_city, CITIES).index(saved_city or ""),
+        options=_select_options_with_blank(saved_city, cities),
+        index=_select_options_with_blank(saved_city, cities).index(saved_city or ""),
         key=f"{prefix}_home_city",
     )
     saved_country = profile.get("passport_country", "")
     passport_country = st.selectbox(
         "Passport Country",
-        options=_select_options_with_blank(saved_country, COUNTRIES),
-        index=_select_options_with_blank(saved_country, COUNTRIES).index(saved_country or ""),
+        options=_select_options_with_blank(saved_country, countries),
+        index=_select_options_with_blank(saved_country, countries).index(saved_country or ""),
         key=f"{prefix}_passport_country",
     )
     travel_class_value = profile.get("travel_class", "ECONOMY")
@@ -156,8 +157,8 @@ def _profile_form_fields(profile: dict[str, Any], prefix: str) -> dict[str, Any]
     saved_airlines = profile.get("preferred_airlines", [])
     preferred_airlines = st.multiselect(
         "Preferred Airlines",
-        options=AIRLINES,
-        default=[airline for airline in saved_airlines if airline in AIRLINES],
+        options=airlines,
+        default=[airline for airline in saved_airlines if airline in airlines],
         key=f"{prefix}_preferred_airlines",
     )
     saved_hotel_stars = profile.get("preferred_hotel_stars", [])

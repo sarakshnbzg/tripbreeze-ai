@@ -102,6 +102,7 @@ Add your API keys and Neon Postgres connection string to `.env`:
 OPENAI_API_KEY=...
 GOOGLE_API_KEY=...
 SERPAPI_API_KEY=...
+CSC_API_KEY=...
 DATABASE_URL=postgresql://username:password@your-neon-host/database?sslmode=require
 ```
 
@@ -118,6 +119,14 @@ LANGCHAIN_API_KEY=...
 
 LangSmith dashboard:
 <https://smith.langchain.com/o/877c675a-ba6b-46dd-8d36-826feba406a5/dashboards/projects/ba117436-e649-43df-bd87-4ebf4e8c22c8>
+
+### 3. Sync external reference data
+
+Populate DB-backed `countries` and `cities` from Country State City API:
+
+```bash
+uv run python scripts/sync_reference_data.py
+```
 
 Optional SMTP configuration for email delivery (see [SMTP_SETUP.md](SMTP_SETUP.md) for details):
 
@@ -300,4 +309,4 @@ tripbreeze-ai/
 
 ## 🔮 Future Work
 
-- [ ] **Replace hardcoded collections with a scalable data source** — Move `DESTINATIONS`, `CITIES`, `COUNTRIES`, `AIRLINES`, `CITY_TO_AIRPORT`, `DAILY_EXPENSE_BY_DESTINATION`, and similar lists in `config.py` to a database or external API (e.g., Airtable, Amadeus, or a custom backend) to enable updates without code changes.
+- [ ] **Replace remaining seeded collections with a scalable data source** — Move seed datasets such as `CITIES`, `COUNTRIES`, `AIRLINES`, `CITY_TO_AIRPORT`, `DAILY_EXPENSE_BY_DESTINATION`, and similar bootstrap lists into fully managed database content or an external API (e.g., Airtable, Amadeus, or a custom backend) to enable updates without code changes.

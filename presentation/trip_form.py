@@ -5,9 +5,9 @@ from typing import Any
 
 import streamlit as st
 
-from config import CITIES, CURRENCIES, DEFAULT_CURRENCY, DESTINATIONS
+from config import CURRENCIES, DEFAULT_CURRENCY
 from infrastructure.currency_utils import format_currency, normalise_currency
-from infrastructure.persistence.memory_store import load_profile
+from infrastructure.persistence.memory_store import load_profile, list_reference_values
 
 
 def build_trip_message(fields: dict) -> str:
@@ -167,6 +167,8 @@ def render_trip_form() -> None:
     default_departure_date = date.today() + timedelta(days=14)
     default_return_date = date.today() + timedelta(days=21)
     default_currency = normalise_currency(DEFAULT_CURRENCY)
+    cities = list_reference_values("cities")
+    destinations = cities
     with st.expander("Refine your search (optional)"):
         # Trip type options first (they affect other fields)
         opt_col1, opt_col2, opt_col3 = st.columns(3)
@@ -201,7 +203,7 @@ def render_trip_form() -> None:
             )
 
         # Origin and destination
-        origin_options = [""] + (CITIES if default_origin in CITIES else [default_origin] + CITIES)
+        origin_options = [""] + (cities if default_origin in cities else [default_origin] + cities)
         if multi_city:
             origin = st.selectbox(
                 "From (Origin City)",
@@ -218,7 +220,7 @@ def render_trip_form() -> None:
                 st.session_state.multi_city_legs = [{"destination": "", "nights": 3}]
 
             legs = st.session_state.multi_city_legs
-            destination_options = [""] + DESTINATIONS
+            destination_options = [""] + destinations
 
             for i, leg in enumerate(legs):
                 leg_col1, leg_col2, leg_col3 = st.columns([3, 2, 1])
@@ -260,7 +262,7 @@ def render_trip_form() -> None:
                     help="Leave blank to use the origin from your text above.",
                 )
             with loc_col2:
-                destination_options = [""] + DESTINATIONS
+                destination_options = [""] + destinations
                 destination = st.selectbox(
                     "To (Destination City)",
                     options=destination_options,

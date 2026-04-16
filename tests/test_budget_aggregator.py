@@ -135,7 +135,7 @@ class TestBudgetAggregatorNode:
         assert "No flight and hotel combinations" in result["budget"]["budget_notes"]
         assert result["budget"]["within_budget"] is False
 
-    def test_jpy_uses_currency_specific_daily_rate(self):
+    def test_destination_fallback_no_longer_varies_by_currency(self):
         state = {
             "trip_request": {
                 "budget_limit": 0,
@@ -148,8 +148,8 @@ class TestBudgetAggregatorNode:
             "hotel_options": [{"total_price": 10000}],
         }
         result = budget_aggregator(state)
-        # 1 night × 12000 JPY/day
-        assert result["budget"]["estimated_daily_expenses"] == 12000.0
+        # 1 night × default fallback daily expense
+        assert result["budget"]["estimated_daily_expenses"] == 80.0
 
     def test_unknown_currency_uses_fallback_daily_rate(self):
         state = {
@@ -217,22 +217,17 @@ class TestDestinationDailyRate:
         rate = _destination_daily_rate("Paris", "EUR")
         assert rate == 125.0
 
-    def test_known_destination_returns_scaled_rate(self):
-        # Paris → 110 EUR baseline; EUR trip → 110 × (80/80) = 110.0
+    def test_known_destination_returns_baseline_rate(self):
         rate = _destination_daily_rate("Paris", "EUR")
         assert rate == 110.0
 
-    def test_known_destination_scaled_to_usd(self):
-        # Paris EUR baseline 110; USD trip baseline 85; EUR baseline 80
-        # 110 × (85 / 80) = 116.875, rounded to 2dp → 116.88
+    def test_known_destination_no_longer_scales_to_usd(self):
         rate = _destination_daily_rate("Paris, France", "USD")
-        assert rate == pytest.approx(116.88)
+        assert rate == pytest.approx(110.0)
 
-    def test_known_destination_scaled_to_jpy(self):
-        # Tokyo EUR baseline 95; JPY trip baseline 12000; EUR baseline 80
-        # 95 × (12000 / 80) = 14250
+    def test_known_destination_no_longer_scales_to_jpy(self):
         rate = _destination_daily_rate("Tokyo", "JPY")
-        assert rate == pytest.approx(14250.0)
+        assert rate == pytest.approx(95.0)
 
     def test_expensive_destination_reykjavik(self):
         # Reykjavik EUR baseline 210; EUR trip → 210.0
@@ -244,13 +239,13 @@ class TestDestinationDailyRate:
         rate = _destination_daily_rate("Bali, Indonesia", "EUR")
         assert rate == 45.0
 
-    def test_unknown_destination_falls_back_to_currency_baseline(self):
+    def test_unknown_destination_falls_back_to_default_daily_expense(self):
         rate = _destination_daily_rate("Timbuktu", "EUR")
-        assert rate == 80.0  # DAILY_EXPENSE_BY_CURRENCY["EUR"]
+        assert rate == 80.0
 
-    def test_empty_destination_falls_back_to_currency_baseline(self):
+    def test_empty_destination_falls_back_to_default_daily_expense(self):
         rate = _destination_daily_rate("", "JPY")
-        assert rate == 12000.0  # DAILY_EXPENSE_BY_CURRENCY["JPY"]
+        assert rate == 80.0
 
     def test_destination_specific_rate_reflected_in_node_output(self):
         state = {

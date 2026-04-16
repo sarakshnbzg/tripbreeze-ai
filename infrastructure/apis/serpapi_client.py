@@ -11,8 +11,9 @@ import re
 
 from serpapi import GoogleSearch
 
-from config import SERPAPI_API_KEY, RAW_FLIGHT_CANDIDATES, MAX_FLIGHT_RESULTS, MAX_HOTEL_RESULTS, CITY_TO_AIRPORT, DESTINATIONS
+from config import SERPAPI_API_KEY, RAW_FLIGHT_CANDIDATES, MAX_FLIGHT_RESULTS, MAX_HOTEL_RESULTS
 from infrastructure.logging_utils import get_logger
+from infrastructure.persistence.memory_store import list_reference_values, lookup_airport_code
 
 logger = get_logger(__name__)
 
@@ -20,6 +21,15 @@ logger = get_logger(__name__)
 # ── Flight search ──
 
 TRAVEL_CLASS_MAP = {"ECONOMY": "1", "PREMIUM_ECONOMY": "2", "BUSINESS": "3", "FIRST": "4"}
+
+
+def _resolve_airport_identifier(place_name: str) -> str:
+    airport_code = lookup_airport_code(place_name)
+    return airport_code or place_name
+
+
+def _known_destinations() -> set[str]:
+    return set(list_reference_values("cities"))
 
 
 def _build_google_flights_url(
@@ -122,12 +132,14 @@ def search_flights(
             "Flight search requires `SERPAPI_API_KEY` in your environment or Streamlit secrets."
         )
 
-    if origin not in CITY_TO_AIRPORT:
+    origin_airport = lookup_airport_code(origin)
+    destination_airport = lookup_airport_code(destination)
+    if not origin_airport:
         logger.warning("Origin city '%s' not found in airport mapping — passing as-is", origin)
-    if destination not in CITY_TO_AIRPORT:
+    if not destination_airport:
         logger.warning("Destination city '%s' not found in airport mapping — passing as-is", destination)
-    origin = CITY_TO_AIRPORT.get(origin, origin)
-    destination = CITY_TO_AIRPORT.get(destination, destination)
+    origin = origin_airport or origin
+    destination = destination_airport or destination
 
     logger.info(
         "SerpAPI flight request origin=%s destination=%s departure=%s return=%s adults=%s class=%s currency=%s outbound_window=%s return_window=%s",
@@ -268,8 +280,8 @@ def search_return_flights(
         )
         return []
 
-    origin = CITY_TO_AIRPORT.get(origin, origin)
-    destination = CITY_TO_AIRPORT.get(destination, destination)
+    origin = _resolve_airport_identifier(origin)
+    destination = _resolve_airport_identifier(destination)
 
     params = _base_flight_params(
         origin=origin,
@@ -342,7 +354,7 @@ def search_hotels(
             "Hotel search requires `SERPAPI_API_KEY` in your environment or Streamlit secrets."
         )
 
-    if destination not in CITY_TO_AIRPORT and destination not in DESTINATIONS:
+    if not lookup_airport_code(destination) and destination not in _known_destinations():
         logger.warning("Hotel destination '%s' not found in known destinations — passing as-is", destination)
 
     hotel_stars = sorted(hotel_stars or [])

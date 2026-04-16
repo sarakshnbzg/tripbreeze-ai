@@ -1,10 +1,11 @@
 """Budget Aggregator node — combines costs and checks against the budget limit."""
 
-from config import DAILY_EXPENSE_BY_CURRENCY, DAILY_EXPENSE_BY_DESTINATION, DEFAULT_DAILY_EXPENSE
+from config import DEFAULT_DAILY_EXPENSE
 from domain.utils.dates import trip_duration_days
 from infrastructure.currency_utils import currency_prefix
 from infrastructure.logging_utils import get_logger
 from infrastructure.persistence.memory_store import load_destination_daily_expense
+from infrastructure.persistence.reference_seed_data import DAILY_EXPENSE_BY_DESTINATION
 
 logger = get_logger(__name__)
 
@@ -29,19 +30,18 @@ def _destination_daily_baseline(destination: str) -> tuple[float | None, str]:
 
 
 def _destination_daily_rate(destination: str, currency: str) -> float:
-    """Return a destination-aware daily expense estimate per adult in the trip's currency.
+    """Return a destination-aware daily expense estimate per adult.
 
-    Looks up the city in the DB-backed daily-expense table first, then falls back
-    to the config-maintained EUR baselines, then scales to the trip currency using
-    the ratios already encoded in DAILY_EXPENSE_BY_CURRENCY.  Falls back to the flat
-    per-currency rate if the destination is not recognised.
+    Uses the DB-backed destination baseline first, then falls back to the
+    config-maintained destination baselines, then to DEFAULT_DAILY_EXPENSE.
+
+    The `currency` parameter is kept for call-site compatibility, but the daily
+    estimate no longer applies a separate currency-based scaling heuristic.
     """
-    eur_baseline = DAILY_EXPENSE_BY_CURRENCY.get("EUR", DEFAULT_DAILY_EXPENSE)
-    trip_baseline = DAILY_EXPENSE_BY_CURRENCY.get(currency, DEFAULT_DAILY_EXPENSE)
     destination_eur_rate, _source = _destination_daily_baseline(destination)
     if destination_eur_rate is not None:
-        return round(destination_eur_rate * (trip_baseline / eur_baseline), 2)
-    return trip_baseline
+        return round(destination_eur_rate, 2)
+    return DEFAULT_DAILY_EXPENSE
 
 
 def _flight_total(flight: dict) -> float:
