@@ -1,4 +1,4 @@
-"""ReAct-style research orchestrator for flights, hotels, and destination briefing."""
+"""ReAct-style research orchestrator for flights, hotels, and visa briefing."""
 
 import json
 import re
@@ -14,6 +14,7 @@ from config import KNOWLEDGE_BASE_DIR
 from domain.agents.flight_agent import search_flights, search_leg_flights
 from domain.agents.ground_transport_agent import search_ground_transport
 from domain.agents.hotel_agent import search_hotels, search_leg_hotels
+from infrastructure.apis.geocoding_client import resolve_destination_country
 from infrastructure.llms.model_factory import create_chat_model, extract_token_usage, invoke_with_retry
 from infrastructure.logging_utils import get_logger
 from infrastructure.rag.evaluation import record_rag_event
@@ -22,7 +23,7 @@ from infrastructure.rag.vectorstore import retrieve
 logger = get_logger(__name__)
 
 RESEARCH_PROMPT = """You are the research orchestrator for a travel planning app.
-You can call tools to research flights, hotels, and destination information.
+You can call tools to research flights, hotels, and visa information.
 
 Use a ReAct-style workflow:
 - decide what information is needed
@@ -35,8 +36,8 @@ Available tools:
 - `search_flights`: search live flights when enough trip details are available
 - `search_ground_transport`: search trains, buses, and ferries alongside flights so the user can compare. Call this whenever flight search is possible.
 - `search_hotels`: search live hotels when enough trip details are available
-- `retrieve_knowledge`: search the local travel knowledge base for destination and visa information
-  Always include the destination city and the traveller's passport country (from user_profile) in your query so the knowledge base returns the most relevant results.
+- `retrieve_knowledge`: search the local travel knowledge base for visa and entry requirements only
+  Always include the destination and the traveller's passport country (from user_profile) in your query so the knowledge base returns the most relevant results.
 - `SubmitResearchResult`: submit the final structured research summary and destination briefing
 
 Do not call tools that are impossible because required inputs are missing.
@@ -53,13 +54,11 @@ Use the format "(Source: <label>)" at the end of each relevant sentence or parag
 
 Use the structured fields only when grounded in retrieved knowledge, and keep each
 field concise:
-- destination_overview: only destination-specific highlights for the requested city; do not include transport, food, safety, or budget tips
 - entry_requirements: only the guidance relevant to the traveller's passport country when known; do not list rules for multiple nationalities
 """
 
-# Sections shown in the destination briefing (overview + entry requirements)
+# Sections shown in the destination briefing.
 DESTINATION_INFO_SECTIONS = (
-    ("destination_overview", "🌍 Overview"),
     ("entry_requirements", "🛂 Entry Requirements"),
 )
 
@@ -68,10 +67,6 @@ class SubmitResearchResult(BaseModel):
     """Structured final output for the research step."""
 
     summary: str = Field(description="Short grounded summary of the research results for the user.")
-    destination_overview: str = Field(
-        default="",
-        description="Concise overview of the destination, with inline source citations.",
-    )
     entry_requirements: str = Field(
         default="",
         description="Visa, passport, or entry requirement notes, with inline source citations.",
@@ -84,8 +79,6 @@ class SubmitResearchResult(BaseModel):
         ),
     )
 
-
-_DESTINATIONS_PATH = KNOWLEDGE_BASE_DIR / "destinations.md"
 _VISA_REQUIREMENTS_PATH = KNOWLEDGE_BASE_DIR / "visa_requirements.md"
 
 
@@ -104,29 +97,16 @@ def _section_body(markdown: str, heading: str) -> str:
     return match.group(1).strip() if match else ""
 
 
-def _find_destination_heading(destination: str) -> str:
-    markdown = _read_text(_DESTINATIONS_PATH)
-    target = _normalise_label(destination)
-    for match in re.finditer(r"^##\s+(.+)$", markdown, flags=re.MULTILINE):
-        heading = match.group(1).strip()
-        city = heading.split(",", 1)[0].strip()
-        if _normalise_label(city) == target:
-            return heading
-    return ""
-
-
-def _extract_country_from_heading(heading: str) -> str:
-    if "," in heading:
-        return heading.split(",", 1)[1].strip()
-    return heading.strip()
-
-
 def _resolve_passport_country(trip_request: dict[str, Any], user_profile: dict[str, Any]) -> str:
     return str(
         trip_request.get("passport_country")
         or user_profile.get("passport_country")
         or ""
     ).strip()
+
+
+def _resolve_destination_country(destination: str) -> str:
+    return resolve_destination_country(destination)
 
 
 def _append_source(sources: list[str], label: str) -> None:
@@ -153,31 +133,11 @@ def _ordered_unique_destinations(trip_legs: list[dict[str, Any]]) -> list[str]:
     return ordered
 
 
-def _lookup_destination_overview(destination: str) -> str:
-    heading = _find_destination_heading(destination)
-    if not heading:
-        return ""
-
-    body = _section_body(_read_text(_DESTINATIONS_PATH), heading)
-    best_time = ""
-    for line in body.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("- **Best time to visit:**"):
-            best_time = stripped.replace("- **Best time to visit:**", "").strip()
-            break
-
-    if not best_time:
-        return ""
-
-    return f"{heading} is a strong city-break choice; best time to visit is {best_time} (Source: Destinations)"
-
-
 def _lookup_entry_requirements(destination: str, passport_country: str) -> str:
-    destination_heading = _find_destination_heading(destination)
-    if not destination_heading:
+    country = _resolve_destination_country(destination)
+    if not country:
         return ""
 
-    country = _extract_country_from_heading(destination_heading)
     visa_markdown = _read_text(_VISA_REQUIREMENTS_PATH)
     visa_heading = ""
     country_key = _normalise_label(country)
@@ -232,12 +192,8 @@ def _maybe_use_precise_destination_info(
         return final_result
 
     enriched = dict(final_result)
-    overview = _lookup_destination_overview(destination)
     entry_requirements = _lookup_entry_requirements(destination, passport_country)
 
-    if overview:
-        enriched["destination_overview"] = overview
-        _append_source(rag_sources, "Destinations")
     if entry_requirements:
         enriched["entry_requirements"] = entry_requirements
         _append_source(rag_sources, "Visa Requirements")
@@ -368,25 +324,13 @@ def research_orchestrator(state: dict) -> dict:
         )
         multi_city_result = _research_multi_city_legs(state)
 
-        # Now do RAG retrieval for unique destinations
+        # Now do visa lookup for unique destinations
         unique_destinations = _ordered_unique_destinations(trip_legs)
         rag_sources: list[str] = []
         rag_trace: list[dict[str, Any]] = list(state.get("rag_trace", []))
         destination_sections = []
 
         for destination in unique_destinations:
-            # Query for overview
-            overview_query = f"travel guide for {destination} attractions things to do"
-            overview_results = retrieve(overview_query, provider=state.get("llm_provider"))
-            record_rag_event(
-                rag_trace,
-                node="research_orchestrator_multi_city",
-                query=overview_query,
-                provider=state.get("llm_provider"),
-                results=overview_results,
-            )
-
-            # Query for entry requirements
             passport_country = _resolve_passport_country(trip_request, user_profile)
             entry_query = f"visa entry requirements {destination}"
             if passport_country:
@@ -403,12 +347,7 @@ def research_orchestrator(state: dict) -> dict:
             # Build section for this destination
             section_parts = [f"### {destination}"]
 
-            precise_overview = _lookup_destination_overview(destination)
             precise_entry = _lookup_entry_requirements(destination, passport_country)
-
-            if precise_overview:
-                section_parts.append(f"#### 🌍 Overview\n{precise_overview}")
-                _append_source(rag_sources, "Destinations")
 
             if precise_entry:
                 section_parts.append(f"#### 🛂 Entry Requirements\n{precise_entry}")
@@ -418,7 +357,7 @@ def research_orchestrator(state: dict) -> dict:
                 destination_sections.append("\n\n".join(section_parts))
 
         if destination_sections:
-            intro = "A quick travel snapshot for each destination to help you compare options and plan your stay:"
+            intro = "Entry requirements for each destination in your trip:"
             multi_city_result["destination_info"] = intro + "\n\n" + "\n\n---\n\n".join(destination_sections)
         else:
             multi_city_result["destination_info"] = ""
@@ -495,7 +434,7 @@ def research_orchestrator(state: dict) -> dict:
 
     @tool("retrieve_knowledge")
     def retrieve_knowledge_tool(query: str) -> str:
-        """Search the local travel knowledge base for destination, visa, transport, safety, and budget information."""
+        """Search the local travel knowledge base for visa and entry requirements."""
         effective_query = _enrich_retrieval_query(query, trip_request, user_profile)
         logger.info(
             "Research orchestrator invoking retrieve_knowledge query=%s effective_query=%s",

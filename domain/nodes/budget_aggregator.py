@@ -12,7 +12,7 @@ def _destination_daily_rate(destination: str, currency: str) -> float:
     """Return a destination-aware daily expense estimate per adult in the trip's currency.
 
     Looks up the city in DAILY_EXPENSE_BY_DESTINATION (EUR-equivalent mid-range baselines
-    derived from knowledge_base/destinations.md), then scales to the trip currency using
+    maintained in config), then scales to the trip currency using
     the ratios already encoded in DAILY_EXPENSE_BY_CURRENCY.  Falls back to the flat
     per-currency rate if the destination is not recognised.
     """

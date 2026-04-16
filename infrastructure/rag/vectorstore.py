@@ -1,9 +1,4 @@
-"""ChromaDB vector store — builds and queries the RAG knowledge base.
-
-Uses hybrid retrieval with metadata-aware candidate selection:
-- Chroma vector similarity
-- BM25 keyword matching over filtered chunks
-"""
+"""ChromaDB vector store for visa-only retrieval."""
 
 from __future__ import annotations
 
@@ -38,6 +33,31 @@ _cached_chunks: list | None = None
 _cached_vectorstores: dict[str, Chroma] = {}
 
 _MANUAL_PLACE_ALIASES: tuple[tuple[str, str, str], ...] = (
+    ("paris", "city", "Paris"),
+    ("barcelona", "city", "Barcelona"),
+    ("madrid", "city", "Madrid"),
+    ("rome", "city", "Rome"),
+    ("tokyo", "city", "Tokyo"),
+    ("bangkok", "city", "Bangkok"),
+    ("bali", "city", "Bali"),
+    ("dubai", "city", "Dubai"),
+    ("london", "city", "London"),
+    ("berlin", "city", "Berlin"),
+    ("vienna", "city", "Vienna"),
+    ("prague", "city", "Prague"),
+    ("lisbon", "city", "Lisbon"),
+    ("amsterdam", "city", "Amsterdam"),
+    ("athens", "city", "Athens"),
+    ("budapest", "city", "Budapest"),
+    ("copenhagen", "city", "Copenhagen"),
+    ("new york", "city", "New York"),
+    ("sydney", "city", "Sydney"),
+    ("seoul", "city", "Seoul"),
+    ("singapore", "city", "Singapore"),
+    ("edinburgh", "city", "Edinburgh"),
+    ("istanbul", "city", "Istanbul"),
+    ("reykjavik", "city", "Reykjavik"),
+    ("dubrovnik", "city", "Dubrovnik"),
     ("dublin", "city", "Dublin"),
     ("cork", "city", "Cork"),
     ("zurich", "city", "Zurich"),
@@ -49,6 +69,31 @@ _MANUAL_PLACE_ALIASES: tuple[tuple[str, str, str], ...] = (
 )
 
 _MANUAL_CITY_TO_COUNTRY: dict[str, str] = {
+    "Paris": "France",
+    "Barcelona": "Spain",
+    "Madrid": "Spain",
+    "Rome": "Italy",
+    "Tokyo": "Japan",
+    "Bangkok": "Thailand",
+    "Bali": "Indonesia",
+    "Dubai": "UAE",
+    "London": "United Kingdom",
+    "Berlin": "Germany",
+    "Vienna": "Austria",
+    "Prague": "Czech Republic",
+    "Lisbon": "Portugal",
+    "Amsterdam": "Netherlands",
+    "Athens": "Greece",
+    "Budapest": "Hungary",
+    "Copenhagen": "Denmark",
+    "New York": "United States",
+    "Sydney": "Australia",
+    "Seoul": "South Korea",
+    "Singapore": "Singapore",
+    "Edinburgh": "United Kingdom",
+    "Istanbul": "Turkey",
+    "Reykjavik": "Iceland",
+    "Dubrovnik": "Croatia",
     "Dublin": "Ireland",
     "Cork": "Ireland",
     "Zurich": "Switzerland",
@@ -74,23 +119,13 @@ def _detect_topics(page_content: str, source_type: str) -> list[str]:
     topics: set[str] = set()
 
     keyword_map = {
-        "entry_requirements": ["visa-free", "visa required", "documents needed", "passport", "entry requirements"],
-        "transport": ["local transport", "metro", "tram", "subway", "bus", "ferry", "cycling", "bike"],
-        "budget": ["budget tip", "average daily budget", "daily budget", "cheap", "value destination"],
-        "safety": ["## safety", "- **safety:", "pickpocket", "scam", "situational awareness"],
-        "packing": ["packing", "carry-on", "packing cubes", "essential documents"],
-        "health": ["vaccinations", "water safety", "altitude sickness", "travel pharmacy", "jet lag"],
-        "flight_booking": ["book early", "nearby airports", "layovers", "budget airlines", "red-eye"],
-        "hotel_booking": ["check cancellation policy", "book directly", "location matters", "recent reviews"],
-        "etiquette": ["dress codes", "photography", "haggling", "religious sensitivity", "left hand"],
+        "entry_requirements": ["visa-free", "visa required", "documents needed", "passport", "entry requirements", "esta", "eta", "etias"],
     }
 
     for topic, keywords in keyword_map.items():
         if any(keyword in lowered for keyword in keywords):
             topics.add(topic)
 
-    if source_type == "destinations":
-        topics.add("destination_overview")
     if source_type == "visa_requirements":
         topics.add("entry_requirements")
 
@@ -104,15 +139,8 @@ def _extract_doc_metadata(source_path: str, page_content: str) -> dict[str, str 
     city = ""
     country = ""
 
-    if source_type == "destinations" and heading:
-        if "," in heading:
-            city, country = [part.strip() for part in heading.split(",", 1)]
-        else:
-            city = heading.strip()
-    elif source_type == "visa_requirements" and heading:
+    if source_type == "visa_requirements" and heading:
         country = heading.split("(", 1)[0].strip()
-    elif source_type == "travel_tips" and heading:
-        country = ""
 
     topics = _detect_topics(page_content, source_type)
 
@@ -130,20 +158,12 @@ def _extract_doc_metadata(source_path: str, page_content: str) -> dict[str, str 
 @lru_cache(maxsize=1)
 def _known_places() -> list[tuple[str, str, str]]:
     places: list[tuple[str, str, str]] = []
-    for path in (KNOWLEDGE_BASE_DIR / "destinations.md", KNOWLEDGE_BASE_DIR / "visa_requirements.md"):
+    for path in (KNOWLEDGE_BASE_DIR / "visa_requirements.md",):
         text = path.read_text(encoding="utf-8")
         source_type = path.stem
         for match in re.finditer(r"^##\s+(.+)$", text, flags=re.MULTILINE):
             heading = match.group(1).strip()
-            if source_type == "destinations":
-                city, _, country = heading.partition(",")
-                city = city.strip()
-                country = country.strip()
-                if city:
-                    places.append((_normalise_text(city), "city", city))
-                if country:
-                    places.append((_normalise_text(country.split("(", 1)[0].strip()), "country", country.split("(", 1)[0].strip()))
-            else:
+            if source_type == "visa_requirements":
                 country = heading.split("(", 1)[0].strip()
                 if country:
                     places.append((_normalise_text(country), "country", country))
@@ -188,11 +208,7 @@ def _preferred_source_types(query_meta: dict[str, str | list[str]]) -> list[str]
     query_intents = set(query_meta.get("intents", []) or [])
 
     if "entry_requirements" in query_intents:
-        return ["visa_requirements", "travel_tips"]
-    if query_intents.intersection({"transport", "budget", "safety"}):
-        return ["destinations", "travel_tips"]
-    if query_intents.intersection({"packing", "health", "flight_booking", "hotel_booking", "etiquette"}):
-        return ["travel_tips", "destinations"]
+        return ["visa_requirements"]
     return []
 
 
@@ -444,7 +460,7 @@ def _load_and_split_docs() -> list:
 
     loader = DirectoryLoader(
         str(KNOWLEDGE_BASE_DIR),
-        glob="**/*.md",
+        glob="visa_requirements.md",
         loader_cls=TextLoader,
         loader_kwargs={"encoding": "utf-8"},
     )
@@ -526,16 +542,14 @@ def _source_label(source_path: str) -> str:
 def retrieve(
     query: str, k: int = RAG_TOP_K, provider: str | None = DEFAULT_LLM_PROVIDER
 ) -> list[dict[str, str]]:
-    """Return the top-k relevant text chunks with source metadata.
-
-    Retrieval first narrows the candidate pool using inferred place/source metadata,
-    then combines vector similarity and BM25 over those candidates.
-    Each result is a dict with keys ``content`` and ``source``.
-    """
+    """Return the top-k relevant visa text chunks with source metadata."""
     logger.info("Running RAG retrieval query=%s k=%s provider=%s", query, k, provider)
     vs = _build_vectorstore(provider=provider)
     chunks = _load_and_split_docs()
     query_meta = _infer_query_metadata(query)
+    if "entry_requirements" not in set(query_meta.get("intents", []) or []):
+        logger.info("Skipping RAG retrieval because query is outside visa scope")
+        return []
     candidate_k = max(k * 3, 8)
 
     docs: list = []

@@ -33,18 +33,17 @@ class TestBuildRetrievalSnapshot:
         monkeypatch.setattr(
             "infrastructure.rag.evaluation.retrieve",
             lambda query, provider: [
-                {"source": "Destinations", "content": f"Guide for {query}"},
-                {"source": "Travel Tips", "content": "Pack layers."},
+                {"source": "Visa Requirements", "content": f"Visa guidance for {query}"},
             ],
         )
 
         rows = build_retrieval_snapshot(
-            [{"user_input": "Amsterdam budget tips", "reference": "Budget answer"}],
+            [{"user_input": "Do US citizens need a visa for Amsterdam?", "reference": "Visa answer"}],
             provider="openai",
         )
 
-        assert rows[0]["retrieved_sources"] == ["Destinations", "Travel Tips"]
-        assert rows[0]["retrieved_contexts"][0] == "Guide for Amsterdam budget tips"
+        assert rows[0]["retrieved_sources"] == ["Visa Requirements"]
+        assert rows[0]["retrieved_contexts"][0] == "Visa guidance for Do US citizens need a visa for Amsterdam?"
 
 
 class TestEvaluateWithRagas:

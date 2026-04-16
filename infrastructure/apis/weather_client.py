@@ -1,6 +1,6 @@
 """Open-Meteo weather client — provides weather forecasts and historical climate data.
 
-Uses Open-Meteo's free API (no key required) for:
+Uses the shared Open-Meteo geocoder plus Open-Meteo's free weather APIs for:
 - Forecasts: up to 16 days ahead
 - Historical: same dates from previous year for trips beyond forecast range
 """
@@ -10,11 +10,11 @@ from typing import NamedTuple
 
 import requests
 
+from infrastructure.apis.geocoding_client import geocode_place
 from infrastructure.logging_utils import get_logger
 
 logger = get_logger(__name__)
 
-GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 HISTORICAL_URL = "https://archive-api.open-meteo.com/v1/archive"
 
@@ -71,39 +71,11 @@ class Coordinates(NamedTuple):
 
 
 def geocode_destination(destination: str) -> Coordinates | None:
-    """Convert a destination name to coordinates using Open-Meteo's geocoding API."""
-    try:
-        response = requests.get(
-            GEOCODE_URL,
-            params={"name": destination, "count": 1, "language": "en", "format": "json"},
-            timeout=10,
-        )
-        response.raise_for_status()
-        data = response.json()
-
-        results = data.get("results", [])
-        if not results:
-            logger.warning("Geocoding found no results for '%s'", destination)
-            return None
-
-        result = results[0]
-        coords = Coordinates(
-            latitude=result["latitude"],
-            longitude=result["longitude"],
-            name=result.get("name", destination),
-        )
-        logger.info(
-            "Geocoded '%s' to %s (%.4f, %.4f)",
-            destination,
-            coords.name,
-            coords.latitude,
-            coords.longitude,
-        )
-        return coords
-
-    except requests.RequestException as exc:
-        logger.error("Geocoding request failed for '%s': %s", destination, exc)
+    """Convert a destination name to coordinates using the shared geocoder."""
+    place = geocode_place(destination)
+    if place is None:
         return None
+    return Coordinates(latitude=place.latitude, longitude=place.longitude, name=place.name)
 
 
 def _fetch_forecast(

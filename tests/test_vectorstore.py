@@ -60,13 +60,6 @@ class TestRetrieve:
                 )
                 return [
                     FakeDoc(
-                        "chunk 1",
-                        "knowledge_base/destinations.md",
-                        source_type="destinations",
-                        city="Paris",
-                        country="France",
-                    ),
-                    FakeDoc(
                         "chunk 2",
                         "knowledge_base/visa_requirements.md",
                         source_type="visa_requirements",
@@ -88,13 +81,7 @@ class TestRetrieve:
 
             def invoke(self, query):
                 calls["query"] = query
-                return [
-                    FakeDoc(
-                        "chunk 3",
-                        "knowledge_base/travel_tips.md",
-                        source_type="travel_tips",
-                    )
-                ]
+                return [FakeDoc("chunk 3", "knowledge_base/visa_requirements.md", source_type="visa_requirements", country="France")]
 
         monkeypatch.setattr(
             "infrastructure.rag.vectorstore._build_vectorstore",
@@ -109,13 +96,6 @@ class TestRetrieve:
                     "bm25 visa chunk",
                     "knowledge_base/visa_requirements.md",
                     source_type="visa_requirements",
-                    country="France",
-                ),
-                FakeDoc(
-                    "bm25 city chunk",
-                    "knowledge_base/destinations.md",
-                    source_type="destinations",
-                    city="Paris",
                     country="France",
                 ),
             ],
@@ -135,33 +115,32 @@ class TestRetrieve:
         assert calls["similarity_search"][0]["k"] == 8
         assert calls["similarity_search"][0]["filter"] == {
             "$and": [
-                {"source_type": {"$in": ["visa_requirements", "travel_tips"]}},
-                {"city": "Paris"},
+                {"source_type": "visa_requirements"},
+                {"$or": [{"city": "Paris"}, {"country": "France"}]},
             ]
         }
         assert all(
-            doc.metadata.get("source_type") in {"visa_requirements", "travel_tips"}
+            doc.metadata.get("source_type") == "visa_requirements"
             for doc in calls["bm25_inputs"][0]["documents"]
         )
         assert calls["query"] == "What are the entry requirements for a US passport holder visiting Paris?"
         assert result == [
             {"content": "chunk 2", "source": "Visa Requirements"},
-            {"content": "chunk 3", "source": "Travel Tips"},
+            {"content": "chunk 3", "source": "Visa Requirements"},
         ]
 
 
 class TestMetadataExtraction:
-    def test_extracts_destination_metadata_and_topics(self):
+    def test_extracts_visa_metadata_and_topics(self):
         metadata = _extract_doc_metadata(
-            "knowledge_base/destinations.md",
-            "## Amsterdam, Netherlands\n- **Local transport:** Cycling is king.\n- **Budget tip:** Walk the canals.",
+            "knowledge_base/visa_requirements.md",
+            "## France (Schengen Area)\n- **US citizens:** Visa-free for up to 90 days.\n- **Documents needed:** Passport valid 3+ months beyond stay.",
         )
 
-        assert metadata["source_type"] == "destinations"
-        assert metadata["city"] == "Amsterdam"
-        assert metadata["country"] == "Netherlands"
-        assert "transport" in metadata["topics"]
-        assert "budget" in metadata["topics"]
+        assert metadata["source_type"] == "visa_requirements"
+        assert metadata["city"] == ""
+        assert metadata["country"] == "France"
+        assert "entry_requirements" in metadata["topics"]
 
 
 class TestMetadataAwareRetrieval:
@@ -177,34 +156,26 @@ class TestMetadataAwareRetrieval:
             {"intents": ["entry_requirements"], "city": "Paris", "country": "France"}
         )
 
-        assert result == ["visa_requirements", "travel_tips"]
+        assert result == ["visa_requirements"]
 
     def test_builds_chroma_filter_with_source_and_place(self):
         result = _build_chroma_filter(
             query_meta={"city": "Paris", "country": "France", "intents": ["entry_requirements"]},
-            allowed_source_types=["visa_requirements", "travel_tips"],
+            allowed_source_types=["visa_requirements"],
             require_place_match=True,
         )
 
         assert result == {
             "$and": [
-                {"source_type": {"$in": ["visa_requirements", "travel_tips"]}},
+                {"source_type": "visa_requirements"},
                 {"$or": [{"city": "Paris"}, {"country": "France"}]},
             ]
         }
-
-    def test_place_matching_rejects_wrong_destination(self):
-        assert _doc_matches_filters(
-            {"source_type": "destinations", "city": "Amsterdam", "country": "Netherlands"},
-            query_meta={"city": "Paris", "country": "France", "intents": ["transport"]},
-            allowed_source_types=["destinations"],
-            require_place_match=True,
-        ) is False
 
     def test_country_level_match_keeps_visa_doc_without_city(self):
         assert _doc_matches_filters(
             {"source_type": "visa_requirements", "country": "France"},
             query_meta={"city": "Paris", "country": "France", "intents": ["entry_requirements"]},
-            allowed_source_types=["visa_requirements", "travel_tips"],
+            allowed_source_types=["visa_requirements"],
             require_place_match=True,
         ) is True

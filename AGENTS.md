@@ -58,11 +58,11 @@ Tool      Transport   Tool       Tool
 | **Purpose** | ReAct agent that dynamically chooses which research tools to call for the current trip |
 | **LLM** | User-selected OpenAI or Google Gemini chat model with tool calling |
 | **Reads from state** | `trip_request`, `trip_legs` (for multi-city), `user_profile`, `llm_provider`, `llm_model` |
-| **Writes to state** | `flight_options`, `transport_options`, `hotel_options`, `destination_info` (overview + entry requirements only), `rag_sources`, research summary message; for multi-city: `flight_options_by_leg`, `hotel_options_by_leg` |
+| **Writes to state** | `flight_options`, `transport_options`, `hotel_options`, `destination_info` (entry requirements only), `rag_sources`, research summary message; for multi-city: `flight_options_by_leg`, `hotel_options_by_leg` |
 | **Tool choices** | `search_flights`, `search_ground_transport`, `search_hotels`, `retrieve_knowledge`, `SubmitResearchResult` |
 | **Routing behavior** | May call any subset of tools, including skipping retrieval entirely or calling it multiple times, and finishes by calling `SubmitResearchResult` |
 | **Multi-city** | When `trip_legs` is present, searches flights and hotels per leg (one-way flights) and aggregates results into `*_by_leg` fields |
-| **RAG output** | Only extracts `destination_overview` and `entry_requirements` from RAG — transport, safety, and budget tips are deferred to the finaliser |
+| **RAG output** | Only extracts grounded `entry_requirements` from the local knowledge base |
 
 ### Flight Tool
 
@@ -109,12 +109,12 @@ Tool      Transport   Tool       Tool
 | Field | Detail |
 |-------|--------|
 | **Callable name** | `retrieve_knowledge` |
-| **Purpose** | Search the local knowledge base for destination guides, visa requirements, travel tips, transport, safety, and budget information |
+| **Purpose** | Search the local knowledge base for visa and entry requirement information |
 | **Infrastructure** | `infrastructure/rag/vectorstore.retrieve` (ChromaDB) |
 | **Used by** | Research orchestrator (for overview + entry requirements) and Trip Finaliser (for transport, safety, budget tips) |
 | **Behavior** | Optional tool inside both ReAct loops; may be skipped or called multiple times |
 | **Output** | Retrieved knowledge-base chunks that agents use to write grounded destination information |
-| **Knowledge base** | `knowledge_base/destinations.md`, `visa_requirements.md`, `travel_tips.md` |
+| **Knowledge base** | `knowledge_base/visa_requirements.md` |
 
 #### RAG Retrieval Sketch
 
@@ -125,7 +125,7 @@ User/tool query
 Enrich query with trip context where helpful
   │
   ▼
-Load local markdown knowledge base
+Load local visa knowledge base
   │
   ▼
 Split docs into chunks
@@ -209,7 +209,7 @@ Notes:
 | **Pure logic** | String formatting only |
 | **Reads from state** | `flight_options`, `transport_options`, `hotel_options`, `trip_legs`, `flight_options_by_leg`, `hotel_options_by_leg`, `budget`, `destination_info`, `rag_sources`, `trip_request` |
 | **Writes to state** | Formatted review message |
-| **What's shown** | Destination overview, entry requirements, trip summary, budget notes — transport/safety/budget tips are generated later by the finaliser |
+| **What's shown** | Entry requirements, trip summary, budget notes |
 | **Multi-city** | Shows leg-by-leg summary table with route, dates, and nights per destination |
 | **Routing** | If `user_approved` → `finalise`; otherwise → `END` (UI waits for input) |
 
@@ -221,10 +221,10 @@ Notes:
 | **Node name** | `finalise` |
 | **Purpose** | ReAct agent that generates a polished, professional itinerary document with grounded destination tips |
 | **LLM** | User-selected OpenAI or Google Gemini chat model with tool calling (temperature 0.5) |
-| **Tool choices** | `retrieve_knowledge` (for transport, safety, budget tips), `Itinerary` (single-destination), `MultiCityItinerary` (multi-city) |
+| **Tool choices** | `Itinerary` (single-destination), `MultiCityItinerary` (multi-city) |
 | **Reads from state** | `trip_request`, `trip_legs`, `selected_flight`, `selected_hotel`, `selected_flights`, `selected_hotels`, `destination_info`, `budget`, `user_feedback`, `attraction_candidates`, `rag_sources`, `llm_provider`, `llm_model` |
 | **Writes to state** | `final_itinerary` — complete markdown itinerary, `itinerary_data` — structured data, `rag_sources` — updated with any new sources |
-| **Behavior** | Can call RAG to get grounded transport/safety/budget tips before generating the final itinerary; submits via `Itinerary` or `MultiCityItinerary` tool call |
+| **Behavior** | Uses grounded entry requirements already prepared earlier in the flow; submits via `Itinerary` or `MultiCityItinerary` tool call |
 | **Multi-city** | Uses `_finalise_multi_city()` when `trip_legs` present; generates per-leg flight/hotel details and combined itinerary |
 | **Weather** | After LLM generates the itinerary, enriches each daily plan with weather forecasts from Open-Meteo (forecasts up to 16 days, historical data for dates beyond) |
 

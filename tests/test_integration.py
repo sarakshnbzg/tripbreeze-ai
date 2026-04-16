@@ -287,7 +287,6 @@ def _patch_all(
         patch("domain.agents.flight_agent.api_search_flights", return_value=_flights) as mock_api_flights,
         patch("domain.agents.hotel_agent.api_search_hotels", return_value=_hotels) as mock_api_hotels,
         patch("domain.nodes.research_orchestrator.retrieve", return_value=[]) as mock_rag,
-        patch("domain.nodes.trip_finaliser.retrieve", return_value=[]) as mock_finaliser_rag,
         patch("domain.nodes.research_orchestrator.create_chat_model", return_value=_research) as mock_research_llm,
         patch("domain.nodes.trip_finaliser.create_chat_model", return_value=_finaliser) as mock_final_llm,
         patch("domain.nodes.trip_intake.create_chat_model") as mock_intake_llm,
@@ -616,7 +615,6 @@ class TestRAGIntegration:
 
     def test_rag_sources_propagated(self):
         rag_results = [
-            {"content": "Paris is lovely in spring.", "source": "destinations.md"},
             {"content": "No visa needed for EU citizens.", "source": "visa_requirements.md"},
         ]
         # Build research LLM that also calls retrieve_knowledge
@@ -631,7 +629,7 @@ class TestRAGIntegration:
             "name": "SubmitResearchResult",
             "args": {
                 "summary": "Research complete with RAG.",
-                "destination_overview": "Paris is lovely in spring.",
+                "entry_requirements": "No visa needed for EU citizens.",
             },
             "id": "c4",
         }])
@@ -646,7 +644,6 @@ class TestRAGIntegration:
             result = graph.invoke(_base_initial_state(), _make_config())
 
         assert result["rag_used"] is True
-        assert "destinations.md" in result["rag_sources"]
         assert "visa_requirements.md" in result["rag_sources"]
         assert result["destination_info"]  # non-empty
 

@@ -8,32 +8,32 @@ from infrastructure.apis import weather_client
 
 
 class DummyResponse:
-    def __init__(self, payload, should_raise: Exception | None = None):
-        self.payload = payload
-        self.should_raise = should_raise
-
     def raise_for_status(self):
-        if self.should_raise:
-            raise self.should_raise
+        return None
 
     def json(self):
-        return self.payload
+        return {
+            "daily": {
+                "time": ["2026-05-01", "2026-05-02"],
+                "temperature_2m_max": [20, 21],
+                "temperature_2m_min": [10, 11],
+                "weather_code": [1, 999],
+                "precipitation_probability_max": [30, 40],
+            }
+        }
 
 
 class TestGeocodeDestination:
     def test_returns_coordinates_for_first_result(self, monkeypatch):
-        def fake_get(url, params, timeout):
-            assert url == weather_client.GEOCODE_URL
-            assert params["name"] == "Paris"
-            return DummyResponse(
-                {
-                    "results": [
-                        {"latitude": 48.8566, "longitude": 2.3522, "name": "Paris"},
-                    ]
-                }
-            )
-
-        monkeypatch.setattr(weather_client.requests, "get", fake_get)
+        monkeypatch.setattr(
+            weather_client,
+            "geocode_place",
+            lambda destination: type(
+                "Place",
+                (),
+                {"latitude": 48.8566, "longitude": 2.3522, "name": "Paris"},
+            )(),
+        )
 
         result = weather_client.geocode_destination("Paris")
 
@@ -43,21 +43,9 @@ class TestGeocodeDestination:
         assert result.name == "Paris"
 
     def test_returns_none_when_no_results(self, monkeypatch):
-        monkeypatch.setattr(
-            weather_client.requests,
-            "get",
-            lambda *args, **kwargs: DummyResponse({"results": []}),
-        )
+        monkeypatch.setattr(weather_client, "geocode_place", lambda destination: None)
 
         assert weather_client.geocode_destination("Nowhere") is None
-
-    def test_returns_none_on_request_exception(self, monkeypatch):
-        def fake_get(*args, **kwargs):
-            raise requests.RequestException("boom")
-
-        monkeypatch.setattr(weather_client.requests, "get", fake_get)
-
-        assert weather_client.geocode_destination("Paris") is None
 
 
 class TestFetchForecast:
@@ -67,17 +55,7 @@ class TestFetchForecast:
         monkeypatch.setattr(
             weather_client.requests,
             "get",
-            lambda *args, **kwargs: DummyResponse(
-                {
-                    "daily": {
-                        "time": ["2026-05-01", "2026-05-02"],
-                        "temperature_2m_max": [20, 21],
-                        "temperature_2m_min": [10, 11],
-                        "weather_code": [1, 999],
-                        "precipitation_probability_max": [30, 40],
-                    }
-                }
-            ),
+            lambda *args, **kwargs: DummyResponse(),
         )
 
         result = weather_client._fetch_forecast(coords, "2026-05-01", "2026-05-02")

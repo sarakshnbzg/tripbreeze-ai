@@ -105,16 +105,16 @@ class TestHitlReview:
             "trip_request": {},
             "flight_options": [],
             "hotel_options": [],
-            "destination_info": "A quick travel snapshot to help you compare options and plan the stay:\n\n#### 🌍 Overview\nGreat city to visit.",
+            "destination_info": "A quick travel snapshot to help you compare options and plan the stay:\n\n#### 🛂 Entry Requirements\nCheck passport validity before travel.",
             "rag_used": True,
-            "rag_sources": ["Destinations", "Travel Tips"],
+            "rag_sources": ["Visa Requirements"],
         }
         result = hitl_review(state)
         content = result["messages"][0]["content"]
         assert "### Destination Briefing" in content
-        assert "#### 🌍 Overview" in content
-        assert "Great city to visit" in content
-        assert "_Source: Destinations, Travel Tips_" in content
+        assert "#### 🛂 Entry Requirements" in content
+        assert "Check passport validity before travel" in content
+        assert "_Source: Visa Requirements_" in content
 
     def test_rag_used_without_dest_info(self):
         state = {
@@ -154,27 +154,16 @@ class TestHitlReview:
 
 class TestDestinationInfoFormatting:
     def test_formats_structured_destination_sections(self):
-        """Only overview and entry requirements are shown in initial result.
-
-        Transport tips, safety notes, and budget tips are deferred to the final itinerary.
-        """
+        """Only entry requirements are shown in the initial grounded result."""
         result = _format_destination_info(
             {
-                "destination_overview": "Tokyo is strong for food and transit. (Source: Destinations)",
                 "entry_requirements": "Check passport validity before travel. (Source: Visa Requirements)",
-                "transport_tips": "Use trains for most city travel. (Source: Travel Tips)",
             }
         )
 
         assert "A quick travel snapshot" in result
-        assert "#### 🌍 Overview" in result
         assert "#### 🛂 Entry Requirements" in result
-        # transport_tips is now deferred to final itinerary
-        assert "#### 🚇 Getting Around" not in result
-        assert "Tokyo is strong" in result
         assert "Check passport validity" in result
-        # transport content should not appear in initial result
-        assert "Use trains" not in result
 
     def test_falls_back_to_legacy_destination_briefing(self):
         result = _format_destination_info(

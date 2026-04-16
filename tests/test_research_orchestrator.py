@@ -3,7 +3,6 @@
 from unittest.mock import patch, MagicMock
 
 from domain.nodes.research_orchestrator import (
-    _lookup_destination_overview,
     _lookup_entry_requirements,
     _ordered_unique_destinations,
     research_orchestrator,
@@ -98,7 +97,6 @@ class TestSubmitResearchResultToolMessage:
         result = research_orchestrator(_base_state())
 
         assert result["current_step"] == "research_complete"
-        assert "Paris, France is a strong city-break choice" in result["destination_info"]
         assert "### France (Schengen Area)" in result["destination_info"]
         # Only one LLM call needed
         assert mock_llm.invoke.call_count == 1
@@ -116,20 +114,6 @@ class TestPreciseDestinationBriefing:
         )
 
         assert result == ["Barcelona", "Madrid"]
-
-    def test_lookup_destination_overview_uses_requested_city_only(self):
-        overview = _lookup_destination_overview("Paris")
-
-        assert "Paris, France is a strong city-break choice" in overview
-        assert "best time to visit is" in overview
-        assert "Local transport" not in overview
-        assert "Rome, Italy" not in overview
-
-    def test_lookup_destination_overview_supports_madrid(self):
-        overview = _lookup_destination_overview("Madrid")
-
-        assert "Madrid, Spain is a strong city-break choice" in overview
-        assert "best time to visit is" in overview
 
     def test_lookup_entry_requirements_filters_to_passport_country(self):
         entry = _lookup_entry_requirements("Paris", "US")
@@ -171,7 +155,6 @@ class TestPreciseDestinationBriefing:
             }
         )
 
-        assert "Paris, France is a strong city-break choice" in result["destination_info"]
         assert "Local transport" not in result["destination_info"]
         assert "### France (Schengen Area)" in result["destination_info"]
         assert "US citizens" in result["destination_info"]
@@ -187,9 +170,7 @@ class TestPreciseDestinationBriefing:
         mock_leg_flights.return_value = []
         mock_leg_hotels.return_value = []
         mock_retrieve.side_effect = [
-            [{"content": "Local transport in Marrakech...", "source": "Destinations"}],
             [{"content": "## Iran\n- **US citizens:** Tourist visa required.", "source": "Visa Requirements"}],
-            [{"content": "Wrong Barcelona overview", "source": "Destinations"}],
             [{"content": "Wrong Barcelona visa", "source": "Visa Requirements"}],
         ]
 
@@ -227,8 +208,6 @@ class TestPreciseDestinationBriefing:
 
         assert result["current_step"] == "research_complete"
         assert result["destination_info"].index("### Barcelona") < result["destination_info"].index("### Madrid")
-        assert "Barcelona, Spain is a strong city-break choice" in result["destination_info"]
-        assert "Madrid, Spain is a strong city-break choice" in result["destination_info"]
         assert "### Spain (Schengen Area)" in result["destination_info"]
         assert "Marrakech" not in result["destination_info"]
         assert "Iran" not in result["destination_info"]

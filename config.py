@@ -90,7 +90,7 @@ DAILY_EXPENSE_BY_CURRENCY: dict[str, float] = {
 }
 # Per-destination mid-range daily expense (one adult, EUR-equivalent).
 # Matched case-insensitively against the trip's destination city.
-# Derived from "Average daily budget" entries in knowledge_base/destinations.md.
+# Derived from curated internal trip-cost baselines.
 # The budget aggregator scales these to the trip's currency via DAILY_EXPENSE_BY_CURRENCY ratios.
 DAILY_EXPENSE_BY_DESTINATION: dict[str, float] = {
     "amsterdam": 135.0,
