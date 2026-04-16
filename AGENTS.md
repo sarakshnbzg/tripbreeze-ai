@@ -116,6 +116,47 @@ Tool      Transport   Tool       Tool
 | **Output** | Retrieved knowledge-base chunks that agents use to write grounded destination information |
 | **Knowledge base** | `knowledge_base/destinations.md`, `visa_requirements.md`, `travel_tips.md` |
 
+#### RAG Retrieval Sketch
+
+```
+User/tool query
+  │
+  ▼
+Enrich query with trip context where helpful
+  │
+  ▼
+Load local markdown knowledge base
+  │
+  ▼
+Split docs into chunks
+  │
+  ▼
+Attach chunk metadata
+  └─ source_type, heading, city, country, topics
+  │
+  ▼
+Infer query metadata
+  └─ e.g. city, country, visa / transport / budget / safety intent
+  │
+  ▼
+Run metadata-aware retrieval
+  ├─ Chroma vector similarity with source/place filters when possible
+  └─ BM25 keyword search over filtered chunks
+  │
+  ▼
+Merge and dedupe candidates
+  │
+  ▼
+Return top chunks + source labels
+  │
+  ▼
+Research Orchestrator / Trip Finaliser uses them to write grounded output
+```
+
+Notes:
+- Retrieval itself now uses metadata-aware narrowing before results are merged.
+- The retriever returns chunk text plus source labels; the calling nodes decide how to summarise and cite it.
+
 ---
 
 ## Nodes (sequential pipeline)
