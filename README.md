@@ -23,8 +23,6 @@ TripBreeze is deployed on Streamlit Community Cloud:
 - 🧠 Remembers preferences such as home airport, class, and trip history (with PDF download for past trips)
 - 📄 Exports final itinerary as a downloadable PDF
 - 📧 Sends itinerary via email with PDF attachment (requires SMTP configuration)
-- 📈 Supports LangSmith tracing for LLM observability
-- ✅ Runs automated tests in GitHub Actions on every push and pull request
 
 ## 🧭 Workflow
 
