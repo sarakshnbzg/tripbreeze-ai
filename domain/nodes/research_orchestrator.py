@@ -134,6 +134,25 @@ def _append_source(sources: list[str], label: str) -> None:
         sources.append(label)
 
 
+def _ordered_unique_destinations(trip_legs: list[dict[str, Any]]) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+
+    for leg in trip_legs:
+        if not leg.get("needs_hotel"):
+            continue
+        destination = str(leg.get("destination", "")).strip()
+        if not destination:
+            continue
+        key = _normalise_label(destination)
+        if key in seen:
+            continue
+        seen.add(key)
+        ordered.append(destination)
+
+    return ordered
+
+
 def _lookup_destination_overview(destination: str) -> str:
     heading = _find_destination_heading(destination)
     if not heading:
@@ -350,9 +369,7 @@ def research_orchestrator(state: dict) -> dict:
         multi_city_result = _research_multi_city_legs(state)
 
         # Now do RAG retrieval for unique destinations
-        unique_destinations = list(set(
-            leg["destination"] for leg in trip_legs if leg.get("needs_hotel")
-        ))
+        unique_destinations = _ordered_unique_destinations(trip_legs)
         rag_sources: list[str] = []
         rag_trace: list[dict[str, Any]] = list(state.get("rag_trace", []))
         destination_sections = []
@@ -392,22 +409,10 @@ def research_orchestrator(state: dict) -> dict:
             if precise_overview:
                 section_parts.append(f"#### 🌍 Overview\n{precise_overview}")
                 _append_source(rag_sources, "Destinations")
-            elif overview_results:
-                overview_content = overview_results[0]["content"][:600]
-                section_parts.append(f"#### 🌍 Overview\n{overview_content}")
-                for r in overview_results:
-                    if r["source"] not in rag_sources:
-                        rag_sources.append(r["source"])
 
             if precise_entry:
                 section_parts.append(f"#### 🛂 Entry Requirements\n{precise_entry}")
                 _append_source(rag_sources, "Visa Requirements")
-            elif entry_results:
-                entry_content = entry_results[0]["content"][:400]
-                section_parts.append(f"#### 🛂 Entry Requirements\n{entry_content}")
-                for r in entry_results:
-                    if r["source"] not in rag_sources:
-                        rag_sources.append(r["source"])
 
             if len(section_parts) > 1:  # Has more than just the header
                 destination_sections.append("\n\n".join(section_parts))

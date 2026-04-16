@@ -12,6 +12,7 @@ Use these notes as a planning guide, not a substitute for official immigration s
 - **UK citizens:** Visa-free for up to 90 days within 180 days. ETIAS expected once implemented.
 - **Australian citizens:** Visa-free for up to 90 days. ETIAS expected once implemented.
 - **Indian citizens:** Schengen visa required. Apply at French consulate. Processing: 15 working days. Cost: €80.
+- **Iranian citizens:** Schengen visa required. Apply through the French consulate or visa center with standard Schengen supporting documents. Processing times can vary, so apply well in advance. Cost: typically €80 for adults.
 - **Chinese citizens:** Schengen visa required. Apply at visa center. Processing: 15 working days. Cost: €80.
 - **Brazilian citizens:** Visa-free for up to 90 days. ETIAS expected once implemented.
 - **South African citizens:** Schengen visa required.
@@ -127,6 +128,7 @@ Use these notes as a planning guide, not a substitute for official immigration s
 - **Australian citizens:** Visa-free for up to 6 months.
 - **Japanese citizens:** Visa-free for up to 6 months.
 - **Indian citizens:** Standard Visitor Visa required. Apply online + biometrics. Processing: 3–6 weeks. Cost: £115.
+- **Iranian citizens:** Standard Visitor Visa required. Apply online, attend biometrics, and provide supporting documents such as itinerary, accommodation, and proof of funds. Processing often takes several weeks. Cost: typically £115 for a 6-month visit.
 - **Chinese citizens:** Standard Visitor Visa required. Cost: £115.
 - **South African citizens:** Standard Visitor Visa required.
 - **Documents needed:** Passport valid for duration of stay, proof of funds, accommodation details, return ticket.
@@ -550,6 +552,7 @@ Use these notes as a planning guide, not a substitute for official immigration s
 - Travel insurance is strongly recommended for all international trips.
 - Some countries require proof of yellow fever vaccination if arriving from endemic areas.
 - Schengen Area note: The 90/180-day rule applies to ALL Schengen countries combined — not per country. Track your days carefully if visiting multiple Schengen states.
+- Europe note for Iranian citizens: Most of continental Europe on a tourist trip means either a Schengen visa (for countries in the Schengen Area, such as France, Spain, Italy, Germany, and the Netherlands) or a separate national visa for non-Schengen countries such as the United Kingdom or Ireland.
 - ETIAS (European Travel Information and Authorisation System) is planned for visa-free travelers to the Schengen Area. Check current launch status before traveling.
 - Many countries now require online pre-registration forms (arrival cards, health declarations). Complete these before arriving to avoid delays.
 - Keep at least two blank passport pages where possible, since some destinations and airlines still check this.

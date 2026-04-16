@@ -5,6 +5,7 @@ from unittest.mock import patch, MagicMock
 from domain.nodes.research_orchestrator import (
     _lookup_destination_overview,
     _lookup_entry_requirements,
+    _ordered_unique_destinations,
     research_orchestrator,
 )
 
@@ -104,6 +105,18 @@ class TestSubmitResearchResultToolMessage:
 
 
 class TestPreciseDestinationBriefing:
+    def test_orders_unique_multi_city_destinations_by_trip_sequence(self):
+        result = _ordered_unique_destinations(
+            [
+                {"destination": "Barcelona", "needs_hotel": True},
+                {"destination": "Madrid", "needs_hotel": True},
+                {"destination": "Barcelona", "needs_hotel": True},
+                {"destination": "Berlin", "needs_hotel": False},
+            ]
+        )
+
+        assert result == ["Barcelona", "Madrid"]
+
     def test_lookup_destination_overview_uses_requested_city_only(self):
         overview = _lookup_destination_overview("Paris")
 
@@ -111,6 +124,12 @@ class TestPreciseDestinationBriefing:
         assert "best time to visit is" in overview
         assert "Local transport" not in overview
         assert "Rome, Italy" not in overview
+
+    def test_lookup_destination_overview_supports_madrid(self):
+        overview = _lookup_destination_overview("Madrid")
+
+        assert "Madrid, Spain is a strong city-break choice" in overview
+        assert "best time to visit is" in overview
 
     def test_lookup_entry_requirements_filters_to_passport_country(self):
         entry = _lookup_entry_requirements("Paris", "US")
@@ -158,6 +177,61 @@ class TestPreciseDestinationBriefing:
         assert "US citizens" in result["destination_info"]
         assert "Canadian citizens" not in result["destination_info"]
         assert "Italy (Schengen Area)" not in result["destination_info"]
+
+    @patch("domain.nodes.research_orchestrator.retrieve")
+    @patch("domain.nodes.research_orchestrator.search_leg_hotels")
+    @patch("domain.nodes.research_orchestrator.search_leg_flights")
+    def test_multi_city_briefing_uses_exact_city_sections_not_noisy_rag_fallback(
+        self, mock_leg_flights, mock_leg_hotels, mock_retrieve
+    ):
+        mock_leg_flights.return_value = []
+        mock_leg_hotels.return_value = []
+        mock_retrieve.side_effect = [
+            [{"content": "Local transport in Marrakech...", "source": "Destinations"}],
+            [{"content": "## Iran\n- **US citizens:** Tourist visa required.", "source": "Visa Requirements"}],
+            [{"content": "Wrong Barcelona overview", "source": "Destinations"}],
+            [{"content": "Wrong Barcelona visa", "source": "Visa Requirements"}],
+        ]
+
+        result = research_orchestrator(
+            {
+                "trip_request": {
+                    "origin": "Berlin",
+                    "destination": "Madrid",
+                    "departure_date": "2025-06-11",
+                    "num_travelers": 2,
+                },
+                "trip_legs": [
+                    {
+                        "leg_index": 0,
+                        "origin": "Berlin",
+                        "destination": "Barcelona",
+                        "departure_date": "2025-06-11",
+                        "nights": 3,
+                        "needs_hotel": True,
+                    },
+                    {
+                        "leg_index": 1,
+                        "origin": "Barcelona",
+                        "destination": "Madrid",
+                        "departure_date": "2025-06-14",
+                        "nights": 2,
+                        "needs_hotel": True,
+                    },
+                ],
+                "user_profile": {"passport_country": "US"},
+                "llm_provider": "openai",
+                "llm_model": "gpt-4o-mini",
+            }
+        )
+
+        assert result["current_step"] == "research_complete"
+        assert result["destination_info"].index("### Barcelona") < result["destination_info"].index("### Madrid")
+        assert "Barcelona, Spain is a strong city-break choice" in result["destination_info"]
+        assert "Madrid, Spain is a strong city-break choice" in result["destination_info"]
+        assert "### Spain (Schengen Area)" in result["destination_info"]
+        assert "Marrakech" not in result["destination_info"]
+        assert "Iran" not in result["destination_info"]
 
 
 class TestRagTrace:

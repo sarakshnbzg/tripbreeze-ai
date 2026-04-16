@@ -60,6 +60,18 @@
 - **Safety:** Watch for pickpockets on La Rambla, in the Metro, and at the beach. Common scams: fake charity clipboard signers, someone "finding" a ring and offering it to you. Don't leave belongings unattended on the beach.
 - **Average daily budget:** €80–€150 mid-range; €40–€70 budget.
 
+## Madrid, Spain
+- **Best time to visit:** April–June and September–October for warm weather, long evenings, and manageable crowds. July–August can be very hot (often 35°C+) and many locals leave the city. Winter is cool, dry, and quieter.
+- **Top attractions:** Prado Museum, Reina Sofia, Royal Palace, Retiro Park, Plaza Mayor, Puerta del Sol, Gran Via, Temple of Debod.
+- **Neighborhoods:** Sol/Gran Via (central, busy, best for first-time visitors), Malasana (trendy cafes, nightlife, vintage shops), Chueca (LGBTQ+ friendly, lively dining and bars), La Latina (tapas, old streets, Sunday market), Salamanca (upscale shopping, elegant boulevards), Lavapies (multicultural, artsy, budget-friendly eats).
+- **Local transport:** Madrid Metro is extensive, clean, and easy to use. Multi-day transport passes offer good value. The center is very walkable, and Cercanias trains help with airport access and day trips.
+- **Food recommendations:** Bocadillo de calamares near Plaza Mayor, tortilla espanola, croquetas, patatas bravas, churros con chocolate at San Gines, vermouth on tap in La Latina, and late-night tapas bar hopping.
+- **Budget tip:** Many major museums have free-entry evening hours on selected days. Menu del dia lunches offer strong value. Retiro Park, Temple of Debod sunset views, and wandering historic neighborhoods are free.
+- **Currency:** Euro (EUR).
+- **Language:** Spanish. English is common in central hotels, restaurants, and tourist areas.
+- **Safety:** Generally safe. Watch for pickpockets on the Metro, around Sol, Plaza Mayor, and busy nightlife areas. Use standard big-city precautions late at night.
+- **Average daily budget:** EUR 90–160 mid-range; EUR 45–80 budget.
+
 ## Dubai, UAE
 - **Best time to visit:** November–March for cooler temperatures (20–30°C). April–October is brutally hot (40–50°C) — outdoor activities are impossible. Ramadan dates shift yearly; restaurants close during daytime fasting hours but hotels accommodate tourists.
 - **Top attractions:** Burj Khalifa, Dubai Mall, Palm Jumeirah, Dubai Marina, Gold Souk, Dubai Frame, Desert Safari, Global Village (seasonal).
