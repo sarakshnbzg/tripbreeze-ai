@@ -8,6 +8,7 @@ from typing import NamedTuple
 import requests
 
 from infrastructure.logging_utils import get_logger
+from infrastructure.persistence.memory_store import load_place_country, save_place_alias
 
 logger = get_logger(__name__)
 
@@ -156,6 +157,14 @@ def geocode_place(destination: str) -> GeocodedPlace | None:
 @lru_cache(maxsize=256)
 def resolve_destination_country(destination: str) -> str:
     """Resolve a destination string to a country name."""
+    try:
+        db_match = load_place_country(destination)
+    except Exception as exc:
+        logger.warning("DB place lookup failed for '%s': %s", destination, exc)
+        db_match = ""
+    if db_match:
+        return db_match
+
     local_match = _lookup_local_country(destination)
     if local_match:
         return local_match
@@ -167,5 +176,9 @@ def resolve_destination_country(destination: str) -> str:
     country = _country_from_geocode_payload(payload, destination)
     if country:
         logger.info("Resolved destination '%s' to country '%s' via geocoder", destination, country)
+        try:
+            save_place_alias(destination, country_name=country, source="geocoder")
+        except Exception as exc:
+            logger.warning("Saving geocoded place alias failed for '%s': %s", destination, exc)
         return country
     return ""

@@ -81,6 +81,17 @@ def _get_pool():
                 )
                 """
             )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS place_aliases (
+                    normalized_name TEXT PRIMARY KEY,
+                    display_name TEXT NOT NULL,
+                    city_name TEXT NOT NULL,
+                    country_name TEXT NOT NULL,
+                    source TEXT NOT NULL DEFAULT 'manual'
+                )
+                """
+            )
         conn.commit()
     logger.info("Postgres connection pool initialised (min=1, max=5)")
     return _pool
@@ -110,6 +121,11 @@ def _load_profile_row(connection, user_id: str) -> dict | None:
         return None
     profile_json = row[0]
     return profile_json if isinstance(profile_json, dict) else json.loads(profile_json)
+
+
+def _normalise_place_name(name: str) -> str:
+    """Normalise destination aliases for consistent DB lookups."""
+    return " ".join((name or "").lower().replace(",", " ").split())
 
 
 # ── Public API ───────────────────────────────────────────────────────
@@ -253,3 +269,75 @@ def verify_user(user_id: str, password: str) -> bool:
         return False
     stored_hash, _salt = row
     return _verify_bcrypt_password(password, stored_hash)
+
+
+def load_place_country(destination: str) -> str:
+    """Load a country mapping for a destination alias from Postgres."""
+    normalized_name = _normalise_place_name(destination)
+    if not normalized_name:
+        return ""
+
+    pool = _get_pool()
+    try:
+        connection_context = pool.connection(timeout=1)
+    except TypeError:
+        connection_context = pool.connection()
+
+    with connection_context as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT country_name FROM place_aliases WHERE normalized_name = %s",
+                (normalized_name,),
+            )
+            row = cursor.fetchone()
+    if row is None:
+        return ""
+    return str(row[0] or "").strip()
+
+
+def save_place_alias(
+    destination: str,
+    *,
+    country_name: str,
+    city_name: str | None = None,
+    display_name: str | None = None,
+    source: str = "manual",
+) -> None:
+    """Persist a normalized destination alias for future country lookups."""
+    normalized_name = _normalise_place_name(destination)
+    if not normalized_name or not country_name.strip():
+        return
+
+    pool = _get_pool()
+    try:
+        connection_context = pool.connection(timeout=1)
+    except TypeError:
+        connection_context = pool.connection()
+
+    with connection_context as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO place_aliases (
+                    normalized_name,
+                    display_name,
+                    city_name,
+                    country_name,
+                    source
+                )
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT(normalized_name) DO UPDATE SET
+                    display_name = excluded.display_name,
+                    city_name = excluded.city_name,
+                    country_name = excluded.country_name,
+                    source = excluded.source
+                """,
+                (
+                    normalized_name,
+                    (display_name or destination).strip(),
+                    (city_name or destination).strip(),
+                    country_name.strip(),
+                    source.strip() or "manual",
+                ),
+            )
+        conn.commit()

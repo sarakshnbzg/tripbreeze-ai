@@ -6,10 +6,13 @@ import pytest
 
 from infrastructure.persistence.memory_store import (
     _DEFAULT_PROFILE,
+    _normalise_place_name,
     _sanitise_user_id,
     list_profiles,
+    load_place_country,
     load_profile,
     register_user,
+    save_place_alias,
     save_profile,
     update_profile_from_trip,
     verify_user,
@@ -36,6 +39,10 @@ class FakeCursor:
             self._results = []
             return
 
+        if "CREATE TABLE IF NOT EXISTS place_aliases" in normalised:
+            self._results = []
+            return
+
         if normalised.startswith("SELECT profile_json FROM profiles WHERE user_id = %s"):
             user_id = params[0]
             payload = self.connection.rows.get(user_id)
@@ -49,6 +56,23 @@ class FakeCursor:
         if normalised.startswith("INSERT INTO profiles"):
             user_id, payload = params
             self.connection.rows[user_id] = json.loads(payload)
+            self._results = []
+            return
+
+        if normalised.startswith("SELECT country_name FROM place_aliases WHERE normalized_name = %s"):
+            normalized_name = params[0]
+            payload = self.connection.place_aliases.get(normalized_name)
+            self._results = [] if payload is None else [(payload["country_name"],)]
+            return
+
+        if normalised.startswith("INSERT INTO place_aliases"):
+            normalized_name, display_name, city_name, country_name, source = params
+            self.connection.place_aliases[normalized_name] = {
+                "display_name": display_name,
+                "city_name": city_name,
+                "country_name": country_name,
+                "source": source,
+            }
             self._results = []
             return
 
@@ -85,6 +109,7 @@ class FakeConnection:
     def __init__(self):
         self.rows = {}
         self.credentials = {}
+        self.place_aliases = {}
         self.queries = []
         self.commit_count = 0
 
@@ -137,6 +162,11 @@ class TestSanitiseUserId:
     def test_spaces_rejected(self):
         with pytest.raises(ValueError, match="Invalid profile ID"):
             _sanitise_user_id("user name")
+
+
+class TestNormalisePlaceName:
+    def test_normalises_case_and_commas(self):
+        assert _normalise_place_name(" New York, USA ") == "new york usa"
 
 
 class TestLoadSaveProfile:
@@ -312,3 +342,20 @@ class TestAuthentication:
         monkeypatch.setattr("infrastructure.persistence.memory_store._get_pool", lambda: FakePool(fake_connection))
 
         assert verify_user("legacy_user", "long-password") is False
+
+
+class TestPlaceAliases:
+    def test_save_and_load_place_alias_roundtrip(self, monkeypatch):
+        fake_connection = FakeConnection()
+        monkeypatch.setattr("infrastructure.persistence.memory_store._get_pool", lambda: FakePool(fake_connection))
+
+        save_place_alias("Marrakesh", country_name="Morocco", source="geocoder")
+
+        assert load_place_country("Marrakesh") == "Morocco"
+        assert fake_connection.place_aliases["marrakesh"]["source"] == "geocoder"
+
+    def test_load_place_country_returns_empty_when_missing(self, monkeypatch):
+        fake_connection = FakeConnection()
+        monkeypatch.setattr("infrastructure.persistence.memory_store._get_pool", lambda: FakePool(fake_connection))
+
+        assert load_place_country("Unknown City") == ""
