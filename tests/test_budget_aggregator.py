@@ -209,6 +209,14 @@ class TestBudgetAggregatorNode:
 
 
 class TestDestinationDailyRate:
+    def test_db_backed_destination_overrides_config(self, monkeypatch):
+        monkeypatch.setattr(
+            "domain.nodes.budget_aggregator.load_destination_daily_expense",
+            lambda destination: (125.0, "paris"),
+        )
+        rate = _destination_daily_rate("Paris", "EUR")
+        assert rate == 125.0
+
     def test_known_destination_returns_scaled_rate(self):
         # Paris → 110 EUR baseline; EUR trip → 110 × (80/80) = 110.0
         rate = _destination_daily_rate("Paris", "EUR")
@@ -261,6 +269,27 @@ class TestDestinationDailyRate:
         # 1 night × 95 EUR destination rate × 1 traveler (since EUR baseline * Tokyo/EUR factor)
         assert result["budget"]["daily_expense_per_traveler"] == 95.0
         assert result["budget"]["daily_expense_source"] == "tokyo"
+
+    def test_db_destination_source_reflected_in_node_output(self, monkeypatch):
+        monkeypatch.setattr(
+            "domain.nodes.budget_aggregator.load_destination_daily_expense",
+            lambda destination: (140.0, "paris"),
+        )
+        state = {
+            "trip_request": {
+                "budget_limit": 0,
+                "currency": "EUR",
+                "destination": "Paris",
+                "departure_date": "2025-06-01",
+                "return_date": "2025-06-02",
+                "num_travelers": 1,
+            },
+            "flight_options": [{"price": 300}],
+            "hotel_options": [{"total_price": 200}],
+        }
+        result = budget_aggregator(state)
+        assert result["budget"]["daily_expense_per_traveler"] == 140.0
+        assert result["budget"]["daily_expense_source"] == "paris"
 
     def test_unknown_destination_source_is_default(self):
         state = {

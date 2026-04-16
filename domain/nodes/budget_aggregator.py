@@ -4,24 +4,43 @@ from config import DAILY_EXPENSE_BY_CURRENCY, DAILY_EXPENSE_BY_DESTINATION, DEFA
 from domain.utils.dates import trip_duration_days
 from infrastructure.currency_utils import currency_prefix
 from infrastructure.logging_utils import get_logger
+from infrastructure.persistence.memory_store import load_destination_daily_expense
 
 logger = get_logger(__name__)
+
+
+def _destination_daily_baseline(destination: str) -> tuple[float | None, str]:
+    """Return the EUR baseline and source key for a destination."""
+    city = (destination or "").lower().strip()
+
+    try:
+        db_rate, db_key = load_destination_daily_expense(destination)
+    except Exception as exc:
+        logger.warning("Destination daily expense DB lookup failed for '%s': %s", destination, exc)
+        db_rate, db_key = None, ""
+
+    if db_rate is not None:
+        return db_rate, db_key
+
+    for keyword, eur_rate in DAILY_EXPENSE_BY_DESTINATION.items():
+        if keyword in city:
+            return eur_rate, keyword
+    return None, ""
 
 
 def _destination_daily_rate(destination: str, currency: str) -> float:
     """Return a destination-aware daily expense estimate per adult in the trip's currency.
 
-    Looks up the city in DAILY_EXPENSE_BY_DESTINATION (EUR-equivalent mid-range baselines
-    maintained in config), then scales to the trip currency using
+    Looks up the city in the DB-backed daily-expense table first, then falls back
+    to the config-maintained EUR baselines, then scales to the trip currency using
     the ratios already encoded in DAILY_EXPENSE_BY_CURRENCY.  Falls back to the flat
     per-currency rate if the destination is not recognised.
     """
-    city = (destination or "").lower().strip()
     eur_baseline = DAILY_EXPENSE_BY_CURRENCY.get("EUR", DEFAULT_DAILY_EXPENSE)
     trip_baseline = DAILY_EXPENSE_BY_CURRENCY.get(currency, DEFAULT_DAILY_EXPENSE)
-    for keyword, eur_rate in DAILY_EXPENSE_BY_DESTINATION.items():
-        if keyword in city:
-            return round(eur_rate * (trip_baseline / eur_baseline), 2)
+    destination_eur_rate, _source = _destination_daily_baseline(destination)
+    if destination_eur_rate is not None:
+        return round(destination_eur_rate * (trip_baseline / eur_baseline), 2)
     return trip_baseline
 
 
@@ -155,11 +174,9 @@ def budget_aggregator(state: dict) -> dict:
     num_days = trip_duration_days(trip)
     num_travelers = max(1, int(trip.get("num_travelers", 1) or 1))
     destination = trip.get("destination", "")
+    _destination_eur_rate, destination_source = _destination_daily_baseline(destination)
     daily_rate = _destination_daily_rate(destination, currency)
-    city = destination.lower().strip()
-    daily_expense_source = next(
-        (kw for kw in DAILY_EXPENSE_BY_DESTINATION if kw in city), "default"
-    )
+    daily_expense_source = destination_source or "default"
     estimated_daily_total = daily_rate * num_days * num_travelers
     filtered_flights, filtered_hotels = _filter_options_within_budget(
         flights,

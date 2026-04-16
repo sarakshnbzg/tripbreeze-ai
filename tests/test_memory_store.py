@@ -9,9 +9,11 @@ from infrastructure.persistence.memory_store import (
     _normalise_place_name,
     _sanitise_user_id,
     list_profiles,
+    load_destination_daily_expense,
     load_place_country,
     load_profile,
     register_user,
+    save_destination_daily_expense,
     save_place_alias,
     save_profile,
     update_profile_from_trip,
@@ -40,6 +42,10 @@ class FakeCursor:
             return
 
         if "CREATE TABLE IF NOT EXISTS place_aliases" in normalised:
+            self._results = []
+            return
+
+        if "CREATE TABLE IF NOT EXISTS destination_daily_expenses" in normalised:
             self._results = []
             return
 
@@ -73,6 +79,40 @@ class FakeCursor:
                 "country_name": country_name,
                 "source": source,
             }
+            self._results = []
+            return
+
+        if (
+            normalised.startswith("SELECT normalized_name, daily_expense_eur FROM destination_daily_expenses WHERE normalized_name = %s")
+        ):
+            normalized_name = params[0]
+            payload = self.connection.destination_daily_expenses.get(normalized_name)
+            self._results = [] if payload is None else [(normalized_name, payload["daily_expense_eur"])]
+            return
+
+        if normalised.startswith("SELECT normalized_name, daily_expense_eur FROM destination_daily_expenses ORDER BY normalized_name"):
+            self._results = [
+                (normalized_name, payload["daily_expense_eur"])
+                for normalized_name, payload in sorted(self.connection.destination_daily_expenses.items())
+            ]
+            return
+
+        if normalised.startswith("INSERT INTO destination_daily_expenses"):
+            normalized_name, display_name, daily_expense_eur, source = params
+            self.connection.destination_daily_expenses.setdefault(
+                normalized_name,
+                {
+                    "display_name": display_name,
+                    "daily_expense_eur": float(daily_expense_eur),
+                    "source": source,
+                },
+            )
+            if "DO UPDATE SET" in normalised:
+                self.connection.destination_daily_expenses[normalized_name] = {
+                    "display_name": display_name,
+                    "daily_expense_eur": float(daily_expense_eur),
+                    "source": source,
+                }
             self._results = []
             return
 
@@ -110,6 +150,7 @@ class FakeConnection:
         self.rows = {}
         self.credentials = {}
         self.place_aliases = {}
+        self.destination_daily_expenses = {}
         self.queries = []
         self.commit_count = 0
 
@@ -359,3 +400,37 @@ class TestPlaceAliases:
         monkeypatch.setattr("infrastructure.persistence.memory_store._get_pool", lambda: FakePool(fake_connection))
 
         assert load_place_country("Unknown City") == ""
+
+
+class TestDestinationDailyExpenses:
+    def test_save_and_load_destination_daily_expense_roundtrip(self, monkeypatch):
+        fake_connection = FakeConnection()
+        monkeypatch.setattr("infrastructure.persistence.memory_store._get_pool", lambda: FakePool(fake_connection))
+
+        save_destination_daily_expense("Paris", daily_expense_eur=125.0, source="manual")
+
+        rate, source_key = load_destination_daily_expense("Paris")
+        assert rate == 125.0
+        assert source_key == "paris"
+        assert fake_connection.destination_daily_expenses["paris"]["source"] == "manual"
+
+    def test_load_destination_daily_expense_matches_substring(self, monkeypatch):
+        fake_connection = FakeConnection()
+        fake_connection.destination_daily_expenses["paris"] = {
+            "display_name": "Paris",
+            "daily_expense_eur": 110.0,
+            "source": "seed",
+        }
+        monkeypatch.setattr("infrastructure.persistence.memory_store._get_pool", lambda: FakePool(fake_connection))
+
+        rate, source_key = load_destination_daily_expense("Paris, France")
+        assert rate == 110.0
+        assert source_key == "paris"
+
+    def test_load_destination_daily_expense_returns_none_when_missing(self, monkeypatch):
+        fake_connection = FakeConnection()
+        monkeypatch.setattr("infrastructure.persistence.memory_store._get_pool", lambda: FakePool(fake_connection))
+
+        rate, source_key = load_destination_daily_expense("Unknown City")
+        assert rate is None
+        assert source_key == ""

@@ -10,7 +10,7 @@ import bcrypt
 import json
 import re
 
-from config import MEMORY_DATABASE_URL
+from config import DAILY_EXPENSE_BY_DESTINATION, MEMORY_DATABASE_URL
 from infrastructure.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -92,6 +92,35 @@ def _get_pool():
                 )
                 """
             )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS destination_daily_expenses (
+                    normalized_name TEXT PRIMARY KEY,
+                    display_name TEXT NOT NULL,
+                    daily_expense_eur DOUBLE PRECISION NOT NULL,
+                    source TEXT NOT NULL DEFAULT 'seed'
+                )
+                """
+            )
+            for normalized_name, daily_expense_eur in DAILY_EXPENSE_BY_DESTINATION.items():
+                cur.execute(
+                    """
+                    INSERT INTO destination_daily_expenses (
+                        normalized_name,
+                        display_name,
+                        daily_expense_eur,
+                        source
+                    )
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT(normalized_name) DO NOTHING
+                    """,
+                    (
+                        normalized_name.strip().lower(),
+                        normalized_name.strip().title(),
+                        float(daily_expense_eur),
+                        "seed",
+                    ),
+                )
         conn.commit()
     logger.info("Postgres connection pool initialised (min=1, max=5)")
     return _pool
@@ -337,6 +366,96 @@ def save_place_alias(
                     (display_name or destination).strip(),
                     (city_name or destination).strip(),
                     country_name.strip(),
+                    source.strip() or "manual",
+                ),
+            )
+        conn.commit()
+
+
+def load_destination_daily_expense(destination: str) -> tuple[float | None, str]:
+    """Load a destination daily-expense baseline in EUR from Postgres.
+
+    Returns the matched EUR baseline and the normalized key that matched.
+    Falls back from exact alias lookups to substring matching against all
+    stored baseline keys so inputs like "Paris, France" still resolve.
+    """
+    normalized_destination = _normalise_place_name(destination)
+    if not normalized_destination:
+        return None, ""
+
+    pool = _get_pool()
+    try:
+        connection_context = pool.connection(timeout=1)
+    except TypeError:
+        connection_context = pool.connection()
+
+    with connection_context as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT normalized_name, daily_expense_eur
+                FROM destination_daily_expenses
+                WHERE normalized_name = %s
+                """,
+                (normalized_destination,),
+            )
+            row = cursor.fetchone()
+            if row is not None:
+                return float(row[1]), str(row[0])
+
+            cursor.execute(
+                """
+                SELECT normalized_name, daily_expense_eur
+                FROM destination_daily_expenses
+                ORDER BY normalized_name
+                """
+            )
+            rows = cursor.fetchall()
+
+    for normalized_name, daily_expense_eur in rows:
+        if str(normalized_name) and str(normalized_name) in normalized_destination:
+            return float(daily_expense_eur), str(normalized_name)
+    return None, ""
+
+
+def save_destination_daily_expense(
+    destination: str,
+    *,
+    daily_expense_eur: float,
+    display_name: str | None = None,
+    source: str = "manual",
+) -> None:
+    """Persist a destination daily-expense baseline in EUR."""
+    normalized_name = _normalise_place_name(destination)
+    if not normalized_name:
+        return
+
+    pool = _get_pool()
+    try:
+        connection_context = pool.connection(timeout=1)
+    except TypeError:
+        connection_context = pool.connection()
+
+    with connection_context as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO destination_daily_expenses (
+                    normalized_name,
+                    display_name,
+                    daily_expense_eur,
+                    source
+                )
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT(normalized_name) DO UPDATE SET
+                    display_name = excluded.display_name,
+                    daily_expense_eur = excluded.daily_expense_eur,
+                    source = excluded.source
+                """,
+                (
+                    normalized_name,
+                    (display_name or destination).strip(),
+                    float(daily_expense_eur),
                     source.strip() or "manual",
                 ),
             )
