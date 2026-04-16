@@ -20,6 +20,21 @@ def _stream_text(text: str, delay: float = 0.008):
             time.sleep(delay)
 
 
+def _stream_finalisation_tokens(chunks, delay: float = 0.01):
+    """Pace backend token events so the final itinerary reveals more naturally."""
+    for chunk in chunks:
+        yield chunk
+        if not chunk or not chunk.strip():
+            continue
+
+        # Slow down slightly at section boundaries so markdown-heavy output
+        # feels closer to a live assistant response than a single dump.
+        if chunk.startswith("####") or chunk == "\n\n":
+            time.sleep(delay * 3)
+        else:
+            time.sleep(delay)
+
+
 def _append_assistant_message(content: str) -> None:
     st.session_state.messages.append({"role": "assistant", "content": content})
 
@@ -298,7 +313,7 @@ def run_finalisation(feedback: str = "") -> None:
                     raise RuntimeError(data.get("detail", "Unknown error"))
 
         with st.chat_message("assistant"):
-            st.write_stream(_itinerary_chunks())
+            st.write_stream(_stream_finalisation_tokens(_itinerary_chunks()))
     except Exception as exc:
         logger.exception("Finalisation failed")
         _append_assistant_message(f"I hit an error while generating the itinerary: {exc}")
