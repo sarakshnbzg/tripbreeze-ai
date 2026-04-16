@@ -1,6 +1,6 @@
 # TripBreeze AI
 
-TripBreeze AI is an AI-powered travel planning assistant that combines live flight and hotel search, destination guidance, budget checks, and itinerary generation in one streamlined workflow.
+TripBreeze AI is an AI-powered travel planning assistant that combines live flight and hotel search, entry-requirement guidance, budget checks, and itinerary generation in one streamlined workflow.
 
 ## 🌐 Live Deployment
 
@@ -15,7 +15,7 @@ TripBreeze is deployed on Streamlit Community Cloud:
 - 🚆 Shows ground transport options (trains, buses, ferries) side-by-side with flights so users can compare modes. Currently backed by a stub; swap `infrastructure/apis/ground_transport_client.py` for a real provider when one becomes available.
 - 🏨 Searches hotels with SerpAPI / Google Hotels
 - 🌍 Supports **multi-city itineraries** — plan trips like "Paris for 3 days, then Barcelona for 4 days" with per-leg flight and hotel selection
-- 📚 Retrieves destination tips, visa info, and travel guidance from a local RAG knowledge base
+- 📚 Retrieves visa and entry requirement guidance from a local RAG knowledge base
 - 🌤️ Shows weather forecasts for each day of the trip (via Open-Meteo, no API key needed)
 - 💸 Tracks budget against the trip request
 - ✅ Lets the user review results before finalising
@@ -29,11 +29,11 @@ TripBreeze is deployed on Streamlit Community Cloud:
 ```text
 Profile Loader
   -> Trip Intake
-  -> Research Orchestrator (ReAct agent: flights, ground transport, hotels, RAG for overview + entry requirements)
+  -> Research Orchestrator (ReAct agent: flights, ground transport, hotels, RAG for entry requirements)
   -> Budget Aggregator
   -> Review (HITL pause)
   -> Attractions Research (fetches real attraction candidates after approval)
-  -> Trip Finaliser (ReAct agent: RAG for transport/safety/budget tips, generates itinerary)
+  -> Trip Finaliser (uses grounded entry requirements gathered earlier, generates itinerary)
   -> Memory Updater
 ```
 

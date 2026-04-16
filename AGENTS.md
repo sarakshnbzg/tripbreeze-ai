@@ -35,7 +35,7 @@ Tool      Transport   Tool       Tool
         ▼         ▼
     Finaliser   [END]         ← approve → finalise; feedback → stop
         │
-        ├── RAG Tool          ← ReAct agent can retrieve transport/safety/budget tips
+        ├── RAG Tool          ← uses grounded entry requirements prepared earlier
         │
         ▼
    Memory Updater             ← persists learned preferences
@@ -111,7 +111,7 @@ Tool      Transport   Tool       Tool
 | **Callable name** | `retrieve_knowledge` |
 | **Purpose** | Search the local knowledge base for visa and entry requirement information |
 | **Infrastructure** | `infrastructure/rag/vectorstore.retrieve` (ChromaDB) |
-| **Used by** | Research orchestrator (for overview + entry requirements) and Trip Finaliser (for transport, safety, budget tips) |
+| **Used by** | Research orchestrator for entry requirements; Trip Finaliser consumes the grounded result already prepared earlier |
 | **Behavior** | Optional tool inside both ReAct loops; may be skipped or called multiple times |
 | **Output** | Retrieved knowledge-base chunks that agents use to write grounded destination information |
 | **Knowledge base** | `knowledge_base/visa_requirements.md` |

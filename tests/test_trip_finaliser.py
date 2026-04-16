@@ -55,14 +55,13 @@ class TestRenderItineraryMarkdown:
 
     def test_sources_included_when_present(self):
         sources = [
-            Source(document="destinations.md", snippet="Paris is a top destination"),
+            Source(document="visa_requirements.md", snippet="France is in the Schengen Area"),
             Source(document="visa_requirements.md", snippet="No visa needed"),
         ]
         md = render_itinerary_markdown(self._sample_itinerary(sources=sources))
         assert "Sources (from Knowledge Base)" in md
-        assert "destinations.md" in md
         assert "visa_requirements.md" in md
-        assert "Paris is a top destination" in md
+        assert "France is in the Schengen Area" in md
 
     def test_no_sources_section_when_empty(self):
         md = render_itinerary_markdown(self._sample_itinerary(sources=[]))
