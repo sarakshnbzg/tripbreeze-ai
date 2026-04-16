@@ -1,14 +1,19 @@
 # Visa and Entry Requirements by Destination
 
+Use these notes as a planning guide, not a substitute for official immigration sources.
+- Visa-free travelers may still be asked for proof of onward travel, accommodation, travel insurance, or sufficient funds.
+- Entry rules depend on the passport you are traveling on, not just where you live.
+- Transit rules can differ from full entry rules, especially for self-transfers or airport changes.
+
 ## France (Schengen Area)
-- **US citizens:** Visa-free for up to 90 days within 180 days. ETIAS authorization required from 2025 (€7, valid 3 years).
-- **Canadian citizens:** Visa-free for up to 90 days. ETIAS required from 2025.
+- **US citizens:** Visa-free for up to 90 days within 180 days. ETIAS authorization expected once implemented.
+- **Canadian citizens:** Visa-free for up to 90 days. ETIAS expected once implemented.
 - **EU/EEA citizens:** No visa required. Freedom of movement.
-- **UK citizens:** Visa-free for up to 90 days within 180 days. ETIAS required from 2025.
-- **Australian citizens:** Visa-free for up to 90 days. ETIAS required from 2025.
+- **UK citizens:** Visa-free for up to 90 days within 180 days. ETIAS expected once implemented.
+- **Australian citizens:** Visa-free for up to 90 days. ETIAS expected once implemented.
 - **Indian citizens:** Schengen visa required. Apply at French consulate. Processing: 15 working days. Cost: €80.
 - **Chinese citizens:** Schengen visa required. Apply at visa center. Processing: 15 working days. Cost: €80.
-- **Brazilian citizens:** Visa-free for up to 90 days. ETIAS required from 2025.
+- **Brazilian citizens:** Visa-free for up to 90 days. ETIAS expected once implemented.
 - **South African citizens:** Schengen visa required.
 - **Documents needed:** Passport valid 3+ months beyond stay, return ticket, proof of accommodation, travel insurance (€30,000 minimum coverage).
 
@@ -51,11 +56,11 @@
 - **Documents needed:** Passport valid 6+ months, proof of onward travel, proof of accommodation, proof of funds (THB 20,000 in cash may be checked).
 
 ## Spain (Schengen Area)
-- **US citizens:** Visa-free for up to 90 days within 180 days. ETIAS required from 2025.
-- **Canadian citizens:** Visa-free. ETIAS required from 2025.
+- **US citizens:** Visa-free for up to 90 days within 180 days. ETIAS expected once implemented.
+- **Canadian citizens:** Visa-free. ETIAS expected once implemented.
 - **EU/EEA citizens:** No visa required.
 - **UK citizens:** Visa-free for up to 90 days within 180 days.
-- **Australian citizens:** Visa-free for up to 90 days. ETIAS required from 2025.
+- **Australian citizens:** Visa-free for up to 90 days. ETIAS expected once implemented.
 - **Indian citizens:** Schengen visa required. Cost: €80.
 - **Chinese citizens:** Schengen visa required.
 - **South African citizens:** Schengen visa required.
@@ -67,17 +72,19 @@
 - **EU citizens:** Visa on arrival for 90 days (free).
 - **UK citizens:** Visa on arrival for 30 days (free).
 - **Australian citizens:** Visa on arrival for 30 days (free).
+- **Japanese citizens:** Visa on arrival for 30 days (free).
+- **Brazilian citizens:** Visa on arrival for 90 days (free).
 - **Indian citizens:** e-Visa required (apply online, 96-hour or 30-day options). Cost: AED 100–350 depending on duration.
 - **Chinese citizens:** Visa on arrival for 30 days (free).
 - **South African citizens:** Visa required. Apply through embassy.
-- **Documents needed:** Passport valid 6+ months, return ticket, proof of accommodation.
+- **Documents needed:** Passport valid 6+ months, return/onward ticket, proof of accommodation, travel itinerary details.
 
 ## Italy (Schengen Area)
-- **US citizens:** Visa-free for up to 90 days within 180 days. ETIAS required from 2025.
-- **Canadian citizens:** Visa-free. ETIAS required from 2025.
+- **US citizens:** Visa-free for up to 90 days within 180 days. ETIAS expected once implemented.
+- **Canadian citizens:** Visa-free. ETIAS expected once implemented.
 - **EU/EEA citizens:** No visa required.
 - **UK citizens:** Visa-free for up to 90 days within 180 days.
-- **Australian citizens:** Visa-free for up to 90 days. ETIAS required from 2025.
+- **Australian citizens:** Visa-free for up to 90 days. ETIAS expected once implemented.
 - **Indian citizens:** Schengen visa required. Cost: €80.
 - **Chinese citizens:** Schengen visa required.
 - **Documents needed:** Same Schengen requirements as France.
@@ -125,28 +132,28 @@
 - **Documents needed:** Passport valid for duration of stay, proof of funds, accommodation details, return ticket.
 
 ## Netherlands (Schengen Area)
-- **US citizens:** Visa-free for up to 90 days within 180 days. ETIAS required from 2025.
-- **Canadian citizens:** Visa-free. ETIAS required from 2025.
+- **US citizens:** Visa-free for up to 90 days within 180 days. ETIAS expected once implemented.
+- **Canadian citizens:** Visa-free. ETIAS expected once implemented.
 - **EU/EEA citizens:** No visa required.
 - **UK citizens:** Visa-free for up to 90 days.
-- **Australian citizens:** Visa-free. ETIAS required from 2025.
+- **Australian citizens:** Visa-free. ETIAS expected once implemented.
 - **Indian citizens:** Schengen visa required. Cost: €80.
 - **Chinese citizens:** Schengen visa required.
 - **Documents needed:** Standard Schengen requirements (same as France).
 
 ## Germany (Schengen Area)
-- **US citizens:** Visa-free for up to 90 days within 180 days. ETIAS required from 2025.
-- **Canadian citizens:** Visa-free. ETIAS required from 2025.
+- **US citizens:** Visa-free for up to 90 days within 180 days. ETIAS expected once implemented.
+- **Canadian citizens:** Visa-free. ETIAS expected once implemented.
 - **EU/EEA citizens:** No visa required.
 - **UK citizens:** Visa-free for up to 90 days.
-- **Australian citizens:** Visa-free. ETIAS required from 2025.
+- **Australian citizens:** Visa-free. ETIAS expected once implemented.
 - **Indian citizens:** Schengen visa required. Cost: €80.
 - **Chinese citizens:** Schengen visa required.
 - **Documents needed:** Standard Schengen requirements.
 
 ## Czech Republic (Schengen Area)
-- **US citizens:** Visa-free for up to 90 days within 180 days. ETIAS required from 2025.
-- **Canadian citizens:** Visa-free. ETIAS required from 2025.
+- **US citizens:** Visa-free for up to 90 days within 180 days. ETIAS expected once implemented.
+- **Canadian citizens:** Visa-free. ETIAS expected once implemented.
 - **EU/EEA citizens:** No visa required.
 - **UK citizens:** Visa-free for up to 90 days.
 - **Indian citizens:** Schengen visa required. Cost: €80.
@@ -154,58 +161,58 @@
 - **Documents needed:** Standard Schengen requirements.
 
 ## Austria (Schengen Area)
-- **US citizens:** Visa-free for up to 90 days within 180 days. ETIAS required from 2025.
-- **Canadian citizens:** Visa-free. ETIAS required from 2025.
+- **US citizens:** Visa-free for up to 90 days within 180 days. ETIAS expected once implemented.
+- **Canadian citizens:** Visa-free. ETIAS expected once implemented.
 - **EU/EEA citizens:** No visa required.
 - **UK citizens:** Visa-free for up to 90 days.
 - **Indian citizens:** Schengen visa required. Cost: €80.
 - **Documents needed:** Standard Schengen requirements.
 
 ## Portugal (Schengen Area)
-- **US citizens:** Visa-free for up to 90 days within 180 days. ETIAS required from 2025.
-- **Canadian citizens:** Visa-free. ETIAS required from 2025.
+- **US citizens:** Visa-free for up to 90 days within 180 days. ETIAS expected once implemented.
+- **Canadian citizens:** Visa-free. ETIAS expected once implemented.
 - **EU/EEA citizens:** No visa required.
 - **UK citizens:** Visa-free for up to 90 days.
-- **Australian citizens:** Visa-free. ETIAS required from 2025.
+- **Australian citizens:** Visa-free. ETIAS expected once implemented.
 - **Indian citizens:** Schengen visa required. Cost: €80.
 - **Documents needed:** Standard Schengen requirements.
 
 ## Greece (Schengen Area)
-- **US citizens:** Visa-free for up to 90 days within 180 days. ETIAS required from 2025.
-- **Canadian citizens:** Visa-free. ETIAS required from 2025.
+- **US citizens:** Visa-free for up to 90 days within 180 days. ETIAS expected once implemented.
+- **Canadian citizens:** Visa-free. ETIAS expected once implemented.
 - **EU/EEA citizens:** No visa required.
 - **UK citizens:** Visa-free for up to 90 days.
-- **Australian citizens:** Visa-free. ETIAS required from 2025.
+- **Australian citizens:** Visa-free. ETIAS expected once implemented.
 - **Indian citizens:** Schengen visa required. Cost: €80.
 - **Documents needed:** Standard Schengen requirements.
 
 ## Denmark (Schengen Area)
-- **US citizens:** Visa-free for up to 90 days within 180 days. ETIAS required from 2025.
-- **Canadian citizens:** Visa-free. ETIAS required from 2025.
+- **US citizens:** Visa-free for up to 90 days within 180 days. ETIAS expected once implemented.
+- **Canadian citizens:** Visa-free. ETIAS expected once implemented.
 - **EU/EEA citizens:** No visa required.
 - **UK citizens:** Visa-free for up to 90 days.
 - **Indian citizens:** Schengen visa required. Cost: €80.
 - **Documents needed:** Standard Schengen requirements.
 
 ## Hungary (Schengen Area)
-- **US citizens:** Visa-free for up to 90 days within 180 days. ETIAS required from 2025.
-- **Canadian citizens:** Visa-free. ETIAS required from 2025.
+- **US citizens:** Visa-free for up to 90 days within 180 days. ETIAS expected once implemented.
+- **Canadian citizens:** Visa-free. ETIAS expected once implemented.
 - **EU/EEA citizens:** No visa required.
 - **UK citizens:** Visa-free for up to 90 days.
 - **Indian citizens:** Schengen visa required. Cost: €80.
 - **Documents needed:** Standard Schengen requirements.
 
 ## Croatia (Schengen Area, joined 2023)
-- **US citizens:** Visa-free for up to 90 days within 180 days. ETIAS required from 2025.
-- **Canadian citizens:** Visa-free. ETIAS required from 2025.
+- **US citizens:** Visa-free for up to 90 days within 180 days. ETIAS expected once implemented.
+- **Canadian citizens:** Visa-free. ETIAS expected once implemented.
 - **EU/EEA citizens:** No visa required.
 - **UK citizens:** Visa-free for up to 90 days.
 - **Indian citizens:** Schengen visa required. Cost: €80.
 - **Documents needed:** Standard Schengen requirements.
 
 ## Iceland (Schengen Area)
-- **US citizens:** Visa-free for up to 90 days within 180 days. ETIAS required from 2025.
-- **Canadian citizens:** Visa-free. ETIAS required from 2025.
+- **US citizens:** Visa-free for up to 90 days within 180 days. ETIAS expected once implemented.
+- **Canadian citizens:** Visa-free. ETIAS expected once implemented.
 - **EU/EEA citizens:** No visa required.
 - **UK citizens:** Visa-free for up to 90 days.
 - **Indian citizens:** Schengen visa required. Cost: €80.
@@ -263,9 +270,12 @@
 - **EU citizens:** Visa-free for up to 90 days.
 - **UK citizens:** Visa-free for up to 90 days.
 - **Australian citizens:** Visa-free for up to 90 days.
+- **Japanese citizens:** Visa-free for up to 90 days.
+- **South Korean citizens:** Visa-free for up to 90 days.
 - **Indian citizens:** Visa required. eNTRI (electronic travel registration) for 15 days or e-visa for 30 days. Cost: MYR 20–150.
 - **Chinese citizens:** Visa-free for up to 30 days.
-- **Documents needed:** Passport valid 6+ months, return ticket, proof of accommodation.
+- **South African citizens:** Visa-free for up to 90 days.
+- **Documents needed:** Passport valid 6+ months, return/onward ticket, proof of accommodation, sufficient funds may be requested.
 - **Special note:** Malaysia Digital Arrival Card (MDAC) must be completed online within 3 days before arrival.
 
 ## India
@@ -298,11 +308,13 @@
 - **UK citizens:** Visa-free for up to 180 days.
 - **Australian citizens:** Visa-free for up to 180 days.
 - **Japanese citizens:** Visa-free for up to 180 days.
+- **South Korean citizens:** Visa-free for up to 180 days.
 - **Indian citizens:** Visa required (unless holding valid US visa, then visa-free). Apply at Mexican embassy.
 - **Chinese citizens:** Visa required (unless holding valid US/Canada/Japan/UK/Schengen visa).
 - **Colombian citizens:** Visa-free for up to 180 days.
 - **Brazilian citizens:** Visa-free for up to 180 days.
-- **Documents needed:** Passport valid for duration of stay, return ticket, FMM tourist card.
+- **South African citizens:** Visa required unless holding an eligible substitute visa or residence permit.
+- **Documents needed:** Passport valid for duration of stay, return/onward ticket, FMM tourist card, address of first accommodation.
 
 ## Argentina
 - **US citizens:** Visa-free for up to 90 days (extendable once for 90 days).
@@ -393,9 +405,11 @@
 - **EU citizens:** Visa on arrival for 30 days. Cost: JOD 40.
 - **UK citizens:** Visa on arrival for 30 days. Cost: JOD 40.
 - **Australian citizens:** Visa on arrival for 30 days. Cost: JOD 40.
+- **Japanese citizens:** Visa on arrival for 30 days. Cost: JOD 40.
 - **Indian citizens:** Visa on arrival available (conditions apply). Cost: JOD 40.
 - **Chinese citizens:** Visa on arrival for groups; individual visa required through embassy.
-- **Documents needed:** Passport valid 6+ months, return ticket.
+- **South African citizens:** Visa on arrival for 30 days. Cost: JOD 40.
+- **Documents needed:** Passport valid 6+ months, return/onward ticket, accommodation details.
 - **Special note:** Jordan Pass (JOD 70–80) includes visa fee + Petra entry + 40 attractions. Must stay minimum 3 consecutive nights. Buy before arrival.
 
 ## New Zealand
@@ -425,11 +439,109 @@
 - **UK citizens:** eTA required when flying.
 - **Australian citizens:** eTA required when flying.
 - **Japanese citizens:** eTA required when flying.
+- **South Korean citizens:** eTA required when flying.
 - **Indian citizens:** Visitor visa required. Apply online. Processing: varies widely (weeks to months). Cost: CAD 100. Biometrics required.
 - **Chinese citizens:** Visitor visa required. Same process.
 - **Mexican citizens:** Visa-free. eTA required when flying.
 - **Brazilian citizens:** eTA required when flying.
-- **Documents needed:** Passport valid for duration of stay, return ticket, proof of funds.
+- **Colombian citizens:** eTA required when flying if eligible; otherwise visitor visa required.
+- **South African citizens:** Visitor visa required.
+- **Documents needed:** Passport valid for duration of stay, return/onward ticket, proof of funds, invitation or accommodation details if requested.
+
+## Ireland
+- **US citizens:** Visa-free for up to 90 days.
+- **Canadian citizens:** Visa-free for up to 90 days.
+- **EU/EEA citizens:** No visa required. Freedom of movement applies.
+- **UK citizens:** No visa required under Common Travel Area arrangements.
+- **Australian citizens:** Visa-free for up to 90 days.
+- **Indian citizens:** Visa required. Apply online, then complete biometrics or document submission. Irish visa is separate from Schengen.
+- **Chinese citizens:** Visa required. Apply through Irish immigration system or visa application center.
+- **South African citizens:** Visa required.
+- **Documents needed:** Passport valid for the full stay, return/onward ticket, proof of accommodation, proof of funds.
+- **Special note:** Ireland is not in the Schengen Area. A Schengen visa does not automatically allow entry to Ireland.
+
+## Switzerland (Schengen Area)
+- **US citizens:** Visa-free for up to 90 days within 180 days. ETIAS expected once implemented.
+- **Canadian citizens:** Visa-free for up to 90 days. ETIAS expected once implemented.
+- **EU/EEA citizens:** No visa required.
+- **UK citizens:** Visa-free for up to 90 days within 180 days. ETIAS expected once implemented.
+- **Australian citizens:** Visa-free for up to 90 days. ETIAS expected once implemented.
+- **Indian citizens:** Schengen visa required. Apply through Swiss representation or visa center.
+- **Chinese citizens:** Schengen visa required.
+- **Japanese citizens:** Visa-free for up to 90 days. ETIAS expected once implemented.
+- **Documents needed:** Passport valid 3+ months beyond stay, travel insurance, proof of accommodation, proof of funds.
+
+## Norway (Schengen Area)
+- **US citizens:** Visa-free for up to 90 days within 180 days. ETIAS expected once implemented.
+- **Canadian citizens:** Visa-free for up to 90 days. ETIAS expected once implemented.
+- **EU/EEA citizens:** No visa required.
+- **UK citizens:** Visa-free for up to 90 days within 180 days. ETIAS expected once implemented.
+- **Australian citizens:** Visa-free for up to 90 days. ETIAS expected once implemented.
+- **Indian citizens:** Schengen visa required.
+- **Chinese citizens:** Schengen visa required.
+- **Japanese citizens:** Visa-free for up to 90 days. ETIAS expected once implemented.
+- **Documents needed:** Passport valid 3+ months beyond stay, return/onward ticket, proof of accommodation, proof of funds.
+
+## Philippines
+- **US citizens:** Visa-free for up to 30 days.
+- **Canadian citizens:** Visa-free for up to 30 days.
+- **EU citizens:** Visa-free for up to 30 days for most nationalities.
+- **UK citizens:** Visa-free for up to 30 days.
+- **Australian citizens:** Visa-free for up to 30 days.
+- **Japanese citizens:** Visa-free for up to 30 days.
+- **Indian citizens:** Visa required unless eligible for limited visa-free entry based on residence or substitute visas.
+- **Chinese citizens:** Visa required.
+- **South Korean citizens:** Visa-free for up to 30 days.
+- **Documents needed:** Passport valid 6+ months, return/onward ticket, proof of accommodation.
+- **Special note:** Electronic Travel Declaration requirements can change, so confirm any pre-arrival form rules before departure.
+
+## China
+- **US citizens:** Visa required for most tourism trips. Apply through a Chinese visa center or consulate.
+- **Canadian citizens:** Visa required for most tourism trips. Application typically includes itinerary and accommodation details.
+- **EU citizens:** Visa policy varies by nationality and any temporary visa-free pilot schemes in effect. Check the current rules for your passport before booking.
+- **UK citizens:** Visa required for most tourism trips.
+- **Australian citizens:** Visa required for most tourism trips.
+- **Indian citizens:** Visa required.
+- **Japanese citizens:** Visa policy can change based on bilateral arrangements and temporary exemptions. Verify current rules before travel.
+- **South Korean citizens:** Visa policy can change based on bilateral arrangements and temporary exemptions. Verify current rules before travel.
+- **Documents needed:** Passport valid 6+ months, visa approval if required, itinerary, accommodation details, and sometimes proof of onward travel.
+- **Special note:** Mainland China rules differ from Hong Kong and Macau. Transit-without-visa schemes may apply in some cities for eligible itineraries.
+
+## Sri Lanka
+- **US citizens:** Electronic Travel Authorization (ETA) usually required before arrival for short tourist stays.
+- **Canadian citizens:** ETA usually required before arrival.
+- **EU citizens:** ETA usually required before arrival for short tourist stays.
+- **UK citizens:** ETA usually required before arrival.
+- **Australian citizens:** ETA usually required before arrival.
+- **Indian citizens:** ETA usually required before arrival.
+- **Chinese citizens:** ETA usually required before arrival.
+- **Japanese citizens:** ETA usually required before arrival.
+- **Documents needed:** Passport valid 6+ months, return/onward ticket, accommodation details, and proof of sufficient funds.
+- **Special note:** Entry fees, ETA exemptions, and short-term promotional waivers can change, so confirm the live rules before paying.
+
+## Georgia
+- **US citizens:** Visa-free for up to 1 year for tourism.
+- **Canadian citizens:** Visa-free for up to 1 year.
+- **EU citizens:** Visa-free for up to 1 year for most nationalities.
+- **UK citizens:** Visa-free for up to 1 year.
+- **Australian citizens:** Visa-free for up to 1 year.
+- **Indian citizens:** Visa required unless holding an eligible visa or residence permit from certain countries.
+- **Chinese citizens:** Visa-free for short tourist stays under current policy.
+- **Japanese citizens:** Visa-free for up to 1 year.
+- **Documents needed:** Passport valid for the duration of stay, return/onward ticket, proof of accommodation, and travel insurance recommended.
+- **Special note:** Georgia is not in the Schengen Area. Its entry rules are separate from EU and Schengen rules.
+
+## Iran
+- **US citizens:** Tourist visa required. Travel is typically possible only with an authorized guide or organized tour, and additional approval steps may apply before visa issuance.
+- **Canadian citizens:** Tourist visa required. Apply through an Iranian interests section, embassy, or authorized visa process before travel.
+- **EU citizens:** Tourist visa required for most nationalities. Many travelers can apply for an e-visa authorization before collecting the visa or receiving it through the approved process.
+- **UK citizens:** Tourist visa required. Additional review or escorted-travel requirements may apply.
+- **Australian citizens:** Tourist visa required. Apply in advance and confirm the current process before booking non-refundable travel.
+- **Indian citizens:** Tourist visa required. Apply through the Iranian visa process or authorized mission.
+- **Chinese citizens:** Tourist visa required unless a current bilateral exemption applies for the passport type and trip purpose. Verify the latest rule before travel.
+- **Japanese citizens:** Tourist visa required.
+- **Documents needed:** Passport valid 6+ months, visa approval if required, travel itinerary, accommodation details, travel insurance, and onward or return travel details.
+- **Special note:** Entry rules, consular processes, and practical travel restrictions can change quickly. Travelers should check the latest official guidance before departure.
 
 ## General Travel Tips
 - Always check the latest visa requirements before travel — policies change frequently.
@@ -438,5 +550,6 @@
 - Travel insurance is strongly recommended for all international trips.
 - Some countries require proof of yellow fever vaccination if arriving from endemic areas.
 - Schengen Area note: The 90/180-day rule applies to ALL Schengen countries combined — not per country. Track your days carefully if visiting multiple Schengen states.
-- ETIAS (European Travel Information and Authorisation System) is being implemented for visa-free travelers to the Schengen Area. Check current status before traveling.
+- ETIAS (European Travel Information and Authorisation System) is planned for visa-free travelers to the Schengen Area. Check current launch status before traveling.
 - Many countries now require online pre-registration forms (arrival cards, health declarations). Complete these before arriving to avoid delays.
+- Keep at least two blank passport pages where possible, since some destinations and airlines still check this.

@@ -1,7 +1,8 @@
 """ChromaDB vector store — builds and queries the RAG knowledge base.
 
-Uses hybrid search (vector similarity + BM25 keyword matching) via
-LangChain's EnsembleRetriever for better retrieval quality.
+Uses hybrid retrieval with metadata-aware candidate selection:
+- Chroma vector similarity
+- BM25 keyword matching over filtered chunks
 """
 
 from __future__ import annotations
@@ -14,7 +15,6 @@ from functools import lru_cache
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
 from langchain_community.retrievers import BM25Retriever
 from langchain_chroma import Chroma
-from langchain_classic.retrievers import EnsembleRetriever
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from config import (
@@ -24,8 +24,6 @@ from config import (
     RAG_CHUNK_SIZE,
     RAG_CHUNK_OVERLAP,
     RAG_TOP_K,
-    RAG_VECTOR_WEIGHT,
-    RAG_BM25_WEIGHT,
     RAG_EMBEDDING_BATCH_SIZE,
     RAG_EMBEDDING_MAX_RETRIES,
     RAG_GOOGLE_EMBEDDING_BATCH_DELAY_SECONDS,
@@ -38,7 +36,28 @@ logger = get_logger(__name__)
 # Module-level caches
 _cached_chunks: list | None = None
 _cached_vectorstores: dict[str, Chroma] = {}
-_cached_bm25: BM25Retriever | None = None
+
+_MANUAL_PLACE_ALIASES: tuple[tuple[str, str, str], ...] = (
+    ("dublin", "city", "Dublin"),
+    ("cork", "city", "Cork"),
+    ("zurich", "city", "Zurich"),
+    ("geneva", "city", "Geneva"),
+    ("lucerne", "city", "Lucerne"),
+    ("oslo", "city", "Oslo"),
+    ("bergen", "city", "Bergen"),
+    ("manila", "city", "Manila"),
+)
+
+_MANUAL_CITY_TO_COUNTRY: dict[str, str] = {
+    "Dublin": "Ireland",
+    "Cork": "Ireland",
+    "Zurich": "Switzerland",
+    "Geneva": "Switzerland",
+    "Lucerne": "Switzerland",
+    "Oslo": "Norway",
+    "Bergen": "Norway",
+    "Manila": "Philippines",
+}
 
 
 def _normalise_text(value: str) -> str:
@@ -128,6 +147,7 @@ def _known_places() -> list[tuple[str, str, str]]:
                 country = heading.split("(", 1)[0].strip()
                 if country:
                     places.append((_normalise_text(country), "country", country))
+    places.extend(_MANUAL_PLACE_ALIASES)
     return places
 
 
@@ -141,6 +161,9 @@ def _infer_query_metadata(query: str) -> dict[str, str | list[str]]:
                 city = canonical
             if kind == "country" and not country:
                 country = canonical
+
+    if city and not country:
+        country = _MANUAL_CITY_TO_COUNTRY.get(city, "")
 
     intents: list[str] = []
     intent_patterns = {
@@ -161,104 +184,183 @@ def _infer_query_metadata(query: str) -> dict[str, str | list[str]]:
     return {"city": city, "country": country, "intents": intents, "query": lowered}
 
 
-def _score_doc_for_query(doc, query_meta: dict[str, str | list[str]], rank_index: int) -> float:
-    score = max(0.0, 20.0 - rank_index)
-    metadata = getattr(doc, "metadata", {}) or {}
-    doc_city = _normalise_text(str(metadata.get("city", "")))
-    doc_country = _normalise_text(str(metadata.get("country", "")))
-    doc_source_type = str(metadata.get("source_type", ""))
-    doc_topics = set(metadata.get("topics", []) or [])
-    query_city = _normalise_text(str(query_meta.get("city", "")))
-    query_country = _normalise_text(str(query_meta.get("country", "")))
+def _preferred_source_types(query_meta: dict[str, str | list[str]]) -> list[str]:
     query_intents = set(query_meta.get("intents", []) or [])
 
-    if query_city and doc_city:
-        score += 8 if doc_city == query_city else -4
-    if query_country and doc_country:
-        score += 6 if doc_country == query_country else -3
-
     if "entry_requirements" in query_intents:
-        score += 10 if doc_source_type == "visa_requirements" else -2
-        if "entry_requirements" in doc_topics:
-            score += 4
-    if "transport" in query_intents and "transport" in doc_topics:
-        score += 5
-    if "budget" in query_intents and "budget" in doc_topics:
-        score += 5
-    if "safety" in query_intents and "safety" in doc_topics:
-        score += 5
-    if "packing" in query_intents and "packing" in doc_topics:
-        score += 5
-    if "health" in query_intents and "health" in doc_topics:
-        score += 5
-    if "flight_booking" in query_intents and "flight_booking" in doc_topics:
-        score += 5
-    if "hotel_booking" in query_intents and "hotel_booking" in doc_topics:
-        score += 5
-    if "etiquette" in query_intents and "etiquette" in doc_topics:
-        score += 5
-
-    if not query_intents and doc_source_type == "destinations":
-        score += 2
-
-    return score
+        return ["visa_requirements", "travel_tips"]
+    if query_intents.intersection({"transport", "budget", "safety"}):
+        return ["destinations", "travel_tips"]
+    if query_intents.intersection({"packing", "health", "flight_booking", "hotel_booking", "etiquette"}):
+        return ["travel_tips", "destinations"]
+    return []
 
 
-def _rerank_docs_for_query(docs: list, query: str, k: int) -> list:
-    query_meta = _infer_query_metadata(query)
-    base_scores = [
-        (_score_doc_for_query(doc, query_meta, idx), idx, doc)
-        for idx, doc in enumerate(docs)
+def _doc_matches_filters(
+    metadata: dict,
+    *,
+    query_meta: dict[str, str | list[str]],
+    allowed_source_types: list[str] | None,
+    require_place_match: bool,
+) -> bool:
+    source_type = str(metadata.get("source_type", ""))
+    if allowed_source_types and source_type not in allowed_source_types:
+        return False
+
+    query_city = _normalise_text(str(query_meta.get("city", "")))
+    query_country = _normalise_text(str(query_meta.get("country", "")))
+    if not require_place_match or (not query_city and not query_country):
+        return True
+
+    doc_city = _normalise_text(str(metadata.get("city", "")))
+    doc_country = _normalise_text(str(metadata.get("country", "")))
+
+    if query_city and doc_city and doc_city != query_city:
+        return False
+    if query_country and doc_country and doc_country != query_country:
+        return False
+
+    return bool(
+        (query_city and doc_city == query_city)
+        or (query_country and doc_country == query_country)
+    )
+
+
+def _build_chroma_filter(
+    *,
+    query_meta: dict[str, str | list[str]],
+    allowed_source_types: list[str] | None,
+    require_place_match: bool,
+) -> dict | None:
+    clauses: list[dict] = []
+    if allowed_source_types:
+        if len(allowed_source_types) == 1:
+            clauses.append({"source_type": allowed_source_types[0]})
+        else:
+            clauses.append({"source_type": {"$in": allowed_source_types}})
+
+    if require_place_match:
+        query_city = str(query_meta.get("city", "")).strip()
+        query_country = str(query_meta.get("country", "")).strip()
+        place_clauses: list[dict] = []
+        if query_city:
+            place_clauses.append({"city": query_city})
+        if query_country:
+            place_clauses.append({"country": query_country})
+        if place_clauses:
+            clauses.append(place_clauses[0] if len(place_clauses) == 1 else {"$or": place_clauses})
+
+    if not clauses:
+        return None
+    if len(clauses) == 1:
+        return clauses[0]
+    return {"$and": clauses}
+
+
+def _iter_retrieval_plans(query_meta: dict[str, str | list[str]]) -> list[dict[str, object]]:
+    plans: list[dict[str, object]] = []
+    seen: set[tuple[tuple[str, ...], bool]] = set()
+    preferred_source_types = _preferred_source_types(query_meta)
+    has_place = bool(query_meta.get("city") or query_meta.get("country"))
+
+    candidates = [
+        (preferred_source_types or None, has_place),
+        (preferred_source_types or None, False),
+        (None, has_place),
+        (None, False),
     ]
-    rescored = sorted(base_scores, key=lambda item: item[0], reverse=True)
 
+    for allowed_source_types, require_place_match in candidates:
+        key = (tuple(allowed_source_types or ()), bool(require_place_match))
+        if key in seen:
+            continue
+        seen.add(key)
+        plans.append(
+            {
+                "allowed_source_types": allowed_source_types,
+                "require_place_match": require_place_match,
+            }
+        )
+
+    return plans
+
+
+def _run_vector_retrieval(
+    *,
+    vectorstore: Chroma,
+    query: str,
+    k: int,
+    query_meta: dict[str, str | list[str]],
+    allowed_source_types: list[str] | None,
+    require_place_match: bool,
+) -> list:
+    search_filter = _build_chroma_filter(
+        query_meta=query_meta,
+        allowed_source_types=allowed_source_types,
+        require_place_match=require_place_match,
+    )
+    try:
+        docs = vectorstore.similarity_search(query, k=k, filter=search_filter)
+    except Exception:
+        logger.warning("Filtered vector retrieval failed; retrying without metadata filter", exc_info=True)
+        docs = vectorstore.similarity_search(query, k=k)
+
+    if search_filter is None:
+        return docs
+
+    return [
+        doc
+        for doc in docs
+        if _doc_matches_filters(
+            getattr(doc, "metadata", {}) or {},
+            query_meta=query_meta,
+            allowed_source_types=allowed_source_types,
+            require_place_match=require_place_match,
+        )
+    ]
+
+
+def _run_bm25_retrieval(
+    *,
+    chunks: list,
+    query: str,
+    k: int,
+    query_meta: dict[str, str | list[str]],
+    allowed_source_types: list[str] | None,
+    require_place_match: bool,
+) -> list:
+    filtered_chunks = [
+        chunk
+        for chunk in chunks
+        if _doc_matches_filters(
+            getattr(chunk, "metadata", {}) or {},
+            query_meta=query_meta,
+            allowed_source_types=allowed_source_types,
+            require_place_match=require_place_match,
+        )
+    ]
+    if not filtered_chunks:
+        return []
+
+    retriever = BM25Retriever.from_documents(filtered_chunks, k=k)
+    return retriever.invoke(query)
+
+
+def _dedupe_docs(docs: list, k: int) -> list:
     seen: set[tuple[str, str]] = set()
     deduped = []
-    selected_source_types: list[str] = []
-    selected_headings: list[str] = []
-
-    while rescored and len(deduped) < k:
-        best_choice = None
-        best_adjusted_score = None
-
-        for base_score, original_index, doc in rescored:
-            metadata = getattr(doc, "metadata", {}) or {}
-            key = (
-                str(metadata.get("source", "")),
-                (getattr(doc, "page_content", "") or "")[:120],
-            )
-            if key in seen:
-                continue
-
-            source_type = str(metadata.get("source_type", ""))
-            heading = str(metadata.get("heading", ""))
-            adjusted_score = base_score
-
-            adjusted_score -= 1.25 * selected_source_types.count(source_type)
-            if heading:
-                adjusted_score -= 0.75 * selected_headings.count(heading)
-            if source_type and source_type not in selected_source_types:
-                adjusted_score += 1.5
-
-            if best_adjusted_score is None or adjusted_score > best_adjusted_score:
-                best_adjusted_score = adjusted_score
-                best_choice = (base_score, original_index, doc)
-
-        if best_choice is None:
-            break
-
-        rescored.remove(best_choice)
-        _, _, chosen_doc = best_choice
-        chosen_metadata = getattr(chosen_doc, "metadata", {}) or {}
-        chosen_key = (
-            str(chosen_metadata.get("source", "")),
-            (getattr(chosen_doc, "page_content", "") or "")[:120],
+    for doc in docs:
+        metadata = getattr(doc, "metadata", {}) or {}
+        key = (
+            str(metadata.get("source", "")),
+            (getattr(doc, "page_content", "") or "")[:120],
         )
-        seen.add(chosen_key)
-        deduped.append(chosen_doc)
-        selected_source_types.append(str(chosen_metadata.get("source_type", "")))
-        selected_headings.append(str(chosen_metadata.get("heading", "")))
-
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(doc)
+        if len(deduped) >= k:
+            break
     return deduped
 
 
@@ -424,36 +526,56 @@ def _source_label(source_path: str) -> str:
 def retrieve(
     query: str, k: int = RAG_TOP_K, provider: str | None = DEFAULT_LLM_PROVIDER
 ) -> list[dict[str, str]]:
-    """Return the top-k relevant text chunks with source metadata using hybrid search.
+    """Return the top-k relevant text chunks with source metadata.
 
-    Combines vector similarity (ChromaDB) with keyword matching (BM25)
-    using reciprocal rank fusion via EnsembleRetriever.
-
+    Retrieval first narrows the candidate pool using inferred place/source metadata,
+    then combines vector similarity and BM25 over those candidates.
     Each result is a dict with keys ``content`` and ``source``.
     """
-    global _cached_bm25
     logger.info("Running RAG retrieval query=%s k=%s provider=%s", query, k, provider)
-    # Vector retriever
     vs = _build_vectorstore(provider=provider)
+    chunks = _load_and_split_docs()
+    query_meta = _infer_query_metadata(query)
     candidate_k = max(k * 3, 8)
-    vector_retriever = vs.as_retriever(search_kwargs={"k": candidate_k})
 
-    # BM25 keyword retriever (cached; k is set per-query)
-    if _cached_bm25 is None:
-        chunks = _load_and_split_docs()
-        _cached_bm25 = BM25Retriever.from_documents(chunks, k=candidate_k)
-    _cached_bm25.k = candidate_k
-    bm25_retriever = _cached_bm25
+    docs: list = []
+    for plan in _iter_retrieval_plans(query_meta):
+        allowed_source_types = plan["allowed_source_types"]
+        require_place_match = bool(plan["require_place_match"])
 
-    # Hybrid: ensemble with reciprocal rank fusion
-    ensemble_retriever = EnsembleRetriever(
-        retrievers=[vector_retriever, bm25_retriever],
-        weights=[RAG_VECTOR_WEIGHT, RAG_BM25_WEIGHT],
-    )
+        vector_docs = _run_vector_retrieval(
+            vectorstore=vs,
+            query=query,
+            k=candidate_k,
+            query_meta=query_meta,
+            allowed_source_types=allowed_source_types,
+            require_place_match=require_place_match,
+        )
+        bm25_docs = _run_bm25_retrieval(
+            chunks=chunks,
+            query=query,
+            k=candidate_k,
+            query_meta=query_meta,
+            allowed_source_types=allowed_source_types,
+            require_place_match=require_place_match,
+        )
 
-    docs = ensemble_retriever.invoke(query)
-    docs = _rerank_docs_for_query(docs, query, k)
-    logger.info("RAG retrieval returned %s documents after reranking", len(docs))
+        # Interleave the two retrieval modes so we keep both semantic and keyword hits.
+        merged_plan_docs: list = []
+        max_len = max(len(vector_docs), len(bm25_docs))
+        for index in range(max_len):
+            if index < len(vector_docs):
+                merged_plan_docs.append(vector_docs[index])
+            if index < len(bm25_docs):
+                merged_plan_docs.append(bm25_docs[index])
+
+        docs.extend(merged_plan_docs)
+        docs = _dedupe_docs(docs, candidate_k)
+        if len(docs) >= k:
+            break
+
+    docs = _dedupe_docs(docs, k)
+    logger.info("RAG retrieval returned %s documents after metadata-aware retrieval", len(docs))
     return [
         {
             "content": doc.page_content,

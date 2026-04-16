@@ -1,12 +1,13 @@
 """Tests for infrastructure/rag/vectorstore.py."""
 
-from types import SimpleNamespace
-
 from infrastructure.rag.vectorstore import (
     _build_vectorstore,
     _chroma_dir_for_provider,
+    _build_chroma_filter,
+    _doc_matches_filters,
     _extract_doc_metadata,
-    _rerank_docs_for_query,
+    _infer_query_metadata,
+    _preferred_source_types,
     retrieve,
 )
 
@@ -50,37 +51,49 @@ class TestBuildVectorstore:
 
 class TestRetrieve:
     def test_passes_provider_through_to_vectorstore(self, monkeypatch):
-        import infrastructure.rag.vectorstore as vs_module
-
-        # Clear cached BM25 so from_documents is called
-        monkeypatch.setattr(vs_module, "_cached_bm25", None)
-
         calls = {}
 
         class FakeVectorStore:
-            def as_retriever(self, search_kwargs):
-                calls["search_kwargs"] = search_kwargs
-                return "vector_retriever"
+            def similarity_search(self, query, k, filter=None):
+                calls.setdefault("similarity_search", []).append(
+                    {"query": query, "k": k, "filter": filter}
+                )
+                return [
+                    FakeDoc(
+                        "chunk 1",
+                        "knowledge_base/destinations.md",
+                        source_type="destinations",
+                        city="Paris",
+                        country="France",
+                    ),
+                    FakeDoc(
+                        "chunk 2",
+                        "knowledge_base/visa_requirements.md",
+                        source_type="visa_requirements",
+                        country="France",
+                    ),
+                ]
 
         class FakeDoc:
-            def __init__(self, page_content, source):
+            def __init__(self, page_content, source, **metadata):
                 self.page_content = page_content
-                self.metadata = {"source": source}
+                self.metadata = {"source": source, **metadata}
 
         class FakeBM25:
-            def __init__(self, k):
+            def __init__(self, documents, k):
+                calls.setdefault("bm25_inputs", []).append(
+                    {"documents": documents, "k": k}
+                )
                 self.k = k
-
-        class FakeEnsembleRetriever:
-            def __init__(self, retrievers, weights):
-                calls["retrievers"] = retrievers
-                calls["weights"] = weights
 
             def invoke(self, query):
                 calls["query"] = query
                 return [
-                    FakeDoc("chunk 1", "knowledge_base/destinations.md"),
-                    FakeDoc("chunk 2", "knowledge_base/visa_requirements.md"),
+                    FakeDoc(
+                        "chunk 3",
+                        "knowledge_base/travel_tips.md",
+                        source_type="travel_tips",
+                    )
                 ]
 
         monkeypatch.setattr(
@@ -91,25 +104,49 @@ class TestRetrieve:
         )
         monkeypatch.setattr(
             "infrastructure.rag.vectorstore._load_and_split_docs",
-            lambda: ["doc1", "doc2"],
+            lambda: [
+                FakeDoc(
+                    "bm25 visa chunk",
+                    "knowledge_base/visa_requirements.md",
+                    source_type="visa_requirements",
+                    country="France",
+                ),
+                FakeDoc(
+                    "bm25 city chunk",
+                    "knowledge_base/destinations.md",
+                    source_type="destinations",
+                    city="Paris",
+                    country="France",
+                ),
+            ],
         )
         monkeypatch.setattr(
             "infrastructure.rag.vectorstore.BM25Retriever.from_documents",
-            lambda chunks, k: FakeBM25(k),
-        )
-        monkeypatch.setattr(
-            "infrastructure.rag.vectorstore.EnsembleRetriever",
-            FakeEnsembleRetriever,
+            lambda chunks, k: FakeBM25(chunks, k),
         )
 
-        result = retrieve("visa query", provider="google", k=2)
+        result = retrieve(
+            "What are the entry requirements for a US passport holder visiting Paris?",
+            provider="google",
+            k=2,
+        )
 
         assert calls["provider"] == "google"
-        assert calls["search_kwargs"] == {"k": 8}
-        assert calls["query"] == "visa query"
+        assert calls["similarity_search"][0]["k"] == 8
+        assert calls["similarity_search"][0]["filter"] == {
+            "$and": [
+                {"source_type": {"$in": ["visa_requirements", "travel_tips"]}},
+                {"city": "Paris"},
+            ]
+        }
+        assert all(
+            doc.metadata.get("source_type") in {"visa_requirements", "travel_tips"}
+            for doc in calls["bm25_inputs"][0]["documents"]
+        )
+        assert calls["query"] == "What are the entry requirements for a US passport holder visiting Paris?"
         assert result == [
-            {"content": "chunk 1", "source": "Destinations"},
             {"content": "chunk 2", "source": "Visa Requirements"},
+            {"content": "chunk 3", "source": "Travel Tips"},
         ]
 
 
@@ -127,105 +164,47 @@ class TestMetadataExtraction:
         assert "budget" in metadata["topics"]
 
 
-class TestReranking:
-    def test_city_and_topic_match_beats_wrong_city_chunk(self):
-        docs = [
-            SimpleNamespace(
-                page_content="- **Local transport:** RapidKL is cheap.",
-                metadata={
-                    "source": "knowledge_base/destinations.md",
-                    "source_type": "destinations",
-                    "city": "Kuala Lumpur",
-                    "country": "Malaysia",
-                    "topics": ["transport", "budget"],
-                },
-            ),
-            SimpleNamespace(
-                page_content="- **Local transport:** Cycling is king in Amsterdam.",
-                metadata={
-                    "source": "knowledge_base/destinations.md",
-                    "source_type": "destinations",
-                    "city": "Amsterdam",
-                    "country": "Netherlands",
-                    "topics": ["transport", "budget"],
-                },
-            ),
-        ]
+class TestMetadataAwareRetrieval:
+    def test_infers_country_from_manual_city_alias_for_visa_queries(self):
+        result = _infer_query_metadata("Do Indian citizens need a visa for Dublin?")
 
-        result = _rerank_docs_for_query(docs, "Give me budget and transport tips for Amsterdam.", 2)
+        assert result["city"] == "Dublin"
+        assert result["country"] == "Ireland"
+        assert result["intents"] == ["entry_requirements"]
 
-        assert result[0].metadata["city"] == "Amsterdam"
-
-    def test_entry_requirements_prefers_visa_documents(self):
-        docs = [
-            SimpleNamespace(
-                page_content="## Paris, France\n- **Best time to visit:** Spring.",
-                metadata={
-                    "source": "knowledge_base/destinations.md",
-                    "source_type": "destinations",
-                    "city": "Paris",
-                    "country": "France",
-                    "topics": ["destination_overview"],
-                },
-            ),
-            SimpleNamespace(
-                page_content="## France (Schengen Area)\n- **US citizens:** Visa-free for up to 90 days.",
-                metadata={
-                    "source": "knowledge_base/visa_requirements.md",
-                    "source_type": "visa_requirements",
-                    "city": "",
-                    "country": "France",
-                    "topics": ["entry_requirements"],
-                },
-            ),
-        ]
-
-        result = _rerank_docs_for_query(docs, "What are the entry requirements for a US passport holder visiting Paris?", 2)
-
-        assert result[0].metadata["source_type"] == "visa_requirements"
-
-    def test_diversifies_when_supporting_source_is_relevant(self):
-        docs = [
-            SimpleNamespace(
-                page_content="## France (Schengen Area)\n- **US citizens:** Visa-free for up to 90 days.",
-                metadata={
-                    "source": "knowledge_base/visa_requirements.md",
-                    "source_type": "visa_requirements",
-                    "heading": "France (Schengen Area)",
-                    "city": "",
-                    "country": "France",
-                    "topics": ["entry_requirements"],
-                },
-            ),
-            SimpleNamespace(
-                page_content="- **Documents needed:** Passport valid 3+ months beyond stay, return ticket.",
-                metadata={
-                    "source": "knowledge_base/visa_requirements.md",
-                    "source_type": "visa_requirements",
-                    "heading": "France (Schengen Area)",
-                    "city": "",
-                    "country": "France",
-                    "topics": ["entry_requirements"],
-                },
-            ),
-            SimpleNamespace(
-                page_content="## General Travel Tips\n- Keep digital and physical copies of all travel documents.",
-                metadata={
-                    "source": "knowledge_base/travel_tips.md",
-                    "source_type": "travel_tips",
-                    "heading": "General Travel Tips",
-                    "city": "",
-                    "country": "",
-                    "topics": ["entry_requirements", "packing"],
-                },
-            ),
-        ]
-
-        result = _rerank_docs_for_query(
-            docs,
-            "What are the entry requirements for a US passport holder visiting Paris?",
-            3,
+    def test_entry_requirements_prefer_visa_sources(self):
+        result = _preferred_source_types(
+            {"intents": ["entry_requirements"], "city": "Paris", "country": "France"}
         )
 
-        assert result[0].metadata["source_type"] == "visa_requirements"
-        assert any(item.metadata["source_type"] == "travel_tips" for item in result[1:])
+        assert result == ["visa_requirements", "travel_tips"]
+
+    def test_builds_chroma_filter_with_source_and_place(self):
+        result = _build_chroma_filter(
+            query_meta={"city": "Paris", "country": "France", "intents": ["entry_requirements"]},
+            allowed_source_types=["visa_requirements", "travel_tips"],
+            require_place_match=True,
+        )
+
+        assert result == {
+            "$and": [
+                {"source_type": {"$in": ["visa_requirements", "travel_tips"]}},
+                {"$or": [{"city": "Paris"}, {"country": "France"}]},
+            ]
+        }
+
+    def test_place_matching_rejects_wrong_destination(self):
+        assert _doc_matches_filters(
+            {"source_type": "destinations", "city": "Amsterdam", "country": "Netherlands"},
+            query_meta={"city": "Paris", "country": "France", "intents": ["transport"]},
+            allowed_source_types=["destinations"],
+            require_place_match=True,
+        ) is False
+
+    def test_country_level_match_keeps_visa_doc_without_city(self):
+        assert _doc_matches_filters(
+            {"source_type": "visa_requirements", "country": "France"},
+            query_meta={"city": "Paris", "country": "France", "intents": ["entry_requirements"]},
+            allowed_source_types=["visa_requirements", "travel_tips"],
+            require_place_match=True,
+        ) is True
