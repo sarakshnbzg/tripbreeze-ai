@@ -7,6 +7,7 @@ import pytest
 
 from domain.nodes.trip_intake import (
     _classify_domain,
+    _infer_stay_length_days,
     _normalise_hotel_stars,
     _normalise_trip_data,
     _parse_preferences,
@@ -142,6 +143,16 @@ class TestClassifyDomain:
 
         assert result == {"in_domain": True, "reason": ""}
         assert usage == {"node": "domain_guardrail", "model": "gpt-4o-mini"}
+
+
+class TestInferStayLengthDays:
+    def test_parses_common_duration_phrases(self):
+        assert _infer_stay_length_days("one way for 3 days") == 3
+        assert _infer_stay_length_days("stay for 2 nights in Rome") == 2
+        assert _infer_stay_length_days("trip for a week") == 7
+
+    def test_returns_none_without_duration_phrase(self):
+        assert _infer_stay_length_days("one way to New York on May 15") is None
 
 
 class TestNormaliseTripData:
@@ -530,3 +541,35 @@ class TestTripIntakeNode:
         assert trip["return_date"] == ""
         assert trip["check_out_date"] == "2026-04-21"
         assert "(one-way)" in result["messages"][0]["content"]
+
+    def test_free_text_one_way_duration_falls_back_to_query_when_llm_misses_check_out(self):
+        mock_llm = MagicMock()
+        mock_response = MagicMock()
+        mock_response.tool_calls = [
+            {
+                "args": {
+                    "origin": "Berlin",
+                    "destination": "New York",
+                    "departure_date": "2026-05-15",
+                    "return_date": "",
+                    "check_out_date": "",
+                    "is_one_way": True,
+                }
+            }
+        ]
+        mock_llm.bind_tools.return_value = MagicMock()
+
+        state = self._base_state(
+            structured_fields={},
+            free_text_query="Berlin to New York on the 15th of May, one way for 3 days.",
+        )
+
+        with patch("domain.nodes.trip_intake.create_chat_model", return_value=mock_llm):
+            with patch("domain.nodes.trip_intake.invoke_with_retry", return_value=mock_response):
+                with patch("domain.nodes.trip_intake.extract_token_usage", return_value=None):
+                    result = trip_intake(state)
+
+        trip = result["trip_request"]
+        assert trip["departure_date"] == "2026-05-15"
+        assert trip["return_date"] == ""
+        assert trip["check_out_date"] == "2026-05-18"

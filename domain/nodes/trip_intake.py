@@ -1,6 +1,7 @@
 """Trip Intake node — builds trip request from structured form fields
 and/or a free-text query, using LLM tool calling to parse user input."""
 
+import re
 from datetime import date, timedelta
 from typing import Any
 
@@ -35,6 +36,10 @@ VALID_INTERESTS = {
 }
 
 VALID_PACES = {"relaxed", "moderate", "packed"}
+_DURATION_PATTERN = re.compile(
+    r"\bfor\s+(?:(?P<article>a|an|one)\s+)?(?P<count>\d+)?\s*(?P<unit>day|days|night|nights|week|weeks)\b",
+    re.IGNORECASE,
+)
 
 
 def _normalise_interests(raw: object) -> list[str]:
@@ -55,6 +60,37 @@ def _normalise_interests(raw: object) -> list[str]:
 def _normalise_pace(raw: object) -> str:
     key = str(raw or "").strip().lower()
     return key if key in VALID_PACES else ""
+
+
+def _infer_stay_length_days(query: str) -> int | None:
+    """Infer stay length from simple duration phrases in free text.
+
+    This is a deterministic fallback for cases where the LLM identifies a
+    one-way trip but misses the computed check-out date.
+    """
+    if not query.strip():
+        return None
+
+    match = _DURATION_PATTERN.search(query)
+    if not match:
+        return None
+
+    unit = match.group("unit").lower()
+    article = (match.group("article") or "").lower()
+    count_text = match.group("count")
+
+    if count_text:
+        count = int(count_text)
+    elif article in {"a", "an", "one"}:
+        count = 1
+    else:
+        return None
+
+    if count <= 0:
+        return None
+    if unit in {"week", "weeks"}:
+        return count * 7
+    return count
 
 
 def _has_structured_trip_signal(data: dict[str, Any]) -> bool:
@@ -540,6 +576,24 @@ def trip_intake(state: dict) -> dict:
                     raw_trip_data["preferences"] = ft_prefs
     else:
         logger.info("Trip intake using structured fields only")
+
+    if (
+        free_text_query.strip()
+        and raw_trip_data.get("departure_date")
+        and not raw_trip_data.get("return_date")
+        and not raw_trip_data.get("check_out_date")
+    ):
+        inferred_days = _infer_stay_length_days(free_text_query)
+        if inferred_days:
+            inferred_check_out = (
+                date.fromisoformat(raw_trip_data["departure_date"]) + timedelta(days=inferred_days)
+            ).isoformat()
+            raw_trip_data["check_out_date"] = inferred_check_out
+            logger.info(
+                "Inferred stay length from free text: %s day(s), check_out_date=%s",
+                inferred_days,
+                inferred_check_out,
+            )
 
     # ── Check for missing required fields and ask the user ──
     # Only ask for clarification when the user provided free text without structured
