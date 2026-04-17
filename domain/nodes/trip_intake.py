@@ -589,8 +589,6 @@ def trip_intake(state: dict) -> dict:
     else:
         logger.info("Trip intake using structured fields only")
 
-    _apply_profile_defaults(raw_trip_data, profile)
-
     if (
         free_text_query.strip()
         and raw_trip_data.get("departure_date")
@@ -619,6 +617,22 @@ def trip_intake(state: dict) -> dict:
         and not raw_trip_data.get("is_one_way")
     ):
         raw_trip_data["return_date"] = raw_trip_data["check_out_date"]
+
+    # If the saved home city is the only remaining gap, use it directly.
+    # When other required fields are also missing, prefer asking the user so
+    # they can confirm origin and dates together in the clarification step.
+    if (
+        not raw_trip_data.get("origin")
+        and profile.get("home_city")
+        and raw_trip_data.get("destination")
+        and raw_trip_data.get("departure_date")
+        and (
+            raw_trip_data.get("return_date")
+            or raw_trip_data.get("check_out_date")
+            or raw_trip_data.get("is_one_way")
+        )
+    ):
+        raw_trip_data["origin"] = profile["home_city"]
 
     # ── Check for missing required fields and ask the user ──
     # Only ask for clarification when the user provided free text without structured
@@ -671,6 +685,8 @@ def trip_intake(state: dict) -> dict:
                 already_set = raw_trip_data.get(key) not in (None, "", []) if key != "stops" else raw_trip_data.get(key) is not None
                 if not_empty and not already_set:
                     raw_trip_data[key] = value
+
+    _apply_profile_defaults(raw_trip_data, profile)
 
     # Parse any remaining free-text preferences into filter criteria
     preferences = raw_trip_data.get("preferences", "")

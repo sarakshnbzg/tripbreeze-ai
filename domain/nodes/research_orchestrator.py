@@ -17,6 +17,7 @@ from domain.agents.hotel_agent import search_hotels, search_leg_hotels
 from infrastructure.apis.geocoding_client import resolve_destination_country
 from infrastructure.llms.model_factory import create_chat_model, extract_token_usage, invoke_with_retry
 from infrastructure.logging_utils import get_logger
+from infrastructure.persistence.memory_store import list_place_aliases
 from infrastructure.rag.evaluation import record_rag_event
 from infrastructure.rag.vectorstore import retrieve
 
@@ -106,7 +107,38 @@ def _resolve_passport_country(trip_request: dict[str, Any], user_profile: dict[s
 
 
 def _resolve_destination_country(destination: str) -> str:
-    return resolve_destination_country(destination)
+    country = resolve_destination_country(destination)
+    if country:
+        return country
+    return _fallback_destination_country(destination)
+
+
+@lru_cache(maxsize=1)
+def _place_alias_country_map() -> dict[str, str]:
+    alias_map: dict[str, str] = {}
+    try:
+        aliases = list_place_aliases()
+    except Exception:
+        return alias_map
+
+    for alias in aliases:
+        country = str(alias.get("country_name", "")).strip()
+        if not country:
+            continue
+        for key in (
+            alias.get("normalized_name"),
+            alias.get("display_name"),
+            alias.get("city_name"),
+            alias.get("country_name"),
+        ):
+            normalised = _normalise_label(str(key or ""))
+            if normalised and normalised not in alias_map:
+                alias_map[normalised] = country
+    return alias_map
+
+
+def _fallback_destination_country(destination: str) -> str:
+    return _place_alias_country_map().get(_normalise_label(destination), "")
 
 
 def _append_source(sources: list[str], label: str) -> None:
