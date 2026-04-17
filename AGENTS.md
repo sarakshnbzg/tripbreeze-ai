@@ -227,7 +227,8 @@ Notes:
 | **Purpose** | Pause the graph after review and route based on the user's decision |
 | **Implementation** | Uses LangGraph `interrupt(...)` to wait for a structured review decision |
 | **Reads from state** | `user_feedback`, `feedback_type`, `trip_request`, `trip_legs`, selected options |
-| **Writes to state** | For `approve`: keeps selections and continues to itinerary generation. For `revise_plan`: clears prior options, synthesizes a new `free_text_query`, and loops back to `trip_intake`. For `cancel`: routes to `END` |
+| **Writes to state** | For `approve`: keeps selections and continues to itinerary generation. For `revise_plan`: builds a `revision_baseline`, clears prior options, writes revision feedback back into `free_text_query`, and loops to `trip_intake`. For `cancel`: routes to `END` |
+| **Revision behavior** | Simple duration changes like "make it 5 nights" patch the existing trip deterministically before intake reruns, so old dates do not override the revised stay length |
 
 ### Attractions Research
 
@@ -286,6 +287,7 @@ For multi-city trips, additional fields are populated:
 | `selected_flights` | `list[dict]` | User-selected flight per leg |
 | `selected_hotels` | `list[dict]` | User-selected hotel per leg (empty dict if no hotel needed) |
 | `feedback_type` | `str` | Review decision type such as `rewrite_itinerary`, `revise_plan`, or `cancel` |
+| `revision_baseline` | `dict` | Working copy of the current trip request used when a revise action should override existing values instead of only filling empty fields |
 
 The trip intake's `structured_fields` payload may also carry `return_to_origin: bool` (defaults to `true`). When `false`, the intake skips the synthetic return leg, producing an open-jaw / one-way multi-city itinerary.
 

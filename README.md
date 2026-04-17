@@ -18,7 +18,7 @@ TripBreeze is deployed on Streamlit Community Cloud:
 - 📚 Retrieves visa and entry requirement guidance from a local RAG knowledge base
 - 🌤️ Shows weather forecasts for each day of the trip (via Open-Meteo, no API key needed)
 - 💸 Tracks budget against the trip request
-- ✅ Lets the user review results before finalising
+- ✅ Lets the user review results, revise the plan, or continue to final itinerary generation
 - 🔐 Supports user accounts with securely hashed passwords (`bcrypt`)
 - 🧠 Remembers preferences such as home airport, class, and trip history (with PDF download for past trips)
 - 📄 Exports final itinerary as a downloadable PDF
@@ -32,9 +32,10 @@ Profile Loader
   -> Research Orchestrator (ReAct agent: flights, ground transport, hotels, RAG for entry requirements)
   -> Budget Aggregator
   -> Review (HITL pause)
-  -> Attractions Research (fetches real attraction candidates after approval)
-  -> Trip Finaliser (uses grounded entry requirements gathered earlier, generates itinerary)
-  -> Memory Updater
+  -> Feedback Router (approve / revise plan / cancel)
+     -> approve: Attractions Research -> Trip Finaliser -> Memory Updater
+     -> revise plan: back to Trip Intake, then through research/budget/review again
+     -> cancel: end
 ```
 
 ## 🏗️ Architecture
@@ -49,8 +50,14 @@ FastAPI (backend API, port 8100 — background thread)
     ├── POST /api/search               → LangGraph pipeline → SSE stream
     ├── GET  /api/search/{thread}/state → current graph state for HITL review
     ├── POST /api/search/{thread}/return-flights → return flight lookup
-    └── POST /api/search/{thread}/approve → resume + SSE finalisation stream
+    └── POST /api/search/{thread}/approve → resume after review; supports approve or revise-plan SSE flows
 ```
+
+Review actions currently work like this:
+
+- `rewrite_itinerary`: keep the approved trip and selected options, then use feedback only in the final itinerary wording
+- `revise_plan`: patch the current trip request and rerun intake/research/budget/review
+- `cancel`: stop the workflow
 
 Streamlit is a thin UI client. All LangGraph orchestration, LLM calls, and API interactions run behind FastAPI, which streams progress and results back via Server-Sent Events (SSE). This separation allows the backend to be deployed independently for multi-user scaling.
 
