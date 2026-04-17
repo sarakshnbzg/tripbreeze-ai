@@ -362,6 +362,14 @@ def _build_clarification_question(missing_fields: list[str], profile: dict[str, 
     return f"I'd love to help plan your trip! {question}"
 
 
+def _apply_profile_defaults(raw_trip_data: dict[str, Any], profile: dict[str, Any]) -> None:
+    """Fill missing trip fields from the saved user profile before clarification."""
+    if not raw_trip_data.get("origin") and profile.get("home_city"):
+        raw_trip_data["origin"] = profile["home_city"]
+    if not raw_trip_data.get("travel_class") and profile.get("travel_class"):
+        raw_trip_data["travel_class"] = profile["travel_class"]
+
+
 def _normalise_trip_data(raw_trip_data: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
     hotel_stars_user_specified = raw_trip_data.get("hotel_stars") not in (None, "", [])
 
@@ -373,6 +381,10 @@ def _normalise_trip_data(raw_trip_data: dict[str, Any], profile: dict[str, Any])
         raise ValueError(f"Return date ({return_date}) must be after departure date ({departure_date}).")
     if departure_date and check_out_date and check_out_date <= departure_date:
         raise ValueError(f"Check-out date ({check_out_date}) must be after departure date ({departure_date}).")
+
+    is_one_way = bool(raw_trip_data.get("is_one_way"))
+    if departure_date and check_out_date and not return_date and not is_one_way:
+        return_date = check_out_date
 
     if departure_date and not return_date and not check_out_date:
         check_out_date = (
@@ -577,6 +589,8 @@ def trip_intake(state: dict) -> dict:
     else:
         logger.info("Trip intake using structured fields only")
 
+    _apply_profile_defaults(raw_trip_data, profile)
+
     if (
         free_text_query.strip()
         and raw_trip_data.get("departure_date")
@@ -589,11 +603,22 @@ def trip_intake(state: dict) -> dict:
                 date.fromisoformat(raw_trip_data["departure_date"]) + timedelta(days=inferred_days)
             ).isoformat()
             raw_trip_data["check_out_date"] = inferred_check_out
+            if not raw_trip_data.get("is_one_way"):
+                raw_trip_data["return_date"] = inferred_check_out
             logger.info(
-                "Inferred stay length from free text: %s day(s), check_out_date=%s",
+                "Inferred stay length from free text: %s day(s), check_out_date=%s return_date=%s",
                 inferred_days,
                 inferred_check_out,
+                raw_trip_data.get("return_date", ""),
             )
+
+    if (
+        raw_trip_data.get("departure_date")
+        and raw_trip_data.get("check_out_date")
+        and not raw_trip_data.get("return_date")
+        and not raw_trip_data.get("is_one_way")
+    ):
+        raw_trip_data["return_date"] = raw_trip_data["check_out_date"]
 
     # ── Check for missing required fields and ask the user ──
     # Only ask for clarification when the user provided free text without structured

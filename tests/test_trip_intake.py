@@ -266,6 +266,13 @@ class TestNormaliseTripData:
         assert result["check_out_date"] == expected_check_out
         assert result["return_date"] == ""
 
+    def test_check_out_date_becomes_return_date_when_not_explicitly_one_way(self):
+        result = _normalise_trip_data(
+            self._base_raw(return_date="", check_out_date="2026-05-20"),
+            {},
+        )
+        assert result["return_date"] == "2026-05-20"
+
 
 # ── _parse_preferences ──
 
@@ -573,3 +580,38 @@ class TestTripIntakeNode:
         assert trip["departure_date"] == "2026-05-15"
         assert trip["return_date"] == ""
         assert trip["check_out_date"] == "2026-05-18"
+
+    def test_free_text_uses_profile_home_city_and_infers_round_trip_from_nights(self):
+        mock_llm = MagicMock()
+        mock_response = MagicMock()
+        mock_response.tool_calls = [
+            {
+                "args": {
+                    "origin": "",
+                    "destination": "London",
+                    "departure_date": "2026-05-21",
+                    "return_date": "",
+                    "check_out_date": "",
+                    "is_one_way": False,
+                }
+            }
+        ]
+        mock_llm.bind_tools.return_value = MagicMock()
+
+        state = self._base_state(
+            user_profile={"home_city": "Berlin"},
+            structured_fields={},
+            free_text_query="I want to plan a trip to London on May 21st for 2 nights.",
+        )
+
+        with patch("domain.nodes.trip_intake.create_chat_model", return_value=mock_llm):
+            with patch("domain.nodes.trip_intake.invoke_with_retry", return_value=mock_response):
+                with patch("domain.nodes.trip_intake.extract_token_usage", return_value=None):
+                    result = trip_intake(state)
+
+        trip = result["trip_request"]
+        assert trip["origin"] == "Berlin"
+        assert trip["departure_date"] == "2026-05-21"
+        assert trip["return_date"] == "2026-05-23"
+        assert trip["check_out_date"] == "2026-05-23"
+        assert "(one-way)" not in result["messages"][0]["content"]
