@@ -1,5 +1,6 @@
 """Tests for presentation/api.py."""
 
+import asyncio
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
@@ -91,3 +92,29 @@ class TestAPIEndpoints:
 
         assert response.status_code == 400
         assert response.json()["detail"] == "Provider unavailable"
+
+    def test_approve_routes_revision_feedback_to_revision_runner(self, monkeypatch):
+        class DummyLoop:
+            def __init__(self):
+                self.calls = []
+
+            def run_in_executor(self, executor, fn, *args):
+                self.calls.append(fn)
+
+        loop = DummyLoop()
+        monkeypatch.setattr(api, "get_provider_status", lambda provider: (True, ""))
+        monkeypatch.setattr(api.asyncio, "get_event_loop", lambda: loop)
+
+        response = asyncio.run(
+            api.approve(
+                "thread-123",
+                api.ApproveRequest(
+                    llm_provider="openai",
+                    feedback_type="revise_plan",
+                    user_feedback="Show cheaper hotels.",
+                ),
+            )
+        )
+
+        assert response.status_code == 200
+        assert loop.calls == [api._run_post_review_sync]

@@ -7,6 +7,7 @@ This module imports from the application layer (graph, state) and domain (flight
 import asyncio
 import json
 import queue
+import re
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
@@ -17,7 +18,7 @@ from pydantic import BaseModel
 
 from langgraph.types import Command
 
-from application.graph import compile_graph, run_finalisation_streaming
+from application.graph import compile_graph
 from domain.agents.flight_agent import fetch_return_flights
 from infrastructure.logging_utils import get_logger
 from infrastructure.llms.model_factory import get_provider_status
@@ -49,12 +50,22 @@ NODE_LABELS = {
     "research": "Researching flights, hotels, and destination info...",
     "aggregate_budget": "Calculating budget breakdown...",
     "review": "Preparing your trip summary...",
+    "feedback_router": "Updating the workflow based on your decision...",
+    "attractions": "Finding attractions for your itinerary...",
+    "finalise": "Finalising your itinerary...",
+    "update_memory": "Saving your travel preferences...",
 }
 
 
 def _sse_event(event: str, data: dict | str) -> str:
     payload = data if isinstance(data, str) else json.dumps(data, default=str)
     return f"event: {event}\ndata: {payload}\n\n"
+
+
+def _iter_text_chunks(text: str):
+    for chunk in re.split(r"(\s+)", text):
+        if chunk:
+            yield chunk
 
 
 # ── Request / Response models ──
@@ -70,6 +81,7 @@ class SearchRequest(BaseModel):
 
 class ApproveRequest(BaseModel):
     user_feedback: str = ""
+    feedback_type: str = "rewrite_itinerary"
     # Legacy single-selection (backward compat)
     selected_flight: dict[str, Any] = {}
     selected_hotel: dict[str, Any] = {}
@@ -156,19 +168,62 @@ def _run_planning_sync(q: queue.Queue, initial_state: dict, config: dict) -> Non
         q.put(_SENTINEL)
 
 
-def _run_finalisation_sync(q: queue.Queue, thread_id: str, state_updates: dict) -> None:
-    """Run finalisation streaming synchronously, pushing SSE events to a queue."""
+def _emit_node_events(q: queue.Queue, node_name: str, node_output: dict) -> None:
+    label = NODE_LABELS.get(node_name, f"Running {node_name}...")
+    q.put(_sse_event("node_start", {"node": node_name, "label": label}))
+    if node_name != "review":
+        latest_message = next(
+            (
+                m for m in reversed(node_output.get("messages", []))
+                if m.get("role") == "assistant" and m.get("content")
+            ),
+            None,
+        )
+        if latest_message:
+            q.put(_sse_event("node_message", {
+                "node": node_name,
+                "content": latest_message["content"],
+            }))
+
+
+def _run_post_review_sync(q: queue.Queue, thread_id: str, state_updates: dict) -> None:
+    """Resume the graph after review, supporting approval or plan revision."""
     try:
         graph = _get_graph()
-        for item in run_finalisation_streaming(graph, thread_id, state_updates):
-            if isinstance(item, str):
-                q.put(_sse_event("token", {"content": item}))
-            else:
-                # Final state dict
-                item["thread_id"] = thread_id
-                q.put(_sse_event("state", item))
+        config = {"configurable": {"thread_id": thread_id}}
+        for event in graph.stream(Command(resume=state_updates), config):
+            for node_name, node_output in event.items():
+                if not isinstance(node_output, dict):
+                    continue
+                _emit_node_events(q, node_name, node_output)
+
+                if node_name == "finalise":
+                    itinerary_markdown = str(node_output.get("final_itinerary") or "")
+                    for chunk in _iter_text_chunks(itinerary_markdown):
+                        q.put(_sse_event("token", {"content": chunk}))
+
+        state_snapshot = graph.get_state(config)
+        has_interrupt = False
+        for task in (state_snapshot.tasks or []):
+            for intr in (task.interrupts or []):
+                intr_value = intr.value if hasattr(intr, "value") else intr
+                if isinstance(intr_value, dict) and intr_value.get("type") == "clarification":
+                    q.put(_sse_event("clarification", {
+                        "thread_id": thread_id,
+                        "question": intr_value.get("question", ""),
+                        "missing_fields": intr_value.get("missing_fields", []),
+                    }))
+                    has_interrupt = True
+                    break
+            if has_interrupt:
+                break
+
+        if not has_interrupt:
+            merged = dict(state_snapshot.values)
+            merged["thread_id"] = thread_id
+            q.put(_sse_event("state", merged))
     except Exception as exc:
-        logger.exception("Finalisation stream failed")
+        logger.exception("Post-review stream failed")
         q.put(_sse_event("error", {"detail": str(exc)}))
     finally:
         q.put(_SENTINEL)
@@ -279,6 +334,7 @@ async def search(req: SearchRequest):
         "messages": [{"role": "user", "content": req.free_text_query or ""}],
         "user_approved": False,
         "user_feedback": "",
+        "feedback_type": "rewrite_itinerary",
     }
     if req.structured_fields:
         initial_state["structured_fields"] = req.structured_fields
@@ -358,8 +414,9 @@ async def approve(thread_id: str, req: ApproveRequest):
         raise HTTPException(status_code=400, detail=provider_message)
 
     state_updates = {
-        "user_approved": True,
+        "user_approved": req.feedback_type != "revise_plan",
         "user_feedback": req.user_feedback,
+        "feedback_type": req.feedback_type,
         "llm_provider": req.llm_provider,
         "llm_model": req.llm_model,
         "llm_temperature": req.llm_temperature,
@@ -379,10 +436,13 @@ async def approve(thread_id: str, req: ApproveRequest):
 
     if req.trip_request:
         state_updates["trip_request"] = req.trip_request
+    if req.user_feedback.strip():
+        prefix = "Please revise this plan: " if req.feedback_type == "revise_plan" else "Final itinerary notes: "
+        state_updates["messages"] = [{"role": "user", "content": f"{prefix}{req.user_feedback.strip()}"}]
 
     q: queue.Queue = queue.Queue()
     loop = asyncio.get_event_loop()
-    loop.run_in_executor(_executor, _run_finalisation_sync, q, thread_id, state_updates)
+    loop.run_in_executor(_executor, _run_post_review_sync, q, thread_id, state_updates)
 
     return StreamingResponse(
         _queue_to_sse(q),

@@ -47,6 +47,7 @@ class TravelState(TypedDict, total=False):
     # Human-in-the-loop
     user_approved: bool
     user_feedback: str
+    feedback_type: str
     selected_flight: dict[str, Any]
     selected_hotel: dict[str, Any]
     selected_transport: dict[str, Any]

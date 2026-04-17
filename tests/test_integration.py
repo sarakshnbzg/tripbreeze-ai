@@ -16,6 +16,8 @@ import uuid
 
 import pytest
 
+from langgraph.checkpoint.memory import MemorySaver
+
 from application.graph import compile_graph, run_finalisation_streaming
 from domain.nodes.trip_finaliser import Itinerary
 from langgraph.types import Command
@@ -283,6 +285,7 @@ def _patch_all(
     _finaliser = finaliser_llm or _finaliser_llm_mock()
 
     with (
+        patch("application.graph.get_checkpointer", return_value=MemorySaver()),
         patch("domain.nodes.profile_loader.load_profile", return_value=_profile) as mock_profile,
         patch("domain.agents.flight_agent.api_search_flights", return_value=_flights) as mock_api_flights,
         patch("domain.agents.hotel_agent.api_search_hotels", return_value=_hotels) as mock_api_hotels,
@@ -293,6 +296,10 @@ def _patch_all(
         patch("domain.nodes.memory_updater.update_profile_from_trip", return_value=_profile) as mock_memory,
         patch("domain.nodes.attractions_research.search_attractions", return_value=[]) as mock_attractions,
         patch("domain.nodes.trip_finaliser.fetch_weather_for_trip", return_value={}) as mock_weather,
+        patch("domain.nodes.budget_aggregator.load_destination_daily_expense", return_value=(None, "")),
+        patch("infrastructure.apis.geocoding_client.load_place_country", return_value=""),
+        patch("infrastructure.apis.geocoding_client.save_place_alias", return_value=None),
+        patch("infrastructure.apis.geocoding_client._fetch_geocode_payload", return_value=None),
     ):
         if intake_llm is not None:
             mock_intake_llm.return_value = intake_llm

@@ -289,6 +289,7 @@ def run_finalisation(feedback: str = "") -> None:
 
     approve_request = {
         "user_feedback": feedback,
+        "feedback_type": "rewrite_itinerary",
         "selected_flight": state.get("selected_flight", {}),
         "selected_hotel": state.get("selected_hotel", {}),
         "selected_flights": state.get("selected_flights", []),
@@ -334,3 +335,93 @@ def run_finalisation(feedback: str = "") -> None:
 
     st.session_state.awaiting_review = False
     st.session_state.trip_complete = True
+
+
+def run_plan_revision(feedback: str) -> None:
+    """Send review feedback back through intake/research and pause at review again."""
+    state = st.session_state.graph_state
+    if not state:
+        st.error("No trip data to revise. Please start a new search.")
+        return
+    if not feedback.strip():
+        st.error("Add a short note about what should change before revising the plan.")
+        return
+
+    provider_ready, provider_message = get_provider_status(st.session_state.llm_provider)
+    if not provider_ready:
+        logger.warning("Selected provider is not ready for revision: %s", provider_message)
+        _append_assistant_message(
+            f"I can't use the selected provider yet: {provider_message}"
+        )
+        st.error(provider_message)
+        return
+
+    approve_request = {
+        "user_feedback": feedback.strip(),
+        "feedback_type": "revise_plan",
+        "selected_flight": state.get("selected_flight", {}),
+        "selected_hotel": state.get("selected_hotel", {}),
+        "selected_flights": state.get("selected_flights", []),
+        "selected_hotels": state.get("selected_hotels", []),
+        "trip_request": state.get("trip_request", {}),
+        "llm_provider": st.session_state.llm_provider,
+        "llm_model": st.session_state.llm_model,
+        "llm_temperature": st.session_state.llm_temperature,
+    }
+
+    try:
+        _archive_current_token_usage()
+        result: dict = {}
+        clarification: dict = {}
+        with st.status("Revising your trip plan...", expanded=True) as status:
+            for event_type, data in api_client.stream_approve(
+                st.session_state.thread_id,
+                approve_request,
+            ):
+                if event_type == "node_start":
+                    st.write(data.get("label", ""))
+                elif event_type == "node_message":
+                    st.write(data.get("content", ""))
+                elif event_type == "state":
+                    result = data
+                    st.session_state.graph_state = data
+                elif event_type == "clarification":
+                    clarification = data
+                    st.session_state.thread_id = data.get("thread_id", "")
+                elif event_type == "error":
+                    raise RuntimeError(data.get("detail", "Unknown error"))
+            if clarification:
+                status.update(label="Need a bit more info...", state="complete", expanded=False)
+            else:
+                status.update(label="Revised options are ready to review.", state="complete", expanded=False)
+    except Exception as exc:
+        logger.exception("Plan revision failed")
+        _append_assistant_message(f"I hit an error while revising your trip: {exc}")
+        st.error(f"Revision failed: {exc}")
+        return
+
+    if clarification:
+        question = clarification.get("question", "Could you provide more details?")
+        st.session_state.awaiting_clarification = True
+        st.session_state.clarification_question = question
+        st.session_state.awaiting_review = False
+        st.session_state.messages.append({"role": "assistant", "content": question})
+        with st.chat_message("assistant"):
+            st.write_stream(_stream_text(question))
+        return
+
+    if result:
+        latest_assistant_message = next(
+            (
+                message for message in reversed(result.get("messages", []))
+                if message.get("role") == "assistant" and message.get("content")
+            ),
+            None,
+        )
+        if latest_assistant_message:
+            st.session_state.messages.append(latest_assistant_message)
+            with st.chat_message("assistant"):
+                st.write_stream(_stream_text(latest_assistant_message["content"]))
+
+    st.session_state.awaiting_review = True
+    st.session_state.awaiting_interests = False

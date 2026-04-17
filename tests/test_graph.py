@@ -1,7 +1,11 @@
 """Tests for application/graph.py — HITL review, routing, and graph structure."""
 
+from langgraph.checkpoint.memory import MemorySaver
+
 from application.graph import (
+    build_revision_query,
     _route_after_intake,
+    _route_after_review_router,
     build_graph,
     compile_graph,
     run_finalisation_streaming,
@@ -68,10 +72,34 @@ class TestFormatTripSummary:
 
 
 class TestGraphInterrupt:
-    def test_compiled_graph_has_interrupt_before_finalise(self):
-        """The compiled graph must pause before 'finalise' so HITL review can happen."""
+    def test_compiled_graph_does_not_use_interrupt_before(self, monkeypatch):
+        """Review routing now pauses via a dynamic interrupt inside feedback_router."""
+        monkeypatch.setattr("application.graph.get_checkpointer", lambda: MemorySaver())
         compiled = compile_graph()
-        assert "finalise" in compiled.interrupt_before_nodes
+        assert not compiled.interrupt_before_nodes
+
+
+class TestBuildRevisionQuery:
+    def test_includes_current_trip_and_feedback(self):
+        query = build_revision_query(
+            {
+                "trip_request": {
+                    "origin": "Berlin",
+                    "destination": "Paris",
+                    "departure_date": "2026-07-01",
+                    "return_date": "2026-07-08",
+                    "budget_limit": 1200,
+                    "currency": "EUR",
+                    "preferences": "direct flights",
+                },
+                "user_feedback": "Show cheaper hotel options and avoid layovers.",
+            }
+        )
+
+        assert "Current origin: Berlin" in query
+        assert "Current destination: Paris" in query
+        assert "Budget limit: 1200 EUR" in query
+        assert "Show cheaper hotel options and avoid layovers." in query
 
 
 class TestRouteAfterIntake:
@@ -83,6 +111,17 @@ class TestRouteAfterIntake:
 
     def test_validation_error_stops(self):
         assert _route_after_intake({"current_step": "intake_error"}) == "stop"
+
+
+class TestRouteAfterReviewRouter:
+    def test_revision_routes_back_to_intake(self):
+        assert _route_after_review_router({"feedback_type": "revise_plan"}) == "revise"
+
+    def test_cancel_routes_to_end(self):
+        assert _route_after_review_router({"feedback_type": "cancel"}) == "stop"
+
+    def test_approval_routes_to_finalisation_path(self):
+        assert _route_after_review_router({"feedback_type": "rewrite_itinerary"}) == "approve"
 
 
 # ── hitl_review ──
@@ -186,12 +225,15 @@ class TestGraphConstruction:
             "research",
             "aggregate_budget",
             "review",
+            "feedback_router",
+            "attractions",
             "finalise",
             "update_memory",
         }
         assert expected.issubset(node_names)
 
-    def test_compile_graph_returns_runnable(self):
+    def test_compile_graph_returns_runnable(self, monkeypatch):
+        monkeypatch.setattr("application.graph.get_checkpointer", lambda: MemorySaver())
         compiled = compile_graph()
         assert hasattr(compiled, "stream")
         assert hasattr(compiled, "invoke")
@@ -211,7 +253,7 @@ class TestRunFinalisationStreaming:
     def test_streams_itinerary_chunks_before_final_state(self, monkeypatch):
         class DummyGraph:
             def __init__(self):
-                self.state = {"trip_request": {"destination": "Paris"}}
+                self.state = {"trip_request": {"destination": "Paris"}, "final_itinerary": "Hello Paris"}
 
             def update_state(self, config, updates, as_node=None):
                 self.state.update(updates)
@@ -221,16 +263,7 @@ class TestRunFinalisationStreaming:
                 return SimpleNamespace(values=self.state)
 
             def stream(self, initial_state, config):
-                yield {}
-
-        monkeypatch.setattr(
-            "domain.nodes.attractions_research.attractions_research",
-            lambda state: {"attraction_candidates": []},
-        )
-        monkeypatch.setattr(
-            "application.graph.trip_finaliser",
-            lambda state: {"final_itinerary": "Hello Paris", "current_step": "finalised"},
-        )
+                yield {"finalise": {"final_itinerary": "Hello Paris", "current_step": "finalised"}}
 
         items = list(run_finalisation_streaming(DummyGraph(), "thread-123", {"user_approved": True}))
 

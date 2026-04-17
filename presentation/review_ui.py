@@ -5,6 +5,7 @@ import html
 import streamlit as st
 
 from presentation import api_client
+from presentation.planning_flow import run_plan_revision
 from infrastructure.currency_utils import format_currency, normalise_currency
 
 
@@ -519,6 +520,27 @@ def _render_multi_city_review(state: dict) -> None:
 
     st.divider()
 
+    revision_feedback = st.text_area(
+        "Change request for search results (optional)",
+        key="multi_city_review_revision_feedback",
+        placeholder="e.g. keep Paris but replace Barcelona with Madrid, or find cheaper flights for leg 2",
+        help="Use this when you want us to rerun planning with different constraints before generating the itinerary.",
+    )
+    if st.button(
+        "Revise Plan",
+        type="secondary",
+        use_container_width=True,
+        disabled=not revision_feedback.strip(),
+        key="revise_multi_city_plan",
+    ):
+        state["user_feedback"] = revision_feedback.strip()
+        st.session_state.graph_state = state
+        st.session_state.messages.append(
+            {"role": "user", "content": f"Please revise this plan: {revision_feedback.strip()}"}
+        )
+        run_plan_revision(revision_feedback)
+        st.rerun()
+
     # Approve button
     if not all_selections_complete:
         st.warning("Please select a flight and hotel for each leg before approving.")
@@ -729,6 +751,27 @@ def render_review_actions() -> None:
             st.info(f"📝 {budget['budget_notes']}")
 
     st.divider()
+
+    revision_feedback = st.text_area(
+        "Change request for search results (optional)",
+        key="review_revision_feedback",
+        placeholder="e.g. show cheaper hotels, avoid layovers, make the trip 5 nights instead of 7",
+        help="Use this when you want us to rerun planning with different constraints before generating the itinerary.",
+    )
+
+    if st.button(
+        "Revise Plan",
+        type="secondary",
+        use_container_width=True,
+        disabled=not revision_feedback.strip(),
+    ):
+        state["user_feedback"] = revision_feedback.strip()
+        st.session_state.graph_state = state
+        st.session_state.messages.append(
+            {"role": "user", "content": f"Please revise this plan: {revision_feedback.strip()}"}
+        )
+        run_plan_revision(revision_feedback)
+        st.rerun()
 
     # Actions
     flight_selection_complete = selected_flight_idx is not None and (
