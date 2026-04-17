@@ -15,7 +15,7 @@ from domain.nodes.hitl_review import (
     _format_trip_summary,
     hitl_review,
 )
-from domain.nodes.review_router import _build_revision_baseline
+from domain.nodes.review_router import _build_revision_baseline, review_router
 from domain.nodes.research_orchestrator import _format_destination_info
 
 
@@ -118,6 +118,29 @@ class TestRevisionBaseline:
         )
 
         assert baseline["return_date"] == "2026-05-26"
+
+    def test_review_router_uses_resumed_feedback_for_revision_baseline(self, monkeypatch):
+        monkeypatch.setattr(
+            "domain.nodes.review_router.interrupt",
+            lambda payload: {
+                "feedback_type": "revise_plan",
+                "user_feedback": "Make it 5 nights",
+            },
+        )
+
+        result = review_router(
+            {
+                "trip_request": {
+                    "origin": "Berlin",
+                    "destination": "London",
+                    "departure_date": "2026-05-21",
+                    "return_date": "2026-05-23",
+                }
+            }
+        )
+
+        assert result["free_text_query"] == "Make it 5 nights"
+        assert result["revision_baseline"]["return_date"] == "2026-05-26"
 
 
 class TestRouteAfterIntake:

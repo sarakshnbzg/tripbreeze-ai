@@ -72,9 +72,9 @@ def _extract_requested_nights(feedback: str) -> int | None:
     return nights if nights > 0 else None
 
 
-def _build_revision_baseline(state: dict) -> dict:
+def _build_revision_baseline(state: dict, feedback: str = "") -> dict:
     trip = dict(state.get("trip_request", {}) or {})
-    feedback = str(state.get("user_feedback") or "")
+    feedback = str(feedback or state.get("user_feedback") or "")
     trip_legs = state.get("trip_legs", []) or []
 
     # Single-destination duration changes can be patched deterministically.
@@ -109,6 +109,7 @@ def review_router(state: dict) -> dict:
     )
     decision = decision if isinstance(decision, dict) else {}
     feedback_type = str(decision.get("feedback_type") or state.get("feedback_type") or "").strip().lower()
+    user_feedback = str(decision.get("user_feedback") or state.get("user_feedback") or "").strip()
     is_revision = feedback_type == "revise_plan"
 
     logger.info(
@@ -122,6 +123,7 @@ def review_router(state: dict) -> dict:
             **decision,
             "current_step": "approval_received",
             "feedback_type": feedback_type or "rewrite_itinerary",
+            "user_feedback": user_feedback,
             "user_approved": bool(decision.get("user_approved", state.get("user_approved", True))),
         }
 
@@ -130,8 +132,9 @@ def review_router(state: dict) -> dict:
         "user_approved": False,
         "current_step": "revising_plan",
         "structured_fields": {},
-        "revision_baseline": _build_revision_baseline(state),
-        "free_text_query": str(decision.get("user_feedback") or state.get("user_feedback") or "").strip(),
+        "user_feedback": user_feedback,
+        "revision_baseline": _build_revision_baseline(state, user_feedback),
+        "free_text_query": user_feedback,
         "selected_flight": {},
         "selected_hotel": {},
         "selected_transport": {},
