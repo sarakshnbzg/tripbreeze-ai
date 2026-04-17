@@ -1,0 +1,116 @@
+[
+  {
+    "id": "single_city_free_text_trip_request",
+    "input_state": {
+      "user_profile": {
+        "home_city": "Berlin",
+        "travel_class": "ECONOMY"
+      },
+      "llm_provider": "openai",
+      "llm_model": "gpt-4o-mini",
+      "structured_fields": {},
+      "free_text_query": "Plan a food-focused trip from Berlin to Lisbon leaving on 2099-06-14 and returning on 2099-06-17 with a budget of 1200 EUR."
+    },
+    "responses": [
+      {
+        "expect_prompt_contains": [
+          "<user_query>\nPlan a food-focused trip from Berlin to Lisbon leaving on 2099-06-14 and returning on 2099-06-17 with a budget of 1200 EUR.\n</user_query>"
+        ],
+        "tool_calls": [
+          {
+            "id": "domain_ok",
+            "name": "EvaluateDomain",
+            "args": {
+              "in_domain": true,
+              "reason": ""
+            }
+          }
+        ]
+      },
+      {
+        "expect_prompt_contains": [
+          "<user_query>\nPlan a food-focused trip from Berlin to Lisbon leaving on 2099-06-14 and returning on 2099-06-17 with a budget of 1200 EUR.\n</user_query>"
+        ],
+        "tool_calls": [
+          {
+            "id": "extract_trip",
+            "name": "ExtractTripDetails",
+            "args": {
+              "origin": "Berlin",
+              "destination": "Lisbon",
+              "departure_date": "2099-06-14",
+              "return_date": "2099-06-17",
+              "check_out_date": "2099-06-17",
+              "num_travelers": 1,
+              "budget_limit": 1200,
+              "currency": "EUR",
+              "travel_class": "ECONOMY",
+              "preferences": "Food-focused trip",
+              "interests": [
+                "food"
+              ],
+              "pace": "moderate"
+            }
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "current_step": "intake_complete",
+      "destination": "Lisbon",
+      "origin": "Berlin",
+      "departure_date": "2099-06-14",
+      "return_date": "2099-06-17",
+      "budget_limit": 1200.0,
+      "interests": [
+        "food"
+      ],
+      "pace": "moderate",
+      "messages_contains": [
+        "Berlin",
+        "Lisbon"
+      ],
+      "token_usage_nodes": [
+        "domain_guardrail",
+        "trip_intake"
+      ]
+    }
+  },
+  {
+    "id": "out_of_scope_prompt_rejected",
+    "input_state": {
+      "user_profile": {},
+      "llm_provider": "openai",
+      "llm_model": "gpt-4o-mini",
+      "structured_fields": {},
+      "free_text_query": "Explain quantum computing in simple terms."
+    },
+    "responses": [
+      {
+        "expect_prompt_contains": [
+          "<user_query>\nExplain quantum computing in simple terms.\n</user_query>"
+        ],
+        "tool_calls": [
+          {
+            "id": "domain_reject",
+            "name": "EvaluateDomain",
+            "args": {
+              "in_domain": false,
+              "reason": "General knowledge request"
+            }
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "current_step": "out_of_domain",
+      "messages_contains": [
+        "travel planning only",
+        "travel-related request"
+      ],
+      "token_usage_nodes": [
+        "domain_guardrail"
+      ]
+    }
+  }
+]

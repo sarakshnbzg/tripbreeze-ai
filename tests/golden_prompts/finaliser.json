@@ -1,0 +1,408 @@
+[
+  {
+    "id": "single_city_itinerary_structure",
+    "input_state": {
+      "llm_provider": "openai",
+      "llm_model": "gpt-4o-mini",
+      "trip_request": {
+        "origin": "Berlin",
+        "destination": "Lisbon",
+        "departure_date": "2099-06-14",
+        "return_date": "2099-06-17",
+        "check_out_date": "2099-06-17",
+        "num_travelers": 2,
+        "currency": "EUR",
+        "travel_class": "ECONOMY",
+        "preferences": "Boutique hotel near walkable food neighborhoods",
+        "interests": [
+          "food",
+          "history"
+        ],
+        "pace": "moderate",
+        "hotel_stars": [
+          4
+        ]
+      },
+      "selected_flight": {
+        "airline": "TAP Air Portugal",
+        "outbound_summary": "BER 09:10 → LIS 11:45",
+        "return_summary": "LIS 18:20 → BER 22:40",
+        "total_price": 420,
+        "currency": "EUR"
+      },
+      "selected_hotel": {
+        "name": "Baixa House",
+        "rating": 9.2,
+        "address": "Rua dos Fanqueiros, Lisbon"
+      },
+      "destination_info": "#### 🌍 Overview\nLisbon is a strong choice for a food-and-history city break with compact, walkable neighborhoods.\n\n#### 🛂 Entry Requirements\nUS and EU travelers can enter Portugal visa-free for short stays; passports should remain valid for the trip.",
+      "budget": {
+        "total_estimated": 1180
+      },
+      "user_profile": {
+        "preferred_hotel_stars": [
+          4
+        ]
+      },
+      "user_feedback": "Please make the final day lighter before the flight home.",
+      "attraction_candidates": [
+        {
+          "name": "Time Out Market",
+          "category": "food",
+          "address": "Avenida 24 de Julho, Lisbon",
+          "maps_url": "https://maps.example/time-out-market",
+          "destination": "Lisbon"
+        },
+        {
+          "name": "Alfama Walking Tour",
+          "category": "history",
+          "address": "Alfama, Lisbon",
+          "maps_url": "https://maps.example/alfama-tour",
+          "destination": "Lisbon"
+        },
+        {
+          "name": "LX Factory",
+          "category": "food",
+          "address": "Rua Rodrigues de Faria 103, Lisbon",
+          "maps_url": "https://maps.example/lx-factory",
+          "destination": "Lisbon"
+        }
+      ],
+      "rag_sources": [
+        "visa_requirements.md"
+      ],
+      "rag_trace": []
+    },
+    "responses": [
+      {
+        "expect_prompt_contains": [
+          "Trip length: 4 day(s).",
+          "Time Out Market [food]",
+          "Please make the final day lighter before the flight home."
+        ],
+        "tool_calls": [
+          {
+            "id": "final_itinerary",
+            "name": "Itinerary",
+            "args": {
+              "trip_overview": "Berlin to Lisbon for a long weekend focused on food, walkable neighborhoods, and a lighter departure day.",
+              "flight_details": "- TAP Air Portugal outbound BER 09:10 -> LIS 11:45\n- Return LIS 18:20 -> BER 22:40\n- Total flight cost: EUR 420",
+              "hotel_details": "- Baixa House\n- Boutique-style stay in central Lisbon\n- Good fit for walkable food neighborhoods",
+              "destination_highlights": "Lisbon blends tiled historic streets, strong food markets, and easy neighborhood-hopping for a short city break.",
+              "daily_plans": [
+                {
+                  "day_number": 1,
+                  "date": "2099-06-14",
+                  "theme": "Arrival and Baixa food crawl",
+                  "activities": [
+                    {
+                      "name": "Time Out Market",
+                      "time_of_day": "afternoon",
+                      "notes": "An easy first stop to sample local dishes after arrival."
+                    }
+                  ]
+                },
+                {
+                  "day_number": 2,
+                  "date": "2099-06-15",
+                  "theme": "Historic Lisbon",
+                  "activities": [
+                    {
+                      "name": "Alfama Walking Tour",
+                      "time_of_day": "morning",
+                      "notes": "A strong history match for the trip."
+                    },
+                    {
+                      "name": "LX Factory",
+                      "time_of_day": "evening",
+                      "notes": "Good for a casual dinner and creative atmosphere."
+                    }
+                  ]
+                },
+                {
+                  "day_number": 3,
+                  "date": "2099-06-16",
+                  "theme": "Flexible neighborhood wandering",
+                  "activities": [
+                    {
+                      "name": "Time Out Market",
+                      "time_of_day": "morning",
+                      "notes": "Revisit favorite vendors for a slower start."
+                    }
+                  ]
+                },
+                {
+                  "day_number": 4,
+                  "date": "2099-06-17",
+                  "theme": "Departure day",
+                  "activities": [
+                    {
+                      "name": "LX Factory",
+                      "time_of_day": "morning",
+                      "notes": "A light final stop before heading to the airport."
+                    }
+                  ]
+                }
+              ],
+              "budget_breakdown": "- Estimated total trip cost: EUR 1,180\n- Flights and hotel fit a moderate city-break budget",
+              "visa_entry_info": "Portugal allows short tourist stays visa-free for many travelers, but passports should stay valid for the full trip.",
+              "packing_tips": "- Bring light layers for sea breezes and evening walks.\n- Wear comfortable shoes for hills and cobblestones.",
+              "sources": [
+                {
+                  "document": "visa_requirements.md",
+                  "snippet": "Portugal allows short tourist stays visa-free for many travelers."
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "current_step": "finalised",
+      "daily_plan_count": 4,
+      "first_activity_name": "Time Out Market",
+      "first_activity_category": "food",
+      "first_activity_maps_url": "https://maps.example/time-out-market",
+      "used_fallback": false,
+      "itinerary_sections": [
+        "#### ✈️ Trip Overview",
+        "#### 🗓️ Day-by-Day Plan",
+        "#### 🛂 Visa & Entry Information"
+      ],
+      "sources_count": 1
+    }
+  },
+  {
+    "id": "multi_city_itinerary_structure",
+    "input_state": {
+      "llm_provider": "openai",
+      "llm_model": "gpt-4o-mini",
+      "trip_request": {
+        "origin": "Berlin",
+        "destination": "Paris",
+        "departure_date": "2099-07-10",
+        "return_date": "2099-07-15",
+        "num_travelers": 2,
+        "currency": "EUR",
+        "travel_class": "ECONOMY",
+        "preferences": "Keep the final leg smooth and low-stress",
+        "interests": [
+          "food",
+          "art"
+        ],
+        "pace": "moderate"
+      },
+      "trip_legs": [
+        {
+          "leg_index": 0,
+          "origin": "Berlin",
+          "destination": "Paris",
+          "departure_date": "2099-07-10",
+          "nights": 2,
+          "needs_hotel": true,
+          "check_out_date": "2099-07-12"
+        },
+        {
+          "leg_index": 1,
+          "origin": "Paris",
+          "destination": "Barcelona",
+          "departure_date": "2099-07-12",
+          "nights": 3,
+          "needs_hotel": true,
+          "check_out_date": "2099-07-15"
+        },
+        {
+          "leg_index": 2,
+          "origin": "Barcelona",
+          "destination": "Berlin",
+          "departure_date": "2099-07-15",
+          "nights": 0,
+          "needs_hotel": false,
+          "check_out_date": null
+        }
+      ],
+      "selected_flights": [
+        {
+          "outbound_summary": "BER 08:20 → CDG 10:05",
+          "airline": "Air France",
+          "total_price": 180
+        },
+        {
+          "outbound_summary": "CDG 11:40 → BCN 13:25",
+          "airline": "Vueling",
+          "total_price": 95
+        },
+        {
+          "outbound_summary": "BCN 17:30 → BER 20:10",
+          "airline": "easyJet",
+          "total_price": 130
+        }
+      ],
+      "selected_hotels": [
+        {
+          "name": "Hotel Le Six",
+          "address": "Rue Stanislas, Paris"
+        },
+        {
+          "name": "Yurbban Passage",
+          "address": "Carrer de Trafalgar, Barcelona"
+        },
+        {}
+      ],
+      "destination_info": "A quick travel snapshot to help you compare options and plan the stay:\n\n#### 🛂 Entry Requirements\n### France (Schengen Area)\n- **US citizens:** Visa-free for short stays. (Source: Visa Requirements)\n\n---\n\n### Spain (Schengen Area)\n- **US citizens:** Visa-free for short stays. (Source: Visa Requirements)",
+      "budget": {
+        "flight_cost": 405,
+        "hotel_cost": 780,
+        "estimated_daily_expenses": 400,
+        "total_estimated": 1585,
+        "budget_notes": "Within budget.",
+        "per_leg_breakdown": [
+          {
+            "origin": "Berlin",
+            "destination": "Paris",
+            "nights": 2,
+            "flight_cost": 180,
+            "hotel_cost": 260,
+            "daily_expenses": 160,
+            "leg_total": 600
+          },
+          {
+            "origin": "Paris",
+            "destination": "Barcelona",
+            "nights": 3,
+            "flight_cost": 95,
+            "hotel_cost": 520,
+            "daily_expenses": 240,
+            "leg_total": 855
+          }
+        ]
+      },
+      "user_profile": {},
+      "user_feedback": "Favor easy logistics on the last day.",
+      "attraction_candidates": [
+        {
+          "name": "Le Marais Food Walk",
+          "category": "food",
+          "address": "Le Marais, Paris",
+          "maps_url": "https://maps.example/le-marais-food-walk",
+          "destination": "Paris"
+        },
+        {
+          "name": "Picasso Museum",
+          "category": "art",
+          "address": "Carrer de Montcada, Barcelona",
+          "maps_url": "https://maps.example/picasso-museum",
+          "destination": "Barcelona"
+        }
+      ],
+      "rag_sources": [
+        "Visa Requirements"
+      ],
+      "rag_trace": []
+    },
+    "responses": [
+      {
+        "expect_prompt_contains": [
+          "MULTI-CITY trip",
+          "Leg 1 flight summary: BER 08:20 → CDG 10:05",
+          "Favor easy logistics on the last day."
+        ],
+        "tool_calls": [
+          {
+            "id": "multi_city_final",
+            "name": "MultiCityItinerary",
+            "args": {
+              "trip_overview": "Berlin → Paris → Barcelona → Berlin over 5 nights with a balanced pace.",
+              "legs": [
+                {
+                  "leg_number": 1,
+                  "origin": "Berlin",
+                  "destination": "Paris",
+                  "departure_date": "2099-07-10",
+                  "flight_summary": "BER 08:20 → CDG 10:05",
+                  "hotel_summary": "Hotel Le Six",
+                  "nights": 2
+                },
+                {
+                  "leg_number": 2,
+                  "origin": "Paris",
+                  "destination": "Barcelona",
+                  "departure_date": "2099-07-12",
+                  "flight_summary": "CDG 11:40 → BCN 13:25",
+                  "hotel_summary": "Yurbban Passage",
+                  "nights": 3
+                },
+                {
+                  "leg_number": 3,
+                  "origin": "Barcelona",
+                  "destination": "Berlin",
+                  "departure_date": "2099-07-15",
+                  "flight_summary": "BCN 17:30 → BER 20:10",
+                  "hotel_summary": "",
+                  "nights": 0
+                }
+              ],
+              "destination_highlights": "Paris gives you classic food neighborhoods, while Barcelona adds strong museum and design stops.",
+              "daily_plans": [
+                {
+                  "day_number": 1,
+                  "date": "2099-07-10",
+                  "theme": "Arrive in Paris",
+                  "activities": [
+                    {
+                      "name": "Le Marais Food Walk",
+                      "time_of_day": "evening",
+                      "notes": "A gentle first-night option after arrival."
+                    }
+                  ]
+                },
+                {
+                  "day_number": 3,
+                  "date": "2099-07-12",
+                  "theme": "Barcelona museum focus",
+                  "activities": [
+                    {
+                      "name": "Picasso Museum",
+                      "time_of_day": "afternoon",
+                      "notes": "A strong art match in the Gothic quarter."
+                    }
+                  ]
+                },
+                {
+                  "day_number": 6,
+                  "date": "2099-07-15",
+                  "theme": "Departure day",
+                  "activities": []
+                }
+              ],
+              "budget_breakdown": "- Total estimated trip cost: EUR 1,585\n- Within budget",
+              "visa_entry_info": "France and Spain both allow short visa-free stays for many travelers, but passports should remain valid.",
+              "packing_tips": "- Pack light layers for summer city walking.\n- Keep intercity booking details easy to reach.",
+              "sources": [
+                {
+                  "document": "Visa Requirements",
+                  "snippet": "France and Spain both allow short visa-free stays for many travelers."
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "current_step": "finalised",
+      "leg_count": 3,
+      "first_leg_destination": "Paris",
+      "first_activity_name": "Le Marais Food Walk",
+      "first_activity_category": "food",
+      "used_fallback": false,
+      "itinerary_sections": [
+        "#### ✈️ Trip Overview",
+        "#### 🗺️ Trip Legs",
+        "#### 🛂 Visa & Entry Information"
+      ],
+      "sources_count": 1
+    }
+  }
+]

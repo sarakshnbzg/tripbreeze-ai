@@ -1,0 +1,255 @@
+[
+  {
+    "id": "single_city_research_with_retrieval",
+    "input_state": {
+      "trip_request": {
+        "origin": "Berlin",
+        "destination": "Lisbon",
+        "departure_date": "2099-06-14",
+        "return_date": "2099-06-17",
+        "currency": "EUR",
+        "hotel_stars_user_specified": true
+      },
+      "user_profile": {
+        "passport_country": "US"
+      },
+      "llm_provider": "openai",
+      "llm_model": "gpt-4o-mini"
+    },
+    "responses": [
+      {
+        "expect_prompt_contains": [
+          "\"destination\": \"Lisbon\"",
+          "\"passport_country\": \"US\""
+        ],
+        "tool_calls": [
+          {
+            "id": "rf1",
+            "name": "search_flights",
+            "args": {}
+          },
+          {
+            "id": "rt1",
+            "name": "search_ground_transport",
+            "args": {}
+          },
+          {
+            "id": "rh1",
+            "name": "search_hotels",
+            "args": {}
+          },
+          {
+            "id": "rk1",
+            "name": "retrieve_knowledge",
+            "args": {
+              "query": "Portugal entry requirements"
+            }
+          }
+        ]
+      },
+      {
+        "expect_prompt_contains": [
+          "\"flight_count\": 1",
+          "\"hotel_count\": 1",
+          "travelers with a passport from US visiting Lisbon"
+        ],
+        "tool_calls": [
+          {
+            "id": "submit_research",
+            "name": "SubmitResearchResult",
+            "args": {
+              "summary": "Found a flight, a ground transport alternative, and a hotel for Lisbon.",
+              "entry_requirements": "Portugal allows visa-free tourist entry for US citizens for short stays. (Source: Visa Requirements)",
+              "destination_briefing": ""
+            }
+          }
+        ]
+      }
+    ],
+    "tool_results": {
+      "search_flights": {
+        "flight_options": [
+          {
+            "airline": "TAP Air Portugal",
+            "total_price": 420
+          }
+        ],
+        "messages": [
+          {
+            "role": "assistant",
+            "content": "Found 1 flight option."
+          }
+        ]
+      },
+      "search_ground_transport": {
+        "transport_options": [
+          {
+            "mode": "train",
+            "operator": "Comboios"
+          }
+        ],
+        "messages": [
+          {
+            "role": "assistant",
+            "content": "Found 1 ground transport option."
+          }
+        ]
+      },
+      "search_hotels": {
+        "hotel_options": [
+          {
+            "name": "Baixa House",
+            "total_price": 760
+          }
+        ],
+        "messages": [
+          {
+            "role": "assistant",
+            "content": "Found 1 hotel option."
+          }
+        ]
+      },
+      "retrieve": [
+        {
+          "content": "Portugal allows visa-free tourist entry for US citizens for short stays.",
+          "source": "Visa Requirements"
+        }
+      ]
+    },
+    "expected": {
+      "current_step": "research_complete",
+      "flight_count": 1,
+      "hotel_count": 1,
+      "transport_count": 1,
+      "summary_contains": [
+        "Found a flight",
+        "Lisbon"
+      ],
+      "destination_info_contains": [
+        "#### 🛂 Entry Requirements",
+        "US citizens",
+        "Source: Visa Requirements"
+      ],
+      "rag_sources": [
+        "Visa Requirements"
+      ],
+      "token_usage_nodes": [
+        "research_orchestrator",
+        "research_orchestrator"
+      ],
+      "rag_trace_node": "research_orchestrator"
+    }
+  },
+  {
+    "id": "multi_city_research_leg_aggregation",
+    "input_state": {
+      "trip_request": {
+        "origin": "Berlin",
+        "destination": "Paris",
+        "departure_date": "2099-07-10",
+        "num_travelers": 2
+      },
+      "trip_legs": [
+        {
+          "leg_index": 0,
+          "origin": "Berlin",
+          "destination": "Paris",
+          "departure_date": "2099-07-10",
+          "nights": 2,
+          "needs_hotel": true
+        },
+        {
+          "leg_index": 1,
+          "origin": "Paris",
+          "destination": "Barcelona",
+          "departure_date": "2099-07-12",
+          "nights": 3,
+          "needs_hotel": true
+        },
+        {
+          "leg_index": 2,
+          "origin": "Barcelona",
+          "destination": "Berlin",
+          "departure_date": "2099-07-15",
+          "nights": 0,
+          "needs_hotel": false
+        }
+      ],
+      "user_profile": {
+        "passport_country": "US"
+      },
+      "llm_provider": "openai",
+      "llm_model": "gpt-4o-mini"
+    },
+    "tool_results": {
+      "search_leg_flights": [
+        [
+          {
+            "airline": "Air France",
+            "total_price": 180
+          }
+        ],
+        [
+          {
+            "airline": "Vueling",
+            "total_price": 95
+          }
+        ],
+        [
+          {
+            "airline": "easyJet",
+            "total_price": 130
+          }
+        ]
+      ],
+      "search_leg_hotels": [
+        [
+          {
+            "name": "Hotel Le Six",
+            "total_price": 260
+          }
+        ],
+        [
+          {
+            "name": "Yurbban Passage",
+            "total_price": 520
+          }
+        ]
+      ],
+      "retrieve": [
+        [
+          {
+            "content": "France allows short visa-free stays for US citizens.",
+            "source": "Visa Requirements"
+          }
+        ],
+        [
+          {
+            "content": "Spain allows short visa-free stays for US citizens.",
+            "source": "Visa Requirements"
+          }
+        ]
+      ]
+    },
+    "expected": {
+      "current_step": "research_complete",
+      "flight_options_by_leg_count": 3,
+      "hotel_options_by_leg_count": 3,
+      "summary_contains": [
+        "Multi-city research complete",
+        "3 flights",
+        "2 hotels"
+      ],
+      "destination_info_contains": [
+        "### Paris",
+        "### Barcelona",
+        "### France (Schengen Area)",
+        "### Spain (Schengen Area)"
+      ],
+      "rag_sources": [
+        "Visa Requirements"
+      ],
+      "rag_trace_node": "research_orchestrator_multi_city"
+    }
+  }
+]
