@@ -27,6 +27,7 @@ class TravelState(TypedDict, total=False):
 
     # Structured form fields (passed directly from UI, skips LLM parsing)
     structured_fields: dict[str, Any]
+    revision_baseline: dict[str, Any]
 
     # Trip request (built from structured_fields + LLM-parsed preferences)
     trip_request: dict[str, Any]

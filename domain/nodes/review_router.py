@@ -1,10 +1,15 @@
 """Review router node — decides what to do after the user reviews options."""
 
+import re
+from datetime import date, timedelta
+
 from langgraph.types import interrupt
 
 from infrastructure.logging_utils import get_logger
 
 logger = get_logger(__name__)
+
+_NIGHTS_PATTERN = re.compile(r"\b(\d+)\s*nights?\b", re.IGNORECASE)
 
 
 def build_revision_query(state: dict) -> str:
@@ -56,6 +61,44 @@ def build_revision_query(state: dict) -> str:
     return "\n".join(base_lines)
 
 
+def _extract_requested_nights(feedback: str) -> int | None:
+    match = _NIGHTS_PATTERN.search(feedback or "")
+    if not match:
+        return None
+    try:
+        nights = int(match.group(1))
+    except (TypeError, ValueError):
+        return None
+    return nights if nights > 0 else None
+
+
+def _build_revision_baseline(state: dict) -> dict:
+    trip = dict(state.get("trip_request", {}) or {})
+    feedback = str(state.get("user_feedback") or "")
+    trip_legs = state.get("trip_legs", []) or []
+
+    # Single-destination duration changes can be patched deterministically.
+    requested_nights = _extract_requested_nights(feedback)
+    departure_date = str(trip.get("departure_date") or "").strip()
+    if requested_nights and departure_date and not trip_legs:
+        try:
+            updated_end_date = (
+                date.fromisoformat(departure_date) + timedelta(days=requested_nights)
+            ).isoformat()
+        except ValueError:
+            updated_end_date = ""
+
+        if updated_end_date:
+            if trip.get("return_date"):
+                trip["return_date"] = updated_end_date
+                trip["check_out_date"] = ""
+            else:
+                trip["check_out_date"] = updated_end_date
+                trip["return_date"] = ""
+
+    return trip
+
+
 def review_router(state: dict) -> dict:
     """Pause for the user's review decision, then prepare the next graph hop."""
     decision = interrupt(
@@ -87,7 +130,8 @@ def review_router(state: dict) -> dict:
         "user_approved": False,
         "current_step": "revising_plan",
         "structured_fields": {},
-        "free_text_query": build_revision_query(state),
+        "revision_baseline": _build_revision_baseline(state),
+        "free_text_query": str(decision.get("user_feedback") or state.get("user_feedback") or "").strip(),
         "selected_flight": {},
         "selected_hotel": {},
         "selected_transport": {},

@@ -15,6 +15,7 @@ from domain.nodes.hitl_review import (
     _format_trip_summary,
     hitl_review,
 )
+from domain.nodes.review_router import _build_revision_baseline
 from domain.nodes.research_orchestrator import _format_destination_info
 
 
@@ -100,6 +101,23 @@ class TestBuildRevisionQuery:
         assert "Current destination: Paris" in query
         assert "Budget limit: 1200 EUR" in query
         assert "Show cheaper hotel options and avoid layovers." in query
+
+
+class TestRevisionBaseline:
+    def test_updates_return_date_when_feedback_changes_nights(self):
+        baseline = _build_revision_baseline(
+            {
+                "trip_request": {
+                    "origin": "Berlin",
+                    "destination": "London",
+                    "departure_date": "2026-05-21",
+                    "return_date": "2026-05-23",
+                },
+                "user_feedback": "Make the trip 5 nights",
+            }
+        )
+
+        assert baseline["return_date"] == "2026-05-26"
 
 
 class TestRouteAfterIntake:

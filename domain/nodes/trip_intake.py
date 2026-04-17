@@ -454,7 +454,9 @@ def trip_intake(state: dict) -> dict:
     """LangGraph node: build trip request from structured form fields and/or free text."""
     profile = state.get("user_profile", {})
     structured_fields = state.get("structured_fields", {})
+    revision_baseline = state.get("revision_baseline", {})
     free_text_query = state.get("free_text_query", "")
+    revision_mode = bool(revision_baseline)
 
     token_usage: list[dict] = []
     model = state.get("llm_model")
@@ -462,9 +464,9 @@ def trip_intake(state: dict) -> dict:
     temperature = float(state.get("llm_temperature", 0))
 
     # Start with structured fields as the base
-    raw_trip_data = dict(structured_fields)
+    raw_trip_data = dict(revision_baseline or structured_fields)
 
-    if free_text_query.strip() and not _has_structured_trip_signal(structured_fields):
+    if free_text_query.strip() and not revision_mode and not _has_structured_trip_signal(structured_fields):
         llm = create_chat_model(provider, model, temperature=temperature)
         domain_result, usage = _classify_domain(llm, free_text_query, model=model)
         if usage:
@@ -575,7 +577,7 @@ def trip_intake(state: dict) -> dict:
             for key, value in parsed_query.items():
                 not_empty = value is not None and value != "" and value != [] and (value != 0 or key == "stops")
                 already_set = raw_trip_data.get(key) not in (None, "", []) if key != "stops" else raw_trip_data.get(key) is not None
-                if not_empty and not already_set:
+                if not_empty and (revision_mode or not already_set):
                     raw_trip_data[key] = value
 
             # If the free-text query had extra preferences, append to existing
@@ -640,7 +642,7 @@ def trip_intake(state: dict) -> dict:
     # that if the user's answer still leaves gaps, we ask again. LangGraph replays
     # answered interrupts on re-run, so each iteration's interrupt() returns the
     # previously supplied answer automatically.
-    if free_text_query.strip() and not _has_structured_trip_signal(structured_fields):
+    if free_text_query.strip() and not revision_mode and not _has_structured_trip_signal(structured_fields):
         while True:
             missing_fields: list[str] = []
             if not raw_trip_data.get("destination"):

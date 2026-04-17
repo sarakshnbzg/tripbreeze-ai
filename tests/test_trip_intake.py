@@ -406,6 +406,37 @@ class TestTripIntakeNode:
 
         assert "$1,200" in result["messages"][0]["content"]
 
+    def test_revision_baseline_allows_feedback_to_override_existing_duration(self):
+        mock_llm = MagicMock()
+        mock_response = MagicMock()
+        mock_response.tool_calls = [{"args": {"preferences": "make the trip 5 nights"}}]
+        mock_bound = MagicMock()
+        mock_llm.bind_tools.return_value = mock_bound
+
+        state = self._base_state(
+            structured_fields={},
+            revision_baseline={
+                "origin": "Berlin",
+                "destination": "London",
+                "departure_date": "2026-05-21",
+                "return_date": "2026-05-26",
+                "num_travelers": 1,
+                "budget_limit": 0,
+                "currency": "EUR",
+                "travel_class": "ECONOMY",
+                "preferences": "",
+            },
+            free_text_query="Make the trip 5 nights",
+        )
+
+        with patch("domain.nodes.trip_intake.create_chat_model", return_value=mock_llm):
+            with patch("domain.nodes.trip_intake.invoke_with_retry", return_value=mock_response):
+                with patch("domain.nodes.trip_intake.extract_token_usage", return_value=None):
+                    result = trip_intake(state)
+
+        assert result["current_step"] == "intake_complete"
+        assert result["trip_request"]["return_date"] == "2026-05-26"
+
     def test_validation_error_returns_friendly_message(self):
         state = self._base_state()
         state["structured_fields"]["departure_date"] = _RETURN
