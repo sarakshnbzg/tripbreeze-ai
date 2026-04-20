@@ -371,4 +371,4 @@ tripbreeze-ai/
 
 ## 🔮 Future Work
 
-- [ ] **Replace remaining seeded collections with a scalable data source** — Move seed datasets such as `CITIES`, `COUNTRIES`, `AIRLINES`, `CITY_TO_AIRPORT`, `DAILY_EXPENSE_BY_DESTINATION`, and similar bootstrap lists into fully managed database content or an external API (e.g., Airtable, Amadeus, or a custom backend) to enable updates without code changes.
+- [ ] **Replace remaining bootstrap reference data with managed sources** — Move fallback datasets such as `AIRLINES`, `CITY_TO_AIRPORT`, `DAILY_EXPENSE_BY_DESTINATION`, and similar code-level defaults into Postgres or an external API so updates do not require code changes.
