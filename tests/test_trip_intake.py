@@ -267,11 +267,12 @@ class TestNormaliseTripData:
         assert result["return_date"] == ""
 
     def test_check_out_date_becomes_return_date_when_not_explicitly_one_way(self):
+        next_day = str(date.fromisoformat(_DEPARTURE) + timedelta(days=1))
         result = _normalise_trip_data(
-            self._base_raw(return_date="", check_out_date="2026-05-20"),
+            self._base_raw(return_date="", check_out_date=next_day),
             {},
         )
-        assert result["return_date"] == "2026-05-20"
+        assert result["return_date"] == next_day
 
 
 # ── _parse_preferences ──
@@ -547,6 +548,8 @@ class TestTripIntakeNode:
 
     def test_free_text_one_way_extracted_by_llm(self):
         """LLM extracts one-way intent and leaves return_date empty."""
+        departure_date = str(date.today() + timedelta(days=2))
+        check_out_date = str(date.fromisoformat(departure_date) + timedelta(days=2))
         mock_llm = MagicMock()
         mock_response = MagicMock()
         # LLM now correctly identifies one-way trips
@@ -555,9 +558,9 @@ class TestTripIntakeNode:
                 "args": {
                     "origin": "Berlin",
                     "destination": "Barcelona",
-                    "departure_date": "2026-04-19",
+                    "departure_date": departure_date,
                     "return_date": "",
-                    "check_out_date": "2026-04-21",
+                    "check_out_date": check_out_date,
                     "is_one_way": True,
                 }
             }
@@ -575,9 +578,9 @@ class TestTripIntakeNode:
                     result = trip_intake(state)
 
         trip = result["trip_request"]
-        assert trip["departure_date"] == "2026-04-19"
+        assert trip["departure_date"] == departure_date
         assert trip["return_date"] == ""
-        assert trip["check_out_date"] == "2026-04-21"
+        assert trip["check_out_date"] == check_out_date
         assert "(one-way)" in result["messages"][0]["content"]
 
     def test_free_text_one_way_duration_falls_back_to_query_when_llm_misses_check_out(self):
