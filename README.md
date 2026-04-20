@@ -50,6 +50,7 @@ FastAPI (backend API, port 8100 — background thread)
     ├── POST /api/search               → LangGraph pipeline → SSE stream
     ├── GET  /api/search/{thread}/state → current graph state for HITL review
     ├── POST /api/search/{thread}/return-flights → return flight lookup
+    ├── POST /api/search/{thread}/clarify → resume after missing-field clarification
     └── POST /api/search/{thread}/approve → resume after review; supports approve or revise-plan SSE flows
 ```
 
@@ -69,7 +70,7 @@ Streamlit is a thin UI client. All LangGraph orchestration, LLM calls, and API i
 - `LangGraph`, `LangChain`: workflow orchestration, tool calling, and structured LLM interactions
 - `OpenAI`, `Google Gemini`: trip intake, research, and itinerary generation
 - `OpenAI Whisper`: voice-to-text transcription
-- `SerpAPI`, `Google Flights`, `Google Hotels`: live flight, hotel, and attraction data
+- `SerpAPI`, `Google Flights`, `Google Hotels`, `Google Maps`: live flight, hotel, and attraction data
 - `ChromaDB`, `BM25`: hybrid retrieval for the local RAG knowledge base
 - `Open-Meteo`: trip weather forecasts and historical fallback weather data
 - `Neon Postgres`, `psycopg`, `psycopg_pool`: long-term memory and LangGraph checkpoint persistence
@@ -113,8 +114,7 @@ CSC_API_KEY=...
 DATABASE_URL=postgresql://username:password@your-neon-host/database?sslmode=require
 ```
 
-TripBreeze uses Neon Postgres for long-term profile memory. You can manage the project database from the Neon console:
-<https://console.neon.tech/app/projects/autumn-cherry-20180503/branches/br-green-morning-alh1r6cy/tables>
+TripBreeze uses Neon Postgres for long-term profile memory.
 
 Optional LangSmith tracing:
 
@@ -124,8 +124,7 @@ LANGCHAIN_PROJECT=tripbreeze-ai
 LANGCHAIN_API_KEY=...
 ```
 
-LangSmith dashboard:
-<https://smith.langchain.com/o/877c675a-ba6b-46dd-8d36-826feba406a5/dashboards/projects/ba117436-e649-43df-bd87-4ebf4e8c22c8>
+You can view traces in your LangSmith project dashboard after enabling these settings.
 
 ### 3. Sync external reference data
 
@@ -145,7 +144,7 @@ SMTP_SENDER_PASSWORD=your-app-password
 SMTP_USE_TLS=true
 ```
 
-### 3. Build the knowledge base
+### 4. Build the knowledge base
 
 Run this once on first setup, and again after editing files in `knowledge_base/`:
 
@@ -162,7 +161,7 @@ uv run python scripts/rebuild_rag.py google
 
 TripBreeze stores these separately under `chroma_db/openai` and `chroma_db/google`, and automatically uses the matching index for the provider selected in the app.
 
-### 4. Run the app
+### 5. Run the app
 
 ```bash
 uv run streamlit run app.py
@@ -170,7 +169,7 @@ uv run streamlit run app.py
 
 This starts both the Streamlit UI on `http://localhost:8501` and the FastAPI backend on `http://localhost:8100` (background thread). The FastAPI interactive docs are available at `http://localhost:8100/docs`.
 
-### 5. Run tests
+### 6. Run tests
 
 ```bash
 uv run pytest -q
@@ -178,7 +177,7 @@ uv run pytest -q
 
 GitHub Actions also runs the test suite automatically on every push and pull request.
 
-### 6. Evaluate RAG
+### 7. Evaluate RAG
 
 Install the optional evaluation dependencies:
 
@@ -215,7 +214,7 @@ The judge writes row-level scores plus aggregate averages for faithfulness, corr
 completeness, groundedness, pass rate, and overall score to `evals/results/`.
 The script also continues to write retrieval snapshots and RAGAs score summaries there.
 
-### 7. Judge golden itineraries
+### 8. Judge golden itineraries
 
 The replay-based golden tests stay deterministic by default, but you can opt into
 LLM-as-a-judge scoring for the final itinerary golden cases:
@@ -366,8 +365,7 @@ tripbreeze-ai/
 - Model names, API keys, paths, and defaults are centralised in `config.py`.
 - Long-term profile memory requires `DATABASE_URL` or `NEON_DATABASE_URL`.
 - Authentication uses `bcrypt` for password hashing. If you previously created local accounts before this change, recreate them after clearing old credentials.
-- Neon Postgres is the app's long-term memory store; the current project database is managed in the Neon console:
-  <https://console.neon.tech/app/projects/autumn-cherry-20180503/branches/br-green-morning-alh1r6cy/tables>
+- Neon Postgres is the app's long-term memory store.
 - If retrieval looks stale, rebuild the RAG index with `uv run python scripts/rebuild_rag.py`.
 - If commands are missing, run them through `uv run` or make sure the project's virtual environment is active.
 
