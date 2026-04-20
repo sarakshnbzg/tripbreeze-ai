@@ -53,6 +53,10 @@ DEFAULT_LLM_MODEL = {
     "openai": "gpt-4o-mini",
     "google": "gemini-2.5-flash",
 }
+DEFAULT_JUDGE_MODEL = {
+    "openai": "gpt-4.1-mini",
+    "google": "gemini-2.5-flash",
+}
 EMBEDDING_MODELS = {
     "openai": _get_config_value("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"),
     "google": _get_config_value("GOOGLE_EMBEDDING_MODEL", "gemini-embedding-001"),

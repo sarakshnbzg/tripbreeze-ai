@@ -170,7 +170,13 @@
         "#### 🗓️ Day-by-Day Plan",
         "#### 🛂 Visa & Entry Information"
       ],
-      "sources_count": 1
+      "sources_count": 1,
+      "judge_thresholds": {
+        "overall_score": 4,
+        "constraint_following": 4,
+        "trip_relevance": 4,
+        "structure_quality": 4
+      }
     }
   },
   {
@@ -402,7 +408,13 @@
         "#### 🗺️ Trip Legs",
         "#### 🛂 Visa & Entry Information"
       ],
-      "sources_count": 1
+      "sources_count": 1,
+      "judge_thresholds": {
+        "overall_score": 4,
+        "constraint_following": 4,
+        "trip_relevance": 4,
+        "structure_quality": 4
+      }
     }
   }
 ]

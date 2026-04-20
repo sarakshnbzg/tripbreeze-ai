@@ -4,7 +4,10 @@ import sys
 from types import ModuleType
 
 from infrastructure.rag.evaluation import (
+    _extract_json_object,
     build_retrieval_snapshot,
+    evaluate_itinerary_with_llm_judge,
+    evaluate_with_llm_judge,
     evaluate_with_ragas,
     record_rag_event,
 )
@@ -101,3 +104,89 @@ class TestEvaluateWithRagas:
         assert calls["metrics_count"] == 4
         assert calls["llm"] == ("wrapped_llm", "llm")
         assert calls["embeddings"] == ("wrapped_embeddings", "embeddings")
+
+
+class TestJudgeJsonExtraction:
+    def test_extracts_plain_json_object(self):
+        parsed = _extract_json_object('{"overall_score": 4}')
+        assert parsed["overall_score"] == 4
+
+    def test_extracts_json_from_fenced_block(self):
+        parsed = _extract_json_object('```json\n{"overall_score": 5}\n```')
+        assert parsed["overall_score"] == 5
+
+
+class TestEvaluateWithLlmJudge:
+    def test_returns_row_level_and_aggregate_scores(self, monkeypatch):
+        class FakeResponse:
+            content = (
+                '{"faithfulness_to_context": 5, "answer_correctness": 4, '
+                '"answer_completeness": 4, "groundedness": 5, "overall_score": 4, '
+                '"pass": true, "strengths": ["Grounded"], "issues": ["Minor omission"], '
+                '"rationale": "Mostly correct and grounded."}'
+            )
+
+        monkeypatch.setattr("infrastructure.rag.evaluation.create_chat_model", lambda provider, model, temperature=0: "judge-llm")
+        monkeypatch.setattr("infrastructure.rag.evaluation.invoke_with_retry", lambda llm, prompt: FakeResponse())
+
+        result = evaluate_with_llm_judge(
+            [
+                {
+                    "user_input": "Do US citizens need a visa for Portugal?",
+                    "reference": "US citizens can usually visit visa-free for short stays.",
+                    "retrieved_contexts": ["Portugal allows short visa-free stays for US citizens."],
+                    "response": "US citizens can usually visit visa-free for short stays.",
+                }
+            ],
+            provider="openai",
+            model="gpt-4.1-mini",
+        )
+
+        assert result["judge_provider"] == "openai"
+        assert result["judge_model"] == "gpt-4.1-mini"
+        assert result["sample_count"] == 1
+        assert result["pass_rate"] == 1.0
+        assert result["average_scores"]["overall_score"] == 4.0
+        assert result["rows"][0]["judge"]["pass"] is True
+        assert result["rows"][0]["judge"]["strengths"] == ["Grounded"]
+
+
+class TestEvaluateItineraryWithLlmJudge:
+    def test_returns_itinerary_quality_scores(self, monkeypatch):
+        class FakeResponse:
+            content = (
+                '{"constraint_following": 5, "trip_relevance": 4, '
+                '"structure_quality": 5, "personalization": 4, "groundedness": 5, '
+                '"overall_score": 4, "pass": true, "strengths": ["Good structure"], '
+                '"issues": ["Could be more personalized"], '
+                '"rationale": "The itinerary is coherent and broadly fits the trip."}'
+            )
+
+        monkeypatch.setattr(
+            "infrastructure.rag.evaluation.create_chat_model",
+            lambda provider, model, temperature=0: "judge-llm",
+        )
+        monkeypatch.setattr(
+            "infrastructure.rag.evaluation.invoke_with_retry",
+            lambda llm, prompt: FakeResponse(),
+        )
+
+        result = evaluate_itinerary_with_llm_judge(
+            input_state={
+                "trip_request": {"destination": "Lisbon", "interests": ["food"]},
+                "user_feedback": "Keep the final day light.",
+                "destination_info": "Lisbon overview",
+                "budget": {"total_estimated": 1200},
+                "attraction_candidates": [{"name": "Time Out Market"}],
+            },
+            final_itinerary="#### Trip Overview\nLisbon food trip",
+            itinerary_data={"daily_plans": [{"day_number": 1}]},
+            provider="openai",
+            model="gpt-4.1-mini",
+        )
+
+        assert result["judge_provider"] == "openai"
+        assert result["judge_model"] == "gpt-4.1-mini"
+        assert result["result"]["pass"] is True
+        assert result["result"]["constraint_following"] == 5
+        assert result["result"]["overall_score"] == 4

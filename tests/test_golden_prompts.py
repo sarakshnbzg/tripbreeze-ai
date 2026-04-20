@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from unittest.mock import patch
 
 import pytest
@@ -9,7 +10,12 @@ import pytest
 from domain.nodes.trip_finaliser import trip_finaliser
 from domain.nodes.trip_intake import trip_intake
 from domain.nodes.research_orchestrator import research_orchestrator
+from infrastructure.rag.evaluation import evaluate_itinerary_with_llm_judge
 from tests.golden_prompt_replay import load_golden_cases
+
+RUN_LLM_JUDGE_GOLDENS = os.getenv("RUN_LLM_JUDGE_GOLDENS", "").lower() in {"1", "true", "yes"}
+GOLDEN_JUDGE_PROVIDER = os.getenv("GOLDEN_JUDGE_PROVIDER", "openai")
+GOLDEN_JUDGE_MODEL = os.getenv("GOLDEN_JUDGE_MODEL", "")
 
 
 @pytest.mark.parametrize("case", load_golden_cases("intake.json"), ids=lambda case: case["id"])
@@ -65,6 +71,29 @@ def test_trip_finaliser_golden(case, mock_llm_responses):
         assert itinerary_data["legs"][0]["destination"] == expected["first_leg_destination"]
     else:
         assert len(itinerary_data["daily_plans"]) == expected["daily_plan_count"]
+
+    if RUN_LLM_JUDGE_GOLDENS and "judge_thresholds" in expected:
+        judge_provider = GOLDEN_JUDGE_PROVIDER or case["input_state"].get("llm_provider", "openai")
+        judge_model = GOLDEN_JUDGE_MODEL or ""
+        if not judge_model:
+            judge_model = "gpt-4.1-mini" if judge_provider == "openai" else "gemini-2.5-flash"
+
+        judge_result = evaluate_itinerary_with_llm_judge(
+            input_state=case["input_state"],
+            final_itinerary=result["final_itinerary"],
+            itinerary_data=itinerary_data,
+            provider=judge_provider,
+            model=judge_model,
+        )["result"]
+
+        for key, minimum in expected["judge_thresholds"].items():
+            assert judge_result[key] >= minimum, (
+                f"Judge score for {key} was {judge_result[key]}, expected at least {minimum}. "
+                f"Judge rationale: {judge_result['rationale']}"
+            )
+        assert judge_result["pass"] is True, (
+            f"Itinerary judge did not pass the case. Issues: {judge_result['issues']}"
+        )
 
 
 @pytest.mark.parametrize("case", load_golden_cases("research.json"), ids=lambda case: case["id"])

@@ -198,7 +198,45 @@ Use retrieval-only mode if you just want to inspect fetched chunks without gener
 uv run python scripts/evaluate_rag.py --provider openai --retrieval-only
 ```
 
-The script writes retrieval snapshots and score summaries to `evals/results/`.
+You can also add an LLM-as-a-judge pass over the generated answers:
+
+```bash
+uv run python scripts/evaluate_rag.py --provider openai --llm-judge
+```
+
+To use a different judge provider or model:
+
+```bash
+uv run python scripts/evaluate_rag.py --provider openai --llm-judge \
+  --judge-provider openai --judge-model gpt-4.1-mini
+```
+
+The judge writes row-level scores plus aggregate averages for faithfulness, correctness,
+completeness, groundedness, pass rate, and overall score to `evals/results/`.
+The script also continues to write retrieval snapshots and RAGAs score summaries there.
+
+### 7. Judge golden itineraries
+
+The replay-based golden tests stay deterministic by default, but you can opt into
+LLM-as-a-judge scoring for the final itinerary golden cases:
+
+```bash
+RUN_LLM_JUDGE_GOLDENS=1 uv run pytest tests/test_golden_prompts.py -k finaliser
+```
+
+Optional overrides:
+
+```bash
+RUN_LLM_JUDGE_GOLDENS=1 \
+GOLDEN_JUDGE_PROVIDER=openai \
+GOLDEN_JUDGE_MODEL=gpt-4.1-mini \
+uv run pytest tests/test_golden_prompts.py -k finaliser
+```
+
+When enabled, the tests still perform the normal structural assertions, then ask a
+judge model to score each golden itinerary on constraint following, trip relevance,
+structure quality, personalization, groundedness, and overall quality against the
+minimum thresholds stored in `tests/golden_prompts/finaliser.json`.
 
 ## 🐳 Docker Setup
 
