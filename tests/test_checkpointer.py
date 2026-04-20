@@ -35,6 +35,7 @@ class TestGetCheckpointer:
 
     def test_returns_memory_saver_when_database_not_configured(self, monkeypatch):
         monkeypatch.setattr(checkpointer, "MEMORY_DATABASE_URL", "")
+        monkeypatch.setattr(checkpointer, "REQUIRE_PERSISTENT_CHECKPOINTER", False)
         monkeypatch.setitem(
             sys.modules,
             "langgraph.checkpoint.memory",
@@ -46,8 +47,19 @@ class TestGetCheckpointer:
         assert isinstance(saver, DummyMemorySaver)
         assert checkpointer.get_checkpointer() is saver
 
+    def test_raises_when_persistent_checkpointer_required_without_database(self, monkeypatch):
+        monkeypatch.setattr(checkpointer, "MEMORY_DATABASE_URL", "")
+        monkeypatch.setattr(checkpointer, "REQUIRE_PERSISTENT_CHECKPOINTER", True)
+
+        try:
+            checkpointer.get_checkpointer()
+            assert False, "Expected get_checkpointer() to raise without DATABASE_URL"
+        except RuntimeError as exc:
+            assert "Persistent LangGraph checkpointing is required" in str(exc)
+
     def test_returns_postgres_saver_when_database_configured(self, monkeypatch):
         monkeypatch.setattr(checkpointer, "MEMORY_DATABASE_URL", "postgres://example")
+        monkeypatch.setattr(checkpointer, "REQUIRE_PERSISTENT_CHECKPOINTER", False)
         monkeypatch.setitem(
             sys.modules,
             "langgraph.checkpoint.postgres",

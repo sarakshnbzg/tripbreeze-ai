@@ -39,6 +39,7 @@ GOOGLE_API_KEY = _get_config_value("GOOGLE_API_KEY", "") or _get_config_value("G
 SERPAPI_API_KEY = _get_config_value("SERPAPI_API_KEY", "")
 MEMORY_DATABASE_URL = _get_config_value("DATABASE_URL", "") or _get_config_value("NEON_DATABASE_URL", "")
 CSC_API_KEY = _get_config_value("CSC_API_KEY", "")
+REQUIRE_PERSISTENT_CHECKPOINTER = _get_config_value("REQUIRE_PERSISTENT_CHECKPOINTER", "false").lower() == "true"
 
 # Email / SMTP settings
 SMTP_HOST = _get_config_value("SMTP_HOST", "")

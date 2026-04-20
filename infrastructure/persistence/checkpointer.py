@@ -1,13 +1,14 @@
 """LangGraph checkpointer factory.
 
 Returns a PostgresSaver backed by the Neon database so that in-flight HITL
-review states survive Streamlit server restarts.  Falls back to an in-memory
-checkpointer when no database URL is configured (local dev / tests).
+review states survive Streamlit server restarts. Falls back to an in-memory
+checkpointer only in local/dev-style environments where that is explicitly
+allowed.
 """
 
 import atexit
 
-from config import MEMORY_DATABASE_URL
+from config import MEMORY_DATABASE_URL, REQUIRE_PERSISTENT_CHECKPOINTER
 from infrastructure.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -26,6 +27,11 @@ def get_checkpointer():
         return _checkpointer
 
     if not MEMORY_DATABASE_URL:
+        if REQUIRE_PERSISTENT_CHECKPOINTER:
+            raise RuntimeError(
+                "Persistent LangGraph checkpointing is required, but DATABASE_URL/NEON_DATABASE_URL "
+                "is not configured. Set a Postgres connection string before starting the app."
+            )
         from langgraph.checkpoint.memory import MemorySaver
 
         logger.warning(

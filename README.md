@@ -369,6 +369,15 @@ tripbreeze-ai/
 - If retrieval looks stale, rebuild the RAG index with `uv run python scripts/rebuild_rag.py`.
 - If commands are missing, run them through `uv run` or make sure the project's virtual environment is active.
 
+## ⚠️ Limitations
+
+- LangGraph HITL review state is only restart-safe when `DATABASE_URL` or `NEON_DATABASE_URL` is configured. Set `REQUIRE_PERSISTENT_CHECKPOINTER=true` in deployed environments so the app fails fast instead of silently falling back to in-memory checkpoints.
+- Live search depends on SerpAPI-backed Google Flights/Hotels calls, so quotas, rate limits, and per-request costs can affect availability and response quality.
+- The app is typically deployed as a single backend region, so users far from that region may see higher latency during research and itinerary generation.
+- Authentication is username/password based and intentionally lightweight. It is suitable for a course project, but it is not a full production identity stack with email verification, password reset, MFA, or role-based access control.
+- The research and finalisation steps use LLM tool calling. Even with structured outputs, RAG grounding, and tests, the model can still over-generalise or phrase unsupported conclusions if tool results are sparse or ambiguous.
+- Unit, integration, and golden-prompt tests are in place, but offline evaluation is still partial rather than exhaustive. Real-world travel quality still benefits from broader datasets, regression monitoring, and human review.
+
 ## 🔮 Future Work
 
 - [ ] **Replace remaining bootstrap reference data with managed sources** — Move fallback datasets such as `AIRLINES`, `CITY_TO_AIRPORT`, `DAILY_EXPENSE_BY_DESTINATION`, and similar code-level defaults into Postgres or an external API so updates do not require code changes.
