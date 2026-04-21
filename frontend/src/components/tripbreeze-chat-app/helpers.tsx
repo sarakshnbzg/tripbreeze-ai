@@ -649,6 +649,15 @@ export function hotelMetaPills(option: TripOption, currencyCode: string, ratingL
   return pills;
 }
 
+export function hotelStarSummary(option: TripOption) {
+  const stars = Number(option.hotel_class ?? 0);
+  if (stars <= 0) {
+    return "";
+  }
+
+  return `${"★".repeat(stars)} ${stars}-star hotel`;
+}
+
 export function isMultiCitySelectionComplete(state: TravelState | null, selection: SelectionState) {
   if (!state?.trip_legs?.length) {
     return false;

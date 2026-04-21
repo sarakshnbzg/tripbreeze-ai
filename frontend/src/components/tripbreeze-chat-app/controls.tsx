@@ -12,6 +12,7 @@ import {
   hotelBreakfast,
   hotelMetaPills,
   hotelRating,
+  hotelStarSummary,
   stopLabel,
   transportBadges,
   transportLabel,
@@ -133,6 +134,7 @@ export function ReviewOptionCard({
       : "";
   const hotelDescription =
     variant === "hotel" ? String(option.description ?? "").trim() : "";
+  const hotelStars = variant === "hotel" ? hotelStarSummary(option) : "";
 
   return (
     <button
@@ -147,6 +149,9 @@ export function ReviewOptionCard({
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="font-semibold text-ink">{String(option.name ?? option.airline ?? title)}</div>
+          {variant === "hotel" && hotelStars ? (
+            <div className="mt-1 text-sm font-medium text-coral">{hotelStars}</div>
+          ) : null}
           <div className="mt-1 text-sm text-slate">
             {variant === "flight"
               ? flightSummary

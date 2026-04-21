@@ -7,6 +7,7 @@ import pytest
 
 from domain.nodes.trip_intake import (
     _classify_domain,
+    _infer_multi_city_data,
     _infer_stay_length_days,
     _normalise_hotel_stars,
     _normalise_trip_data,
@@ -134,6 +135,21 @@ class TestInferStayLengthDays:
         assert _infer_stay_length_days("one way to New York on May 15") is None
 
 
+class TestInferMultiCityData:
+    def test_extracts_simple_city_duration_sequences(self):
+        result = _infer_multi_city_data(
+            "Plan trip to Paris 2 nights, London 3 nights with my husband with 3000 euro budget."
+        )
+
+        assert result["legs"] == [
+            {"destination": "Paris", "nights": 2},
+            {"destination": "London", "nights": 3},
+        ]
+        assert result["num_travelers"] == 2
+        assert result["budget_limit"] == 3000.0
+        assert result["currency"] == "EUR"
+
+
 class TestClarificationDurationFallback:
     def test_duration_answer_uses_departure_date_instead_of_bad_llm_return_date(self):
         departure_date = str(date.today() + timedelta(days=40))
@@ -187,6 +203,169 @@ class TestClarificationDurationFallback:
         assert trip["departure_date"] == departure_date
         assert trip["return_date"] == expected_return
         assert trip["check_out_date"] == expected_return
+
+    def test_departure_clarification_repairs_stale_duration_dates_from_initial_parse(self):
+        corrected_departure = str(date.today() + timedelta(days=12))
+        stale_end_date = str(date.today() + timedelta(days=2))
+        expected_end = str(date.fromisoformat(corrected_departure) + timedelta(days=2))
+
+        domain_response = MagicMock()
+        domain_response.tool_calls = [{"args": {"in_domain": True, "reason": ""}}]
+
+        parse_response = MagicMock()
+        parse_response.tool_calls = [{
+            "args": {
+                "origin": "Berlin",
+                "destination": "Vienna",
+                "departure_date": "",
+                "return_date": "",
+                "check_out_date": stale_end_date,
+                "is_one_way": False,
+            }
+        }]
+
+        clarify_response = MagicMock()
+        clarify_response.tool_calls = [{
+            "args": {
+                "departure_date": corrected_departure,
+            }
+        }]
+
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+
+        state = {
+            "user_profile": {},
+            "structured_fields": {},
+            "revision_baseline": {},
+            "free_text_query": "Plan trip to Vienna for 2 nights.",
+            "llm_model": "gpt-4o-mini",
+            "llm_provider": "openai",
+            "llm_temperature": 0,
+        }
+
+        with patch("domain.nodes.trip_intake.create_chat_model", return_value=mock_llm):
+            with patch("domain.nodes.trip_intake.invoke_with_retry", side_effect=[domain_response, parse_response, clarify_response]):
+                with patch("domain.nodes.trip_intake.extract_token_usage", return_value=None):
+                    with patch("domain.nodes.trip_intake.interrupt", return_value="Next week Monday."):
+                        result = trip_intake(state)
+
+        trip = result["trip_request"]
+        assert result["current_step"] == "intake_complete"
+        assert trip["departure_date"] == corrected_departure
+        assert trip["return_date"] == expected_end
+        assert trip["check_out_date"] == expected_end
+
+    def test_one_way_clarification_overrides_initial_false_flag(self):
+        departure_date = str(date.today() + timedelta(days=21))
+
+        domain_response = MagicMock()
+        domain_response.tool_calls = [{"args": {"in_domain": True, "reason": ""}}]
+
+        parse_response = MagicMock()
+        parse_response.tool_calls = [{
+            "args": {
+                "origin": "Berlin",
+                "destination": "Paris",
+                "departure_date": departure_date,
+                "return_date": "",
+                "check_out_date": "",
+                "is_one_way": False,
+            }
+        }]
+
+        clarify_response = MagicMock()
+        clarify_response.tool_calls = [{
+            "args": {
+                "is_one_way": True,
+            }
+        }]
+
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+
+        state = {
+            "user_profile": {},
+            "structured_fields": {},
+            "revision_baseline": {},
+            "free_text_query": "Plan a trip to Paris next month.",
+            "llm_model": "gpt-4o-mini",
+            "llm_provider": "openai",
+            "llm_temperature": 0,
+        }
+
+        with patch("domain.nodes.trip_intake.create_chat_model", return_value=mock_llm):
+            with patch("domain.nodes.trip_intake.invoke_with_retry", side_effect=[domain_response, parse_response, clarify_response]):
+                with patch("domain.nodes.trip_intake.extract_token_usage", return_value=None):
+                    with patch("domain.nodes.trip_intake.interrupt", return_value="One way."):
+                        result = trip_intake(state)
+
+        trip = result["trip_request"]
+        assert result["current_step"] == "intake_complete"
+        assert trip["origin"] == "Berlin"
+        assert trip["destination"] == "Paris"
+        assert trip["departure_date"] == departure_date
+        assert trip["return_date"] == ""
+        assert "one-way" in result["messages"][0]["content"].lower()
+
+    def test_multi_city_clarification_uses_multi_city_tool_context(self):
+        departure_date = str(date.today() + timedelta(days=25))
+
+        domain_response = MagicMock()
+        domain_response.tool_calls = [{"args": {"in_domain": True, "reason": ""}}]
+
+        parse_response = MagicMock()
+        parse_response.tool_calls = [{
+            "name": "ExtractMultiCityTrip",
+            "args": {
+                "origin": "Berlin",
+                "legs": [
+                    {"destination": "Paris", "nights": 2},
+                    {"destination": "London", "nights": 3},
+                ],
+                "departure_date": "",
+                "return_to_origin": True,
+                "num_travelers": 2,
+                "budget_limit": 3000,
+                "currency": "EUR",
+            }
+        }]
+
+        clarify_response = MagicMock()
+        clarify_response.tool_calls = [{
+            "name": "ExtractMultiCityTrip",
+            "args": {
+                "departure_date": departure_date,
+                "return_to_origin": False,
+            }
+        }]
+
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+
+        state = {
+            "user_profile": {},
+            "structured_fields": {},
+            "revision_baseline": {},
+            "free_text_query": "Plan trip to Paris 2 nights, London 3 nights with my husband with 3000 euro budget.",
+            "llm_model": "gpt-4o-mini",
+            "llm_provider": "openai",
+            "llm_temperature": 0,
+        }
+
+        with patch("domain.nodes.trip_intake.create_chat_model", return_value=mock_llm):
+            with patch("domain.nodes.trip_intake.invoke_with_retry", side_effect=[domain_response, parse_response, clarify_response]):
+                with patch("domain.nodes.trip_intake.extract_token_usage", return_value=None):
+                    with patch("domain.nodes.trip_intake.interrupt", return_value="Monday next week. One way."):
+                        result = trip_intake(state)
+
+        assert result["current_step"] == "intake_complete"
+        assert len(result["trip_legs"]) == 2
+        assert result["trip_legs"][0]["destination"] == "Paris"
+        assert result["trip_legs"][1]["destination"] == "London"
+        assert result["trip_request"]["departure_date"] == departure_date
+        assert result["trip_request"]["return_date"] == result["trip_legs"][-1]["departure_date"]
+        assert result["trip_request"]["num_travelers"] == 2
 
 
 class TestNormaliseTripData:
@@ -678,6 +857,49 @@ class TestTripIntakeNode:
         assert trip["departure_date"] == departure_date
         assert trip["return_date"] == ""
         assert trip["check_out_date"] == check_out_date
+
+    def test_free_text_multi_city_falls_back_to_query_when_llm_misses_structure(self):
+        departure_date = str(date.today() + timedelta(days=30))
+        mock_llm = MagicMock()
+        mock_response = MagicMock()
+        mock_response.tool_calls = [
+            {
+                "args": {
+                    "origin": "",
+                    "destination": "",
+                    "departure_date": "",
+                    "return_date": "",
+                    "check_out_date": "",
+                    "num_travelers": 0,
+                    "budget_limit": 0,
+                    "currency": "",
+                }
+            }
+        ]
+        mock_llm.bind_tools.return_value = MagicMock()
+
+        state = self._base_state(
+            structured_fields={
+                "origin": "Berlin",
+                "departure_date": departure_date,
+            },
+            free_text_query="Plan trip to Paris 2 nights, London 3 nights with my husband with 3000 euro budget.",
+        )
+
+        with patch("domain.nodes.trip_intake.create_chat_model", return_value=mock_llm):
+            with patch("domain.nodes.trip_intake.invoke_with_retry", return_value=mock_response):
+                with patch("domain.nodes.trip_intake.extract_token_usage", return_value=None):
+                    result = trip_intake(state)
+
+        assert result["current_step"] == "intake_complete"
+        assert len(result["trip_legs"]) == 3
+        assert result["trip_legs"][0]["destination"] == "Paris"
+        assert result["trip_legs"][0]["nights"] == 2
+        assert result["trip_legs"][1]["destination"] == "London"
+        assert result["trip_legs"][1]["nights"] == 3
+        assert result["trip_request"]["budget_limit"] == 3000.0
+        assert result["trip_request"]["currency"] == "EUR"
+        assert result["trip_request"]["num_travelers"] == 2
 
     def test_free_text_uses_profile_home_city_and_infers_round_trip_from_nights(self):
         departure_date = str(date.today() + timedelta(days=25))

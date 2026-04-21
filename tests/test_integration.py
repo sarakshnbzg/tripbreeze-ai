@@ -720,6 +720,75 @@ class TestClarificationResumeFlow:
         mocks["api_flights"].assert_called_once()
         mocks["api_hotels"].assert_called_once()
 
+    def test_multi_city_clarification_resume_uses_multi_city_tool(self):
+        def _invoke(prompt: str):
+            if "<clarification_question>" in prompt:
+                assert "<trip_mode>\nmulti_city\n</trip_mode>" in prompt
+                return _make_ai_message(tool_calls=[{
+                    "name": "ExtractMultiCityTrip",
+                    "args": {
+                        "departure_date": FUTURE_DEPARTURE,
+                        "return_to_origin": False,
+                    },
+                    "id": "clarify-multi-1",
+                }])
+            if "<user_query>" in prompt and "travel domain" in prompt.lower():
+                return _make_ai_message(tool_calls=[{
+                    "name": "EvaluateDomain",
+                    "args": {"in_domain": True, "reason": ""},
+                    "id": "domain-1",
+                }])
+            return _make_ai_message(tool_calls=[{
+                "name": "ExtractMultiCityTrip",
+                "args": {
+                    "origin": "Berlin",
+                    "legs": [
+                        {"destination": "Paris", "nights": 2},
+                        {"destination": "London", "nights": 3},
+                    ],
+                    "departure_date": "",
+                    "return_to_origin": True,
+                    "num_travelers": 2,
+                    "currency": "EUR",
+                },
+                "id": "extract-multi-1",
+            }])
+
+        intake_llm = MagicMock()
+        intake_llm.bind_tools.return_value = intake_llm
+        intake_llm.invoke.side_effect = _invoke
+
+        with _patch_all(intake_llm=intake_llm) as mocks:
+            graph = compile_graph()
+            config = _make_config()
+
+            graph.invoke(
+                _base_initial_state(
+                    structured_fields={},
+                    free_text_query="Plan trip to Paris 2 nights, London 3 nights with my husband.",
+                ),
+                config,
+            )
+
+            paused = graph.get_state(config)
+            assert paused.tasks
+            interrupt_value = paused.tasks[0].interrupts[0].value
+            assert interrupt_value["type"] == "clarification"
+            assert "departure_date" in interrupt_value["missing_fields"]
+
+            events = list(graph.stream(Command(resume="Monday next week. One way."), config))
+            assert events
+
+            final_state = dict(graph.get_state(config).values)
+
+        assert final_state["current_step"] == "awaiting_review"
+        assert len(final_state["trip_legs"]) == 2
+        assert final_state["trip_legs"][0]["destination"] == "Paris"
+        assert final_state["trip_legs"][1]["destination"] == "London"
+        assert final_state["trip_request"]["return_date"] == final_state["trip_legs"][-1]["departure_date"]
+        mocks["api_flights"].assert_called()
+        mocks["api_hotels"].assert_called()
+
 
 class TestMultiCityEndToEnd:
     """Structured multi-city trip should plan leg-by-leg and finalise without LLM errors."""

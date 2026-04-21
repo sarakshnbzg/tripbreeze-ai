@@ -74,6 +74,22 @@ export function formatCurrency(value: unknown, code = "EUR") {
   }).format(amount);
 }
 
+function addDaysToIsoDate(isoDate: string, days: number) {
+  const [yearText, monthText, dayText] = isoDate.split("-");
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  if (!year || !month || !day) {
+    return "";
+  }
+
+  const next = new Date(year, month - 1, day + days);
+  const nextYear = String(next.getFullYear()).padStart(4, "0");
+  const nextMonth = String(next.getMonth() + 1).padStart(2, "0");
+  const nextDay = String(next.getDate()).padStart(2, "0");
+  return `${nextYear}-${nextMonth}-${nextDay}`;
+}
+
 export function buildStructuredFields(form: PlannerForm) {
   const fields: Record<string, unknown> = {};
   const validMultiCityLegs = form.multiCityLegs
@@ -102,9 +118,10 @@ export function buildStructuredFields(form: PlannerForm) {
   } else if (form.oneWay) {
     fields.is_one_way = true;
     if (form.departureDate && form.numNights > 0) {
-      const departure = new Date(`${form.departureDate}T00:00:00`);
-      departure.setDate(departure.getDate() + form.numNights);
-      fields.check_out_date = departure.toISOString().slice(0, 10);
+      const checkOutDate = addDaysToIsoDate(form.departureDate, form.numNights);
+      if (checkOutDate) {
+        fields.check_out_date = checkOutDate;
+      }
     }
   } else if (form.returnDate) {
     fields.return_date = form.returnDate;

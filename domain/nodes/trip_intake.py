@@ -16,6 +16,7 @@ from domain.nodes.trip_intake_schemas import (
     EvaluateDomain,
     PREFERENCES_PROMPT,
     FREE_TEXT_PROMPT,
+    CLARIFICATION_PROMPT,
     DOMAIN_GUARDRAIL_PROMPT,
 )
 from infrastructure.currency_utils import format_currency
@@ -39,6 +40,9 @@ VALID_PACES = {"relaxed", "moderate", "packed"}
 _DURATION_PATTERN = re.compile(
     r"\bfor\s+(?:(?P<article>a|an|one)\s+)?(?P<count>\d+)?\s*(?P<unit>day|days|night|nights|week|weeks)\b",
     re.IGNORECASE,
+)
+_CITY_STAY_PATTERN = re.compile(
+    r"\b(?P<city>[A-Z][A-Za-z' -]*(?:\s+[A-Z][A-Za-z' -]*)*)\s+(?P<nights>\d+)\s*(?P<unit>day|days|night|nights)\b"
 )
 
 
@@ -91,6 +95,79 @@ def _infer_stay_length_days(query: str) -> int | None:
     if unit in {"week", "weeks"}:
         return count * 7
     return count
+
+
+def _merge_has_value(key: str, value: Any) -> bool:
+    if key == "stops":
+        return value is not None
+    if key == "is_one_way":
+        return value is True
+    return value not in (None, "", [])
+
+
+def _infer_multi_city_data(query: str) -> dict[str, Any]:
+    """Deterministically recover simple multi-city legs from free text.
+
+    This is a fallback for prompts like "Paris 2 nights, London 3 nights" when
+    the LLM misses the multi-city structure entirely.
+    """
+    legs: list[dict[str, Any]] = []
+    for match in _CITY_STAY_PATTERN.finditer(query):
+        city = " ".join(str(match.group("city") or "").split()).strip(" ,.-")
+        city = re.sub(
+            r"^(?:plan\s+trip\s+to|trip\s+to|plan\s+to\s+visit|visit|go\s+to|fly\s+to|stay\s+in|then|and)\s+",
+            "",
+            city,
+            flags=re.IGNORECASE,
+        ).strip(" ,.-")
+        if not city:
+            continue
+
+        try:
+            nights = int(match.group("nights"))
+        except (TypeError, ValueError):
+            continue
+        if nights <= 0:
+            continue
+
+        if legs and city.lower() == str(legs[-1]["destination"]).lower():
+            continue
+        legs.append({"destination": city, "nights": nights})
+
+    if len(legs) < 2:
+        return {}
+
+    lowered = query.lower()
+    inferred: dict[str, Any] = {
+        "legs": legs,
+        "return_to_origin": not bool(re.search(r"\bone[\s-]?way\b|\bopen jaw\b|\bopen-jaw\b|\bno return\b", lowered)),
+    }
+
+    if re.search(r"\bwith my (husband|wife|partner)\b", lowered):
+        inferred["num_travelers"] = 2
+
+    budget_match = re.search(
+        r"\b(?:with\s+(?:a\s+)?)?(?P<amount>\d+(?:[.,]\d+)?)\s*(?P<currency>eur|euro|euros|usd|dollars|gbp|pounds)\b",
+        lowered,
+    )
+    if budget_match:
+        amount_text = str(budget_match.group("amount") or "").replace(",", "")
+        try:
+            inferred["budget_limit"] = float(amount_text)
+        except ValueError:
+            pass
+        currency = str(budget_match.group("currency") or "").lower()
+        inferred["currency"] = {
+            "eur": "EUR",
+            "euro": "EUR",
+            "euros": "EUR",
+            "usd": "USD",
+            "dollars": "USD",
+            "gbp": "GBP",
+            "pounds": "GBP",
+        }.get(currency, "")
+
+    return inferred
 
 
 def _has_structured_trip_signal(structured_fields: dict[str, Any]) -> bool:
@@ -243,8 +320,11 @@ def _parse_clarification(
     answer: str,
     missing_fields: list[str],
     question: str,
+    original_query: str,
+    raw_trip_data: dict[str, Any],
+    prefer_multi_city: bool,
     model: str,
-) -> tuple[dict[str, Any], dict | None]:
+) -> tuple[dict[str, Any], bool, dict | None]:
     """Parse a clarification answer, telling the LLM which fields it is filling.
 
     Without this hint, a bare answer like "Berlin" tends to be extracted as
@@ -252,20 +332,20 @@ def _parse_clarification(
     causing the clarification loop to ask the same question forever.
     """
     if not answer.strip():
-        return {}, None
+        return {}, False, None
 
     logger.info(
-        "Parsing clarification via LLM: fields=%s answer=%s",
+        "Parsing clarification via LLM: fields=%s multi_city=%s answer=%s",
         missing_fields,
+        prefer_multi_city,
         answer,
     )
-    llm_with_tools = llm.bind_tools([ExtractTripDetails])
+    llm_with_tools = llm.bind_tools([ExtractTripDetails, ExtractMultiCityTrip])
     prompt = (
-        f"{FREE_TEXT_PROMPT.format(today=date.today().isoformat())}\n\n"
-        "The user was previously asked this clarification question and their answer "
-        "is below. Populate ONLY the fields listed in `target_fields` from the answer; "
-        "leave every other field at its default. Do not reinterpret the answer as "
-        "belonging to a different field.\n\n"
+        f"{CLARIFICATION_PROMPT.format(today=date.today().isoformat())}\n\n"
+        f"<trip_mode>\n{'multi_city' if prefer_multi_city else 'single_destination'}\n</trip_mode>\n"
+        f"<original_request>\n{original_query}\n</original_request>\n"
+        f"<current_trip_state>\n{raw_trip_data}\n</current_trip_state>\n"
         f"<clarification_question>\n{question}\n</clarification_question>\n"
         f"<target_fields>\n{', '.join(missing_fields)}\n</target_fields>\n"
         f"<user_answer>\n{answer}\n</user_answer>"
@@ -277,12 +357,19 @@ def _parse_clarification(
     tool_calls = getattr(response, "tool_calls", []) or []
     if not tool_calls:
         logger.warning("Clarification extraction returned no tool calls")
-        return {}, usage
+        return {}, False, usage
 
-    parsed = tool_calls[0].get("args", {}) or {}
-    # Keep only the requested target fields — guard against the LLM filling others.
-    filtered = {k: v for k, v in parsed.items() if k in missing_fields}
-    return filtered, usage
+    tool_call = tool_calls[0]
+    tool_name = tool_call.get("name", "")
+    is_multi_city = tool_name == "ExtractMultiCityTrip"
+    parsed = tool_call.get("args", {}) or {}
+
+    allowed_fields = set(missing_fields)
+    if is_multi_city:
+        allowed_fields.update({"legs", "return_to_origin"})
+
+    filtered = {k: v for k, v in parsed.items() if k in allowed_fields}
+    return filtered, is_multi_city, usage
 
 
 def _apply_clarification_duration_fallback(
@@ -319,6 +406,75 @@ def _apply_clarification_duration_fallback(
     ):
         next_answer["check_out_date"] = inferred_end
     return next_answer
+
+
+def _apply_clarification_intent_fallback(
+    parsed_answer: dict[str, Any],
+    answer: str,
+    missing_fields: list[str],
+) -> dict[str, Any]:
+    """Recover obvious yes/no trip intent from short clarification answers."""
+    lowered = answer.strip().lower()
+    if "return_date" not in missing_fields:
+        return parsed_answer
+
+    if re.search(r"\bone[\s-]?way\b|\bno return\b|\bnot coming back\b", lowered):
+        next_answer = dict(parsed_answer)
+        next_answer["is_one_way"] = True
+        next_answer["return_date"] = ""
+        return next_answer
+
+    return parsed_answer
+
+
+def _repair_invalid_duration_dates(
+    raw_trip_data: dict[str, Any],
+    free_text_query: str,
+    parsed_answer: dict[str, Any],
+    missing_fields: list[str],
+) -> None:
+    """Recompute stale end dates after a clarification updates departure_date.
+
+    Free-text parsing can occasionally infer a concrete check-out/return date from
+    a duration phrase before we know the true departure date. If the user later
+    clarifies only the departure date, keep the duration intent and shift the end
+    date forward instead of failing validation with an end date in the past.
+    """
+    if "departure_date" not in missing_fields:
+        return
+    if not parsed_answer.get("departure_date"):
+        return
+
+    inferred_days = _infer_stay_length_days(free_text_query)
+    if not inferred_days:
+        return
+
+    departure_date = str(raw_trip_data.get("departure_date") or "").strip()
+    if not departure_date:
+        return
+
+    try:
+        departure = date.fromisoformat(departure_date)
+    except ValueError:
+        return
+
+    repaired_end = (departure + timedelta(days=inferred_days)).isoformat()
+    current_return = str(raw_trip_data.get("return_date") or "").strip()
+    current_check_out = str(raw_trip_data.get("check_out_date") or "").strip()
+
+    if current_return:
+        try:
+            if date.fromisoformat(current_return) <= departure:
+                raw_trip_data["return_date"] = repaired_end
+        except ValueError:
+            raw_trip_data["return_date"] = repaired_end
+
+    if current_check_out:
+        try:
+            if date.fromisoformat(current_check_out) <= departure:
+                raw_trip_data["check_out_date"] = repaired_end
+        except ValueError:
+            raw_trip_data["check_out_date"] = repaired_end
 
 
 def _parse_preferences(llm, preferences: str, model: str) -> tuple[dict[str, Any], dict | None]:
@@ -524,6 +680,7 @@ def trip_intake(state: dict) -> dict:
     # If there's a free-text query, extract trip details from it
     is_multi_city = False
     trip_legs: list[dict[str, Any]] = []
+    inferred_multi_city_data: dict[str, Any] | None = None
 
     # Check for multi-city from structured form fields first
     if structured_fields.get("multi_city_legs"):
@@ -585,6 +742,17 @@ def trip_intake(state: dict) -> dict:
             token_usage.append(usage)
 
         if is_multi_city:
+            inferred_multi_city_data = parsed_query
+            if not raw_trip_data.get("origin") and parsed_query.get("origin"):
+                raw_trip_data["origin"] = parsed_query["origin"]
+            if not raw_trip_data.get("destination") and parsed_query.get("legs"):
+                raw_trip_data["destination"] = parsed_query["legs"][0].get("destination", "")
+            for key in (
+                "num_travelers", "budget_limit", "currency", "preferences",
+                "stops", "hotel_stars", "travel_class", "interests", "pace",
+            ):
+                if parsed_query.get(key) not in (None, "", []):
+                    raw_trip_data[key] = parsed_query[key]
             # Multi-city trip: build legs and derive trip_request from them
             trip_legs = _build_trip_legs(parsed_query, raw_trip_data.get("origin", ""), profile)
             if trip_legs:
@@ -594,13 +762,6 @@ def trip_intake(state: dict) -> dict:
                 raw_trip_data["departure_date"] = trip_legs[0]["departure_date"]
                 # Return date is the departure date of the last leg (return flight)
                 raw_trip_data["return_date"] = trip_legs[-1]["departure_date"]
-                # Copy shared fields from multi-city extraction
-                for key in (
-                    "num_travelers", "budget_limit", "currency", "preferences",
-                    "stops", "hotel_stars", "travel_class", "interests", "pace",
-                ):
-                    if parsed_query.get(key) not in (None, "", []):
-                        raw_trip_data[key] = parsed_query[key]
                 logger.info("Multi-city trip with %d legs detected", len(trip_legs))
         else:
             # Single-destination: merge parsed values into raw_trip_data
@@ -618,6 +779,33 @@ def trip_intake(state: dict) -> dict:
                     raw_trip_data["preferences"] = f"{existing_prefs}, {ft_prefs}"
                 elif not existing_prefs:
                     raw_trip_data["preferences"] = ft_prefs
+
+            inferred_multi_city_data = _infer_multi_city_data(free_text_query)
+            if inferred_multi_city_data:
+                logger.info(
+                    "Recovered multi-city structure from free text fallback with %d legs",
+                    len(inferred_multi_city_data.get("legs", [])),
+                )
+                if not raw_trip_data.get("destination") and inferred_multi_city_data.get("legs"):
+                    raw_trip_data["destination"] = inferred_multi_city_data["legs"][0]["destination"]
+                for key in ("num_travelers", "budget_limit", "currency"):
+                    if not _merge_has_value(key, raw_trip_data.get(key)) and _merge_has_value(key, inferred_multi_city_data.get(key)):
+                        raw_trip_data[key] = inferred_multi_city_data[key]
+                if raw_trip_data.get("departure_date"):
+                    multi_city_seed = {
+                        **inferred_multi_city_data,
+                        "origin": raw_trip_data.get("origin") or "",
+                        "departure_date": raw_trip_data.get("departure_date") or "",
+                        "return_to_origin": False if raw_trip_data.get("is_one_way") else inferred_multi_city_data.get("return_to_origin", True),
+                    }
+                    built_legs = _build_trip_legs(multi_city_seed, raw_trip_data.get("origin", ""), profile)
+                    if built_legs:
+                        trip_legs = built_legs
+                        is_multi_city = True
+                        raw_trip_data["origin"] = trip_legs[0]["origin"]
+                        raw_trip_data["destination"] = trip_legs[0]["destination"]
+                        raw_trip_data["departure_date"] = trip_legs[0]["departure_date"]
+                        raw_trip_data["return_date"] = trip_legs[-1]["departure_date"]
     else:
         logger.info("Trip intake using structured fields only")
 
@@ -714,11 +902,14 @@ def trip_intake(state: dict) -> dict:
                 break  # empty answer — proceed with what we have
             logger.info("Clarification answer received: %s", clarification_answer)
             llm = create_chat_model(provider, model, temperature=temperature)
-            parsed_answer, usage = _parse_clarification(
+            parsed_answer, clarification_is_multi_city, usage = _parse_clarification(
                 llm,
                 clarification_answer,
                 missing_fields,
                 question,
+                free_text_query,
+                raw_trip_data,
+                bool(trip_legs or inferred_multi_city_data or structured_fields.get("multi_city_legs")),
                 model=model,
             )
             parsed_answer = _apply_clarification_duration_fallback(
@@ -727,13 +918,51 @@ def trip_intake(state: dict) -> dict:
                 raw_trip_data,
                 missing_fields,
             )
+            parsed_answer = _apply_clarification_intent_fallback(
+                parsed_answer,
+                clarification_answer,
+                missing_fields,
+            )
             if usage:
                 token_usage.append(usage)
+            if clarification_is_multi_city:
+                if inferred_multi_city_data is None:
+                    inferred_multi_city_data = {}
+                if parsed_answer.get("legs"):
+                    inferred_multi_city_data["legs"] = parsed_answer["legs"]
+                    if not raw_trip_data.get("destination"):
+                        raw_trip_data["destination"] = parsed_answer["legs"][0].get("destination", "")
+                if "return_to_origin" in parsed_answer:
+                    inferred_multi_city_data["return_to_origin"] = parsed_answer["return_to_origin"]
+                    if parsed_answer["return_to_origin"] is False:
+                        raw_trip_data["is_one_way"] = True
+                        raw_trip_data["return_date"] = ""
             for key, value in parsed_answer.items():
-                not_empty = value is not None and value != "" and value != [] and (value != 0 or key == "stops")
-                already_set = raw_trip_data.get(key) not in (None, "", []) if key != "stops" else raw_trip_data.get(key) is not None
+                not_empty = _merge_has_value(key, value) or (key == "return_date" and value == "")
+                already_set = _merge_has_value(key, raw_trip_data.get(key))
                 if not_empty and not already_set:
                     raw_trip_data[key] = value
+            _repair_invalid_duration_dates(
+                raw_trip_data,
+                free_text_query,
+                parsed_answer,
+                missing_fields,
+            )
+
+    if inferred_multi_city_data and not trip_legs and raw_trip_data.get("departure_date"):
+        multi_city_seed = {
+            **inferred_multi_city_data,
+            "origin": raw_trip_data.get("origin") or "",
+            "departure_date": raw_trip_data.get("departure_date") or "",
+            "return_to_origin": False if raw_trip_data.get("is_one_way") else inferred_multi_city_data.get("return_to_origin", True),
+        }
+        trip_legs = _build_trip_legs(multi_city_seed, raw_trip_data.get("origin", ""), profile)
+        if trip_legs:
+            is_multi_city = True
+            raw_trip_data["origin"] = trip_legs[0]["origin"]
+            raw_trip_data["destination"] = trip_legs[0]["destination"]
+            raw_trip_data["departure_date"] = trip_legs[0]["departure_date"]
+            raw_trip_data["return_date"] = trip_legs[-1]["departure_date"]
 
     _apply_profile_defaults(raw_trip_data, profile)
 
