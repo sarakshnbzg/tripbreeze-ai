@@ -19,7 +19,6 @@ class ApproveRequest(BaseModel):
     feedback_type: str = "rewrite_itinerary"
     selected_flight: dict[str, Any] = {}
     selected_hotel: dict[str, Any] = {}
-    selected_transport: dict[str, Any] = {}
     selected_flights: list[dict[str, Any]] = []
     selected_hotels: list[dict[str, Any]] = []
     trip_request: dict[str, Any] | None = None

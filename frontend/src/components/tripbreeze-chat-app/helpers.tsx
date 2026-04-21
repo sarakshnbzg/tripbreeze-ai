@@ -473,23 +473,6 @@ export function hotelBadges(options: TripOption[], option: TripOption) {
   return badges;
 }
 
-export function transportBadges(options: TripOption[], option: TripOption) {
-  const badges: string[] = [];
-  const prices = options.map((item) => optionTotalPrice(item)).filter((value) => value > 0);
-  const durations = options.map((item) => durationToMinutes(item)).filter((value) => value > 0);
-
-  if (prices.length && optionTotalPrice(option) === Math.min(...prices)) {
-    badges.push("Best price");
-  }
-  if (durations.length && durationToMinutes(option) === Math.min(...durations)) {
-    badges.push("Shortest");
-  }
-  if (Number(option.stops ?? 0) === 0) {
-    badges.push("Direct");
-  }
-  return badges;
-}
-
 export function budgetStatusNote(note: unknown) {
   const text = String(note ?? "").trim().toLowerCase();
   return text.includes("within budget") || text.includes("exceeds your budget") || text.includes("to spare");
@@ -554,20 +537,6 @@ export function budgetHotelDetail(option: Record<string, unknown>, budget: Recor
     return `${nights} night(s) x ${formatCurrency(pricePerNight, currencyCode)}/night`;
   }
   return "Full stay for selected room/search";
-}
-
-export function transportLabel(mode: unknown) {
-  const safeMode = String(mode ?? "").toLowerCase();
-  if (safeMode === "train") {
-    return "Train";
-  }
-  if (safeMode === "bus") {
-    return "Bus";
-  }
-  if (safeMode === "ferry") {
-    return "Ferry";
-  }
-  return safeMode ? safeMode[0].toUpperCase() + safeMode.slice(1) : "Transport";
 }
 
 export function sentenceLabel(value: string) {

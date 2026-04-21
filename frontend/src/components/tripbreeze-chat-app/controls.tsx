@@ -14,8 +14,6 @@ import {
   hotelRating,
   hotelStarSummary,
   stopLabel,
-  transportBadges,
-  transportLabel,
 } from "./helpers";
 
 export function HotelStarTierPicker({
@@ -90,7 +88,7 @@ export function ReviewOptionCard({
 }: {
   option: TripOption;
   title: string;
-  variant: "flight" | "hotel" | "transport";
+  variant: "flight" | "hotel";
   allOptions: TripOption[];
   selected: boolean;
   onSelect: () => void;
@@ -99,22 +97,17 @@ export function ReviewOptionCard({
   const badges =
     variant === "flight"
       ? flightBadges(allOptions, option)
-      : variant === "hotel"
-        ? hotelBadges(allOptions, option)
-        : transportBadges(allOptions, option);
+      : hotelBadges(allOptions, option);
   const flightSummary =
     variant === "flight"
       ? String(option.outbound_summary ?? option.return_summary ?? option.description ?? option.duration ?? "Details available")
       : "";
   const ratingLabel = variant === "hotel" ? hotelRating(option) : "";
   const breakfastStatus = variant === "hotel" ? hotelBreakfast(option) : "";
-  const mode = variant === "transport" ? transportLabel(option.mode) : "";
   const bookingLabel =
     variant === "flight"
       ? "View on Google Flights"
-      : variant === "hotel"
-        ? "View on Google Hotels"
-        : "View on Google Maps Transit";
+      : "View on Google Hotels";
   const flightPriceMeta = variant === "flight" ? flightPricePills(option, currencyCode) : null;
   const metaPills =
     variant === "flight"
@@ -172,16 +165,11 @@ export function ReviewOptionCard({
         {badges.map((badge) => (
           <span
             key={badge}
-            className={`rounded-full px-3 py-1 font-semibold ${
-              variant === "flight" || variant === "hotel"
-                ? "bg-coral text-white shadow-[0_8px_18px_rgba(215,108,78,0.22)]"
-                : "bg-white/80 text-ink"
-            }`}
+            className="rounded-full bg-coral px-3 py-1 font-semibold text-white shadow-[0_8px_18px_rgba(215,108,78,0.22)]"
           >
             {badge}
           </span>
         ))}
-        {variant === "transport" && mode ? <span>{mode}</span> : null}
         {variant === "flight"
           ? metaPills.map((pill) => (
               <span key={pill} className="rounded-full bg-white/80 px-3 py-1 font-semibold text-ink">
@@ -208,17 +196,7 @@ export function ReviewOptionCard({
                 ) : null}
               </>
             )
-          : (
-            <>
-              {option.duration ? <span>{String(option.duration)}</span> : null}
-              {typeof option.stops === "number" ? (
-                <span>{stopLabel(option.stops)}</span>
-              ) : null}
-              <span className="rounded-full bg-white/80 px-3 py-1 font-semibold text-ink">
-                {formatCurrency(option.total_price ?? option.price, currencyCode)}
-              </span>
-            </>
-          )}
+            : null}
         {variant === "flight" && flightPriceMeta?.highlighted ? (
           <span className="rounded-full bg-ink px-3 py-1 font-semibold text-white">
             {flightPriceMeta.highlighted}
@@ -229,16 +207,6 @@ export function ReviewOptionCard({
         <div className="mt-3 space-y-1 text-sm text-slate">
           {hotelDescription && hotelDescription !== hotelSummary ? (
             <div className="leading-6">{hotelDescription}</div>
-          ) : null}
-        </div>
-      ) : null}
-      {variant === "transport" ? (
-        <div className="mt-3 space-y-1 text-sm text-slate">
-          {option.segments_summary ? <div>Route: {String(option.segments_summary)}</div> : null}
-          {(option.departure_time || option.arrival_time) ? (
-            <div>
-              Depart: {String(option.departure_time ?? "?")} · Arrive: {String(option.arrival_time ?? "?")}
-            </div>
           ) : null}
         </div>
       ) : null}

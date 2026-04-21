@@ -15,7 +15,7 @@ import {
   type PlannerForm,
   type SelectionState,
 } from "@/lib/planner";
-import type { ApproveRequest, StreamEvent, TravelState, TripOption, UserProfile } from "@/lib/types";
+import type { ApproveRequest, StreamEvent, TravelState, UserProfile } from "@/lib/types";
 
 import {
   buildItineraryFileName,
@@ -55,9 +55,8 @@ type UseTripPlannerParams = {
   pace: "relaxed" | "moderate" | "packed";
   emailAddress: string;
   selection: SelectionState;
-  selectedTransport: TripOption | Record<string, unknown>;
   isRoundTrip: boolean;
-  returnOptions: TripOption[];
+  returnOptions: Array<Record<string, unknown>>;
   selectedReturnIndex: number | null;
   tokenUsageHistoryLimit?: number;
   persistAuth: (userId: string, profile: UserProfile) => void;
@@ -73,7 +72,6 @@ type UseTripPlannerParams = {
   setFeedback: Dispatch<SetStateAction<string>>;
   setItinerary: Dispatch<SetStateAction<string>>;
   setSelection: Dispatch<SetStateAction<SelectionState>>;
-  setSelectedTransportIndex: Dispatch<SetStateAction<number | null>>;
   setInterests: Dispatch<SetStateAction<string[]>>;
   setPace: Dispatch<SetStateAction<"relaxed" | "moderate" | "packed">>;
   setTokenUsageHistory: Dispatch<
@@ -98,7 +96,6 @@ export function useTripPlanner({
   pace,
   emailAddress,
   selection,
-  selectedTransport,
   isRoundTrip,
   returnOptions,
   selectedReturnIndex,
@@ -116,7 +113,6 @@ export function useTripPlanner({
   setFeedback,
   setItinerary,
   setSelection,
-  setSelectedTransportIndex,
   setInterests,
   setPace,
   setTokenUsageHistory,
@@ -155,7 +151,6 @@ export function useTripPlanner({
     setFeedback("");
     setItinerary("");
     setSelection(createDefaultSelection());
-    setSelectedTransportIndex(null);
     setInterests([]);
     setPace("moderate");
     setError("");
@@ -276,7 +271,6 @@ export function useTripPlanner({
     setFeedback("");
     setItinerary("");
     setSelection(createDefaultSelection());
-    setSelectedTransportIndex(null);
 
     const userMessage = buildUserMessage(form);
     setMessages((current) => [...current, { role: "user", content: userMessage }]);
@@ -336,7 +330,6 @@ export function useTripPlanner({
     const request: ApproveRequest = {
       user_feedback: feedback,
       feedback_type: feedbackType,
-      selected_transport: selectedTransport,
       llm_provider: form.provider,
       llm_model: form.model,
       llm_temperature: form.temperature,

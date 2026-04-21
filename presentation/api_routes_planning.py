@@ -125,7 +125,6 @@ async def approve(thread_id: str, req: ApproveRequest):
     else:
         state_updates["selected_flight"] = req.selected_flight
         state_updates["selected_hotel"] = req.selected_hotel
-    state_updates["selected_transport"] = req.selected_transport
 
     if req.trip_request:
         state_updates["trip_request"] = req.trip_request

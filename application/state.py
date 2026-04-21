@@ -35,7 +35,6 @@ class TravelState(TypedDict, total=False):
     # Research results
     flight_options: list[dict]
     hotel_options: list[dict]
-    transport_options: list[dict]
     destination_info: str
     rag_used: bool
     rag_sources: list[str]
@@ -51,8 +50,6 @@ class TravelState(TypedDict, total=False):
     feedback_type: str
     selected_flight: dict[str, Any]
     selected_hotel: dict[str, Any]
-    selected_transport: dict[str, Any]
-
     # Multi-city support
     trip_legs: list[dict[str, Any]]  # [{origin, destination, departure_date, nights, needs_hotel}, ...]
     flight_options_by_leg: list[list[dict]]  # Per-leg flight options

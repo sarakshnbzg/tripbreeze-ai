@@ -39,7 +39,6 @@ function buildReviewWorkspaceModel(overrides: Partial<ReviewWorkspaceModel> = {}
     selection: buildSelection(),
     returnOptions: [],
     showPersonalisationPanel: false,
-    selectedTransportIndex: null,
     canApprove: false,
     returnOptionsLoading: false,
     interests: [],
@@ -53,7 +52,6 @@ function buildReviewWorkspaceModel(overrides: Partial<ReviewWorkspaceModel> = {}
 function renderReviewPanel(overrides: Partial<ReviewWorkspaceModel> = {}) {
   const setSelectedReturnIndex = vi.fn();
   const setSelection = vi.fn();
-  const setSelectedTransportIndex = vi.fn();
   const setInterests = vi.fn();
   const setPace = vi.fn();
   const setFeedback = vi.fn();
@@ -65,7 +63,6 @@ function renderReviewPanel(overrides: Partial<ReviewWorkspaceModel> = {}) {
       actions={{
         setSelectedReturnIndex,
         setSelection,
-        setSelectedTransportIndex,
         setInterests,
         setPace,
         setFeedback,
@@ -83,7 +80,6 @@ function renderReviewPanel(overrides: Partial<ReviewWorkspaceModel> = {}) {
   return {
     setSelectedReturnIndex,
     setSelection,
-    setSelectedTransportIndex,
     setInterests,
     setPace,
     setFeedback,

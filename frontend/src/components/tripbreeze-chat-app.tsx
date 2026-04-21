@@ -77,7 +77,6 @@ export function TripBreezeChatApp() {
   const [feedback, setFeedback] = useState("");
   const [itinerary, setItinerary] = useState("");
   const [selection, setSelection] = useState<SelectionState>(() => createDefaultSelection());
-  const [selectedTransportIndex, setSelectedTransportIndex] = useState<number | null>(null);
   const [returnOptions, setReturnOptions] = useState<TripOption[]>([]);
   const [selectedReturnIndex, setSelectedReturnIndex] = useState<number | null>(null);
   const [returnOptionsLoading, setReturnOptionsLoading] = useState(false);
@@ -117,8 +116,6 @@ export function TripBreezeChatApp() {
 
   const currencyCode = String(state?.trip_request?.currency ?? form.currency ?? "EUR");
   const availableModels = form.provider === "google" ? GOOGLE_MODELS : OPENAI_MODELS;
-  const selectedTransport =
-    selectedTransportIndex !== null ? state?.transport_options?.[selectedTransportIndex] ?? {} : {};
   const originalUserMessage = messages.find((message) => message.role === "user") ?? null;
   const isRoundTrip = Boolean(state?.trip_request?.return_date);
   const currentTokenSummary = useMemo(() => summariseTokenUsage(state?.token_usage), [state?.token_usage]);
@@ -143,7 +140,6 @@ export function TripBreezeChatApp() {
         state.current_step === "awaiting_review" &&
         (
           hasOptionResults ||
-          state.transport_options?.length ||
           state.destination_info ||
           state.budget ||
           state.rag_sources?.length ||
@@ -237,7 +233,6 @@ export function TripBreezeChatApp() {
     selection,
     returnOptions,
     showPersonalisationPanel,
-    selectedTransportIndex,
     canApprove,
     returnOptionsLoading,
     interests,
@@ -354,7 +349,6 @@ export function TripBreezeChatApp() {
     pace,
     emailAddress,
     selection,
-    selectedTransport,
     isRoundTrip,
     returnOptions,
     selectedReturnIndex,
@@ -371,7 +365,6 @@ export function TripBreezeChatApp() {
     setFeedback,
     setItinerary,
     setSelection,
-    setSelectedTransportIndex,
     setInterests,
     setPace,
     setTokenUsageHistory,
@@ -384,7 +377,6 @@ export function TripBreezeChatApp() {
   const reviewWorkspaceActions: ReviewWorkspaceActions = {
     setSelectedReturnIndex,
     setSelection,
-    setSelectedTransportIndex,
     setInterests,
     setPace,
     setFeedback,

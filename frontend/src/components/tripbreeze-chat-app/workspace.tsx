@@ -20,7 +20,6 @@ import {
   renderMarkdownContent,
   selectionLabel,
   sentenceLabel,
-  transportLabel,
 } from "./helpers";
 
 const ItineraryMap = dynamic(() => import("./itinerary-map"), { ssr: false });
@@ -53,7 +52,6 @@ export type ReviewWorkspaceModel = {
   selection: SelectionState;
   returnOptions: TripOption[];
   showPersonalisationPanel: boolean;
-  selectedTransportIndex: number | null;
   canApprove: boolean;
   returnOptionsLoading: boolean;
   interests: string[];
@@ -65,7 +63,6 @@ export type ReviewWorkspaceModel = {
 export type ReviewWorkspaceActions = {
   setSelectedReturnIndex: React.Dispatch<React.SetStateAction<number | null>>;
   setSelection: React.Dispatch<React.SetStateAction<SelectionState>>;
-  setSelectedTransportIndex: React.Dispatch<React.SetStateAction<number | null>>;
   setInterests: React.Dispatch<React.SetStateAction<string[]>>;
   setPace: React.Dispatch<React.SetStateAction<(typeof PACE_OPTIONS)[number]>>;
   setFeedback: React.Dispatch<React.SetStateAction<string>>;
@@ -105,7 +102,6 @@ export function ReviewPanel({
     selection,
     returnOptions,
     showPersonalisationPanel,
-    selectedTransportIndex,
     canApprove,
     returnOptionsLoading,
     interests,
@@ -116,7 +112,6 @@ export function ReviewPanel({
   const {
     setSelectedReturnIndex,
     setSelection,
-    setSelectedTransportIndex,
     setInterests,
     setPace,
     setFeedback,
@@ -364,28 +359,6 @@ export function ReviewPanel({
                 </div>
               )}
 
-              {Array.isArray(state.transport_options) && state.transport_options.length > 0 ? (
-                <div className="space-y-3">
-                  <div className="text-sm font-semibold text-slate">Ground transport (optional)</div>
-                  <div className="text-xs text-slate">
-                    Compare ground options alongside flights. Tap to select, tap again to clear.
-                  </div>
-                  {state.transport_options.slice(0, 5).map((option, index) => (
-                    <ReviewOptionCard
-                      key={`transport-${index}`}
-                      option={option}
-                      title={`Transport ${index + 1}`}
-                      variant="transport"
-                      allOptions={state.transport_options ?? []}
-                      currencyCode={currencyCode}
-                      selected={selectedTransportIndex === index}
-                      onSelect={() =>
-                        setSelectedTransportIndex(selectedTransportIndex === index ? null : index)
-                      }
-                    />
-                  ))}
-                </div>
-              ) : null}
             </div>
           )
         ) : (

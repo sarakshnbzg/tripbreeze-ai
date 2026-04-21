@@ -26,7 +26,6 @@ export type ApproveRequest = {
   feedback_type: "rewrite_itinerary" | "revise_plan" | "cancel";
   selected_flight?: Record<string, unknown>;
   selected_hotel?: Record<string, unknown>;
-  selected_transport?: Record<string, unknown>;
   selected_flights?: Record<string, unknown>[];
   selected_hotels?: Record<string, unknown>[];
   trip_request?: Record<string, unknown>;
@@ -84,10 +83,8 @@ export type TravelState = {
   itinerary_data?: Record<string, unknown>;
   flight_options?: TripOption[];
   hotel_options?: TripOption[];
-  transport_options?: TripOption[];
   selected_flight?: TripOption;
   selected_hotel?: TripOption;
-  selected_transport?: TripOption;
   flight_options_by_leg?: TripOption[][];
   hotel_options_by_leg?: TripOption[][];
   selected_flights?: TripOption[];

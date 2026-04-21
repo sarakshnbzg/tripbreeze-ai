@@ -11,7 +11,6 @@ TripBreeze can:
 - parse free-text trip requests such as "Paris for 3 days, then Barcelona for 4"
 - accept voice input through Whisper transcription
 - search flights with SerpAPI-backed Google Flights
-- compare optional ground transport alongside flights
 - search hotels with SerpAPI-backed Google Hotels
 - retrieve grounded visa and entry guidance from a local RAG knowledge base
 - support multi-city itineraries with per-leg selections
@@ -61,7 +60,6 @@ Profile Loader
   -> Trip Intake
   -> Research Orchestrator
      -> flights
-     -> ground transport
      -> hotels
      -> RAG entry requirements
   -> Budget Aggregator
@@ -408,7 +406,6 @@ tripbreeze-ai/
 
 - `config.py` is the single source of truth for runtime settings, defaults, and model names.
 - Postgres persistence is strongly recommended for any workflow that uses human-in-the-loop review.
-- The ground transport provider is currently a stub in [`infrastructure/apis/ground_transport_client.py`](infrastructure/apis/ground_transport_client.py). It returns realistic mock data behind a stable contract, so it can later be replaced by a real provider.
 - If retrieval looks stale, rebuild the index with `uv run python scripts/rebuild_rag.py`.
 - SMTP setup details live in [`SMTP_SETUP.md`](SMTP_SETUP.md).
 

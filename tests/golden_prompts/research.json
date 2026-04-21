@@ -29,11 +29,6 @@
             "args": {}
           },
           {
-            "id": "rt1",
-            "name": "search_ground_transport",
-            "args": {}
-          },
-          {
             "id": "rh1",
             "name": "search_hotels",
             "args": {}
@@ -58,7 +53,7 @@
             "id": "submit_research",
             "name": "SubmitResearchResult",
             "args": {
-              "summary": "Found a flight, a ground transport alternative, and a hotel for Lisbon.",
+              "summary": "Found a flight and a hotel for Lisbon.",
               "entry_requirements": "Portugal allows visa-free tourist entry for US citizens for short stays. (Source: Visa Requirements)",
               "destination_briefing": ""
             }
@@ -78,20 +73,6 @@
           {
             "role": "assistant",
             "content": "Found 1 flight option."
-          }
-        ]
-      },
-      "search_ground_transport": {
-        "transport_options": [
-          {
-            "mode": "train",
-            "operator": "Comboios"
-          }
-        ],
-        "messages": [
-          {
-            "role": "assistant",
-            "content": "Found 1 ground transport option."
           }
         ]
       },
@@ -120,7 +101,6 @@
       "current_step": "research_complete",
       "flight_count": 1,
       "hotel_count": 1,
-      "transport_count": 1,
       "summary_contains": [
         "Found a flight",
         "Lisbon"

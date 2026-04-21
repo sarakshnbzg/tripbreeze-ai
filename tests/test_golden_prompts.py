@@ -115,10 +115,6 @@ def test_research_orchestrator_golden(case, mock_llm_responses):
             return_value=tool_results.get("search_flights"),
         ),
         patch(
-            "domain.nodes.research_orchestrator.search_ground_transport",
-            return_value=tool_results.get("search_ground_transport"),
-        ),
-        patch(
             "domain.nodes.research_orchestrator.search_hotels",
             return_value=tool_results.get("search_hotels"),
         ),
@@ -161,7 +157,6 @@ def test_research_orchestrator_golden(case, mock_llm_responses):
         assert [item["node"] for item in result["token_usage"]] == expected["token_usage_nodes"]
         assert len(result["flight_options"]) == expected["flight_count"]
         assert len(result["hotel_options"]) == expected["hotel_count"]
-        assert len(result["transport_options"]) == expected["transport_count"]
     else:
         assert len(result["flight_options_by_leg"]) == expected["flight_options_by_leg_count"]
         assert len(result["hotel_options_by_leg"]) == expected["hotel_options_by_leg_count"]

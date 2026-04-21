@@ -6,7 +6,6 @@ import {
   readRecordArray,
   readString,
   selectionLabel,
-  transportLabel,
 } from "./helpers";
 
 export type ItinerarySnapshotItem = {
@@ -66,7 +65,6 @@ export function buildItineraryViewModel({
   const hasStructuredItinerary = Object.keys(itineraryData).length > 0;
   const finalSelectedFlight = readRecord(state?.selected_flight);
   const finalSelectedHotel = readRecord(state?.selected_hotel);
-  const finalSelectedTransport = readRecord(state?.selected_transport);
   const finalSelectedFlights = readRecordArray(state?.selected_flights);
   const finalSelectedHotels = readRecordArray(state?.selected_hotels);
   const travelers = Math.max(1, Number(tripRequest.num_travelers ?? 1));
@@ -89,7 +87,6 @@ export function buildItineraryViewModel({
         tripRequest,
         finalSelectedFlight,
         finalSelectedHotel,
-        finalSelectedTransport,
         travelers,
         estimatedTotal,
         budgetLimit,
@@ -100,7 +97,6 @@ export function buildItineraryViewModel({
     tripLegs,
     finalSelectedFlight,
     finalSelectedHotel,
-    finalSelectedTransport,
     finalSelectedFlights,
     finalSelectedHotels,
   });
@@ -351,7 +347,6 @@ function buildSingleDestinationSnapshotItems({
   tripRequest,
   finalSelectedFlight,
   finalSelectedHotel,
-  finalSelectedTransport,
   travelers,
   estimatedTotal,
   budgetLimit,
@@ -360,7 +355,6 @@ function buildSingleDestinationSnapshotItems({
   tripRequest: Record<string, unknown>;
   finalSelectedFlight: Record<string, unknown>;
   finalSelectedHotel: Record<string, unknown>;
-  finalSelectedTransport: Record<string, unknown>;
   travelers: number;
   estimatedTotal: number;
   budgetLimit: number;
@@ -372,9 +366,6 @@ function buildSingleDestinationSnapshotItems({
   const returnDate = String(tripRequest.return_date ?? "").trim();
   const selectedFlightLabel = Object.keys(finalSelectedFlight).length ? selectionLabel(finalSelectedFlight, "Selected flight") : "Chosen flight";
   const selectedHotelLabel = Object.keys(finalSelectedHotel).length ? selectionLabel(finalSelectedHotel, "Selected hotel") : "Chosen hotel";
-  const transportValue = Object.keys(finalSelectedTransport).length
-    ? `${transportLabel(finalSelectedTransport.mode)}${readString(finalSelectedTransport.operator) ? ` · ${readString(finalSelectedTransport.operator)}` : ""}`
-    : "";
 
   return [
     { label: "Route", value: [origin, destination].filter(Boolean).join(" -> ") || "Planned trip" },
@@ -388,7 +379,7 @@ function buildSingleDestinationSnapshotItems({
       value: estimatedTotal > 0 ? formatCurrency(estimatedTotal, currencyCode) : budgetLimit > 0 ? formatCurrency(budgetLimit, currencyCode) : "Flexible",
     },
     { label: "Flight", value: selectedFlightLabel },
-    { label: "Stay", value: transportValue ? `${selectedHotelLabel} · ${transportValue}` : selectedHotelLabel },
+    { label: "Stay", value: selectedHotelLabel },
   ];
 }
 
@@ -396,14 +387,12 @@ function buildBookingLinks({
   tripLegs,
   finalSelectedFlight,
   finalSelectedHotel,
-  finalSelectedTransport,
   finalSelectedFlights,
   finalSelectedHotels,
 }: {
   tripLegs: Array<Record<string, unknown>>;
   finalSelectedFlight: Record<string, unknown>;
   finalSelectedHotel: Record<string, unknown>;
-  finalSelectedTransport: Record<string, unknown>;
   finalSelectedFlights: Array<Record<string, unknown>>;
   finalSelectedHotels: Array<Record<string, unknown>>;
 }) {
@@ -433,11 +422,6 @@ function buildBookingLinks({
   const hotelUrl = readString(finalSelectedHotel.booking_url);
   if (hotelUrl) {
     links.push({ label: "Hotel booking", url: hotelUrl });
-  }
-
-  const transportUrl = readString(finalSelectedTransport.booking_url);
-  if (transportUrl) {
-    links.push({ label: `${transportLabel(finalSelectedTransport.mode)} booking`, url: transportUrl });
   }
 
   return links;
