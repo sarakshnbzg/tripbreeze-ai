@@ -408,6 +408,8 @@ class TestTripIntakeNode:
         assert "$1,200" in result["messages"][0]["content"]
 
     def test_revision_baseline_allows_feedback_to_override_existing_duration(self):
+        departure_date = str(date.today() + timedelta(days=30))
+        return_date = str(date.fromisoformat(departure_date) + timedelta(days=5))
         mock_llm = MagicMock()
         mock_response = MagicMock()
         mock_response.tool_calls = [{"args": {"preferences": "make the trip 5 nights"}}]
@@ -419,8 +421,8 @@ class TestTripIntakeNode:
             revision_baseline={
                 "origin": "Berlin",
                 "destination": "London",
-                "departure_date": "2026-05-21",
-                "return_date": "2026-05-26",
+                "departure_date": departure_date,
+                "return_date": return_date,
                 "num_travelers": 1,
                 "budget_limit": 0,
                 "currency": "EUR",
@@ -436,7 +438,7 @@ class TestTripIntakeNode:
                     result = trip_intake(state)
 
         assert result["current_step"] == "intake_complete"
-        assert result["trip_request"]["return_date"] == "2026-05-26"
+        assert result["trip_request"]["return_date"] == return_date
 
     def test_validation_error_returns_friendly_message(self):
         state = self._base_state()
@@ -514,6 +516,8 @@ class TestTripIntakeNode:
 
     def test_free_text_duration_and_date_extracted_by_llm(self):
         """LLM extracts correct dates from natural language."""
+        departure_date = str(date.today() + timedelta(days=2))
+        return_date = str(date.fromisoformat(departure_date) + timedelta(days=2))
         mock_llm = MagicMock()
         mock_response = MagicMock()
         # LLM now correctly extracts dates and calculates duration
@@ -522,9 +526,9 @@ class TestTripIntakeNode:
                 "args": {
                     "origin": "Berlin",
                     "destination": "London",
-                    "departure_date": "2026-04-20",
-                    "return_date": "2026-04-22",
-                    "check_out_date": "2026-04-22",
+                    "departure_date": departure_date,
+                    "return_date": return_date,
+                    "check_out_date": return_date,
                 }
             }
         ]
@@ -542,9 +546,9 @@ class TestTripIntakeNode:
                     result = trip_intake(state)
 
         trip = result["trip_request"]
-        assert trip["departure_date"] == "2026-04-20"
-        assert trip["return_date"] == "2026-04-22"
-        assert trip["check_out_date"] == "2026-04-22"
+        assert trip["departure_date"] == departure_date
+        assert trip["return_date"] == return_date
+        assert trip["check_out_date"] == return_date
 
     def test_free_text_one_way_extracted_by_llm(self):
         """LLM extracts one-way intent and leaves return_date empty."""
@@ -584,6 +588,8 @@ class TestTripIntakeNode:
         assert "(one-way)" in result["messages"][0]["content"]
 
     def test_free_text_one_way_duration_falls_back_to_query_when_llm_misses_check_out(self):
+        departure_date = str(date.today() + timedelta(days=20))
+        check_out_date = str(date.fromisoformat(departure_date) + timedelta(days=3))
         mock_llm = MagicMock()
         mock_response = MagicMock()
         mock_response.tool_calls = [
@@ -591,7 +597,7 @@ class TestTripIntakeNode:
                 "args": {
                     "origin": "Berlin",
                     "destination": "New York",
-                    "departure_date": "2026-05-15",
+                    "departure_date": departure_date,
                     "return_date": "",
                     "check_out_date": "",
                     "is_one_way": True,
@@ -611,11 +617,13 @@ class TestTripIntakeNode:
                     result = trip_intake(state)
 
         trip = result["trip_request"]
-        assert trip["departure_date"] == "2026-05-15"
+        assert trip["departure_date"] == departure_date
         assert trip["return_date"] == ""
-        assert trip["check_out_date"] == "2026-05-18"
+        assert trip["check_out_date"] == check_out_date
 
     def test_free_text_uses_profile_home_city_and_infers_round_trip_from_nights(self):
+        departure_date = str(date.today() + timedelta(days=25))
+        return_date = str(date.fromisoformat(departure_date) + timedelta(days=2))
         mock_llm = MagicMock()
         mock_response = MagicMock()
         mock_response.tool_calls = [
@@ -623,7 +631,7 @@ class TestTripIntakeNode:
                 "args": {
                     "origin": "",
                     "destination": "London",
-                    "departure_date": "2026-05-21",
+                    "departure_date": departure_date,
                     "return_date": "",
                     "check_out_date": "",
                     "is_one_way": False,
@@ -645,7 +653,7 @@ class TestTripIntakeNode:
 
         trip = result["trip_request"]
         assert trip["origin"] == "Berlin"
-        assert trip["departure_date"] == "2026-05-21"
-        assert trip["return_date"] == "2026-05-23"
-        assert trip["check_out_date"] == "2026-05-23"
+        assert trip["departure_date"] == departure_date
+        assert trip["return_date"] == return_date
+        assert trip["check_out_date"] == return_date
         assert "(one-way)" not in result["messages"][0]["content"]
