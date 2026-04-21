@@ -10,6 +10,7 @@ import {
 } from "@/lib/api";
 import {
   buildStructuredFields,
+  defaultForm,
   selectedOption,
   type PlannerForm,
   type SelectionState,
@@ -44,6 +45,7 @@ type ChatMessage = {
 
 type UseTripPlannerParams = {
   authenticatedUser: string;
+  profile: UserProfile | null;
   form: PlannerForm;
   state: TravelState | null;
   itinerary: string;
@@ -86,6 +88,7 @@ type UseTripPlannerParams = {
 
 export function useTripPlanner({
   authenticatedUser,
+  profile,
   form,
   state,
   itinerary,
@@ -141,6 +144,8 @@ export function useTripPlanner({
   }
 
   function clearPlannerState({ showComposer = true }: { showComposer?: boolean } = {}) {
+    const preservedProvider = form.provider;
+    const preservedModel = form.model;
     setMessages([]);
     setPlanningUpdates([]);
     setState(null);
@@ -156,6 +161,13 @@ export function useTripPlanner({
     setShowComposer(showComposer);
     setShowEntryRequirements(false);
     setShowPlanningProgress(true);
+    setForm({
+      ...defaultForm,
+      userId: authenticatedUser || defaultForm.userId,
+      origin: profile?.home_city ?? "",
+      provider: preservedProvider,
+      model: preservedModel,
+    });
   }
 
   function logout() {

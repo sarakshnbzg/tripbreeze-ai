@@ -93,31 +93,6 @@ def _infer_stay_length_days(query: str) -> int | None:
     return count
 
 
-def _has_structured_trip_signal(data: dict[str, Any]) -> bool:
-    """Return true when any meaningful travel-planning field is present."""
-    signal_fields = (
-        "origin",
-        "destination",
-        "departure_date",
-        "return_date",
-        "check_out_date",
-        "preferences",
-        "travel_class",
-        "hotel_stars",
-        "stops",
-        "max_flight_price",
-        "max_duration",
-        "bags",
-        "include_airlines",
-        "exclude_airlines",
-    )
-    for field in signal_fields:
-        value = data.get(field)
-        if value not in (None, "", [], 0):
-            return True
-    return False
-
-
 def _classify_domain(llm, query: str, model: str) -> tuple[dict[str, Any], dict | None]:
     """Use LLM tool calling to classify whether a request belongs to the travel domain."""
     if not query.strip():
@@ -293,6 +268,42 @@ def _parse_clarification(
     return filtered, usage
 
 
+def _apply_clarification_duration_fallback(
+    parsed_answer: dict[str, Any],
+    answer: str,
+    raw_trip_data: dict[str, Any],
+    missing_fields: list[str],
+) -> dict[str, Any]:
+    """Convert clarification duration phrases into concrete trip dates.
+
+    Clarification answers like "for 2 nights" are easy for the LLM to misread as
+    a literal date detached from the already known departure date. When we detect
+    a duration phrase, compute the stay end deterministically from the available
+    departure date instead.
+    """
+    inferred_days = _infer_stay_length_days(answer)
+    if not inferred_days:
+        return parsed_answer
+
+    departure_date = str(parsed_answer.get("departure_date") or raw_trip_data.get("departure_date") or "").strip()
+    if not departure_date:
+        return parsed_answer
+
+    try:
+        inferred_end = (date.fromisoformat(departure_date) + timedelta(days=inferred_days)).isoformat()
+    except ValueError:
+        return parsed_answer
+
+    next_answer = dict(parsed_answer)
+    if "return_date" in missing_fields and not raw_trip_data.get("is_one_way"):
+        next_answer["return_date"] = inferred_end
+    if "check_out_date" in missing_fields or (
+        "return_date" in missing_fields and not raw_trip_data.get("is_one_way")
+    ):
+        next_answer["check_out_date"] = inferred_end
+    return next_answer
+
+
 def _parse_preferences(llm, preferences: str, model: str) -> tuple[dict[str, Any], dict | None]:
     """Use LLM tool calling to extract structured filters from free-text preferences.
 
@@ -466,7 +477,7 @@ def trip_intake(state: dict) -> dict:
     # Start with structured fields as the base
     raw_trip_data = dict(revision_baseline or structured_fields)
 
-    if free_text_query.strip() and not revision_mode and not _has_structured_trip_signal(structured_fields):
+    if free_text_query.strip() and not revision_mode:
         llm = create_chat_model(provider, model, temperature=temperature)
         domain_result, usage = _classify_domain(llm, free_text_query, model=model)
         if usage:
@@ -637,12 +648,15 @@ def trip_intake(state: dict) -> dict:
         raw_trip_data["origin"] = profile["home_city"]
 
     # ── Check for missing required fields and ask the user ──
-    # Only ask for clarification when the user provided free text without structured
-    # form fields (the UI already validates structured submissions). Uses a loop so
-    # that if the user's answer still leaves gaps, we ask again. LangGraph replays
-    # answered interrupts on re-run, so each iteration's interrupt() returns the
-    # previously supplied answer automatically.
-    if free_text_query.strip() and not revision_mode and not _has_structured_trip_signal(structured_fields):
+    # Ask for clarification whenever a free-text search still lacks required trip
+    # fields after merging parsed text and structured inputs. This keeps mixed-mode
+    # searches working even when the form contributes defaults like currency or
+    # travel class that should not suppress follow-up questions.
+    #
+    # Uses a loop so that if the user's answer still leaves gaps, we ask again.
+    # LangGraph replays answered interrupts on re-run, so each iteration's
+    # interrupt() returns the previously supplied answer automatically.
+    if free_text_query.strip() and not revision_mode:
         while True:
             missing_fields: list[str] = []
             if not raw_trip_data.get("destination"):
@@ -679,6 +693,12 @@ def trip_intake(state: dict) -> dict:
                 missing_fields,
                 question,
                 model=model,
+            )
+            parsed_answer = _apply_clarification_duration_fallback(
+                parsed_answer,
+                clarification_answer,
+                raw_trip_data,
+                missing_fields,
             )
             if usage:
                 token_usage.append(usage)

@@ -52,6 +52,7 @@ export type ReviewWorkspaceModel = {
   showPersonalisationPanel: boolean;
   selectedTransportIndex: number | null;
   canApprove: boolean;
+  returnOptionsLoading: boolean;
   interests: string[];
   pace: (typeof PACE_OPTIONS)[number];
   feedback: string;
@@ -103,6 +104,7 @@ export function ReviewPanel({
     showPersonalisationPanel,
     selectedTransportIndex,
     canApprove,
+    returnOptionsLoading,
     interests,
     pace,
     feedback,
@@ -290,7 +292,17 @@ export function ReviewPanel({
                 <div ref={returnSectionRef} className="space-y-3">
                   <div className="text-sm font-semibold text-slate">Return Flights</div>
                   {selection.flightIndex >= 0 ? (
-                    returnOptions.length ? (
+                    returnOptionsLoading ? (
+                      <div className="rounded-[1.5rem] bg-mist/60 p-4 text-sm text-slate">
+                        <div className="flex items-center gap-2 font-semibold text-ink">
+                          <LoaderCircle className="h-4 w-4 animate-spin text-coral" />
+                          Loading return flights...
+                        </div>
+                        <div className="mt-2">
+                          We’re finding matching return options for the outbound flight you selected.
+                        </div>
+                      </div>
+                    ) : returnOptions.length ? (
                       returnOptions.slice(0, 5).map((option, index) => (
                         <ReviewOptionCard
                           key={`return-${index}`}
@@ -319,7 +331,11 @@ export function ReviewPanel({
               {selection.flightIndex >= 0 ? (
                 <div ref={hotelSectionRef} className="space-y-3">
                   <div className="text-sm font-semibold text-slate">Hotels</div>
-                  {(state.hotel_options ?? []).length ? (
+                  {isRoundTrip && returnOptionsLoading ? (
+                    <div className="rounded-[1.5rem] bg-mist/60 p-4 text-sm text-slate">
+                      Return flights are loading. Hotel options will stay here once those are ready.
+                    </div>
+                  ) : (state.hotel_options ?? []).length ? (
                     (state.hotel_options ?? []).slice(0, 5).map((option, index) => (
                       <ReviewOptionCard
                         key={`hotel-${index}`}

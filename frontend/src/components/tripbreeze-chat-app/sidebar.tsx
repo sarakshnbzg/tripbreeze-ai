@@ -239,35 +239,6 @@ export function AppSidebar({
             </div>
           ) : null}
 
-          {(hasReviewWorkspace || itinerary) && recentPlanningUpdates.length > 0 ? (
-            <div className="rounded-2xl border border-ink/10 bg-white/70 p-4">
-              <button
-                type="button"
-                onClick={() => setShowPlanningProgress((current) => !current)}
-                className="flex w-full items-center justify-between gap-3 text-left"
-              >
-                <div>
-                  <div className="flex items-center gap-2 text-sm font-semibold text-ink">
-                    <LoaderCircle className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-                    Planning progress
-                  </div>
-                  <div className="mt-1 text-xs text-slate">Latest workflow milestones from the planner.</div>
-                </div>
-                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate">
-                  {showPlanningProgress ? "Hide" : "Show"}
-                </span>
-              </button>
-              {showPlanningProgress ? (
-                <div className="mt-4 space-y-2">
-                  {recentPlanningUpdates.map((update, index) => (
-                    <div key={`${update}-${index}`} className="rounded-[1.1rem] border border-ink/8 bg-white/80 px-3 py-2 text-sm text-slate">
-                      {update}
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
         </div>
       </Card>
     </aside>

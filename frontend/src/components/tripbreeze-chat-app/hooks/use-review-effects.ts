@@ -27,6 +27,7 @@ export function useReviewEffects({
   currencyCode,
   setReturnOptions,
   setSelectedReturnIndex,
+  setReturnOptionsLoading,
 }: {
   hasReviewWorkspace: boolean;
   itinerary: string;
@@ -46,6 +47,7 @@ export function useReviewEffects({
   currencyCode: string;
   setReturnOptions: React.Dispatch<React.SetStateAction<TripOption[]>>;
   setSelectedReturnIndex: React.Dispatch<React.SetStateAction<number | null>>;
+  setReturnOptionsLoading: React.Dispatch<React.SetStateAction<boolean>>;
 }) {
   useEffect(() => {
     if (hasReviewWorkspace || itinerary) {
@@ -98,6 +100,7 @@ export function useReviewEffects({
   useEffect(() => {
     async function loadReturnOptions() {
       if (!state?.thread_id || !isRoundTrip || !state.flight_options?.length || selection.flightIndex < 0) {
+        setReturnOptionsLoading(false);
         setReturnOptions([]);
         setSelectedReturnIndex(null);
         return;
@@ -106,12 +109,14 @@ export function useReviewEffects({
       const selectedOutbound = state.flight_options[selection.flightIndex];
       const departureToken = String(selectedOutbound?.departure_token ?? "");
       if (!departureToken) {
+        setReturnOptionsLoading(false);
         setReturnOptions([]);
         setSelectedReturnIndex(null);
         return;
       }
 
       try {
+        setReturnOptionsLoading(true);
         const returnTimeWindow = normaliseTimeWindow(profile?.preferred_return_time_window);
         const options = await fetchReturnFlights(state.thread_id, {
           origin: String(state.trip_request?.origin ?? ""),
@@ -129,6 +134,8 @@ export function useReviewEffects({
       } catch {
         setReturnOptions([]);
         setSelectedReturnIndex(null);
+      } finally {
+        setReturnOptionsLoading(false);
       }
     }
 
@@ -139,6 +146,7 @@ export function useReviewEffects({
     profile?.preferred_return_time_window,
     selection.flightIndex,
     setReturnOptions,
+    setReturnOptionsLoading,
     setSelectedReturnIndex,
     state?.flight_options,
     state?.thread_id,

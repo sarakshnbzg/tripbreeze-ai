@@ -134,6 +134,61 @@ class TestInferStayLengthDays:
         assert _infer_stay_length_days("one way to New York on May 15") is None
 
 
+class TestClarificationDurationFallback:
+    def test_duration_answer_uses_departure_date_instead_of_bad_llm_return_date(self):
+        departure_date = str(date.today() + timedelta(days=40))
+        expected_return = str(date.fromisoformat(departure_date) + timedelta(days=2))
+
+        domain_response = MagicMock()
+        domain_response.tool_calls = [{"args": {"in_domain": True, "reason": ""}}]
+
+        parse_response = MagicMock()
+        parse_response.tool_calls = [{
+            "args": {
+                "origin": "",
+                "destination": "London",
+                "departure_date": departure_date,
+                "return_date": "",
+                "check_out_date": "",
+                "is_one_way": False,
+            }
+        }]
+
+        clarify_response = MagicMock()
+        clarify_response.tool_calls = [{
+            "args": {
+                "origin": "Berlin",
+                "return_date": str(date.today() + timedelta(days=1)),
+            }
+        }]
+
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+
+        state = {
+            "user_profile": {"home_city": "Berlin"},
+            "structured_fields": {},
+            "revision_baseline": {},
+            "free_text_query": "Plan a trip to London on June 1st.",
+            "llm_model": "gpt-4o-mini",
+            "llm_provider": "openai",
+            "llm_temperature": 0,
+        }
+
+        with patch("domain.nodes.trip_intake.create_chat_model", return_value=mock_llm):
+            with patch("domain.nodes.trip_intake.invoke_with_retry", side_effect=[domain_response, parse_response, clarify_response]):
+                with patch("domain.nodes.trip_intake.extract_token_usage", return_value=None):
+                    with patch("domain.nodes.trip_intake.interrupt", return_value="From Berlin for 2 nights"):
+                        result = trip_intake(state)
+
+        trip = result["trip_request"]
+        assert result["current_step"] == "intake_complete"
+        assert trip["origin"] == "Berlin"
+        assert trip["departure_date"] == departure_date
+        assert trip["return_date"] == expected_return
+        assert trip["check_out_date"] == expected_return
+
+
 class TestNormaliseTripData:
     def _base_raw(self, **overrides):
         data = {

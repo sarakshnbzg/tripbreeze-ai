@@ -80,6 +80,7 @@ export function TripBreezeChatApp() {
   const [selectedTransportIndex, setSelectedTransportIndex] = useState<number | null>(null);
   const [returnOptions, setReturnOptions] = useState<TripOption[]>([]);
   const [selectedReturnIndex, setSelectedReturnIndex] = useState<number | null>(null);
+  const [returnOptionsLoading, setReturnOptionsLoading] = useState(false);
   const [interests, setInterests] = useState<string[]>([]);
   const [pace, setPace] = useState<(typeof PACE_OPTIONS)[number]>("moderate");
   const [emailAddress, setEmailAddress] = useState("");
@@ -118,6 +119,7 @@ export function TripBreezeChatApp() {
   const availableModels = form.provider === "google" ? GOOGLE_MODELS : OPENAI_MODELS;
   const selectedTransport =
     selectedTransportIndex !== null ? state?.transport_options?.[selectedTransportIndex] ?? {} : {};
+  const originalUserMessage = messages.find((message) => message.role === "user") ?? null;
   const isRoundTrip = Boolean(state?.trip_request?.return_date);
   const currentTokenSummary = useMemo(() => summariseTokenUsage(state?.token_usage), [state?.token_usage]);
 
@@ -138,6 +140,7 @@ export function TripBreezeChatApp() {
     () =>
       Boolean(
         state &&
+        state.current_step === "awaiting_review" &&
         (
           hasOptionResults ||
           state.transport_options?.length ||
@@ -201,6 +204,15 @@ export function TripBreezeChatApp() {
     [currencyCode, itinerary, state],
   );
   const { finalItinerary } = itineraryView;
+  const latestStateAssistantMessage = latestAssistantMessage(state);
+  const clarificationTranscript = messages.slice(1).filter((message) => (
+    !(
+      (hasReviewWorkspace || itinerary) &&
+      message.role === "assistant" &&
+      latestStateAssistantMessage &&
+      message.content === latestStateAssistantMessage
+    )
+  ));
   const recentPlanningUpdates = useMemo(() => {
     const filtered = planningUpdates
       .map((update) => String(update).trim())
@@ -227,6 +239,7 @@ export function TripBreezeChatApp() {
     showPersonalisationPanel,
     selectedTransportIndex,
     canApprove,
+    returnOptionsLoading,
     interests,
     pace,
     feedback,
@@ -258,6 +271,7 @@ export function TripBreezeChatApp() {
     currencyCode,
     setReturnOptions,
     setSelectedReturnIndex,
+    setReturnOptionsLoading,
   });
 
   async function handleLogin() {
@@ -330,6 +344,7 @@ export function TripBreezeChatApp() {
     handleEmailItinerary,
   } = useTripPlanner({
     authenticatedUser,
+    profile,
     form,
     state,
     itinerary,
@@ -431,11 +446,6 @@ export function TripBreezeChatApp() {
                 <Settings2 className="mr-2 h-4 w-4" />
                 Settings
               </Button>
-              {!showComposer ? (
-                <Button variant="secondary" onClick={() => setShowComposer(true)}>
-                  Change trip details
-                </Button>
-              ) : null}
               <Button variant="secondary" onClick={resetTrip}>
                 New Trip
               </Button>
@@ -448,8 +458,6 @@ export function TripBreezeChatApp() {
           <div className="mt-6 space-y-5">
             {!showComposer && !itinerary ? (
               <div className="rounded-[1.4rem] border border-ink/10 bg-mist/55 px-4 py-3 text-sm text-slate">
-                <span className="font-semibold text-ink">Change trip details</span> reopens the form so you can adjust dates, cities, or filters.
-                {" "}
                 <span className="font-semibold text-ink">Ask planner to rework results</span> reruns planning from the current review with your notes.
               </div>
             ) : null}
@@ -520,6 +528,44 @@ export function TripBreezeChatApp() {
                   ))}
                 </div>
               )
+            ) : null}
+
+            {(hasReviewWorkspace || itinerary) && originalUserMessage ? (
+              <div className="rounded-[1.75rem] border border-ink/10 bg-white/75 px-5 py-4 text-sm leading-7 text-ink shadow-sm">
+                <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate">
+                  Your request
+                </div>
+                {originalUserMessage.content}
+              </div>
+            ) : null}
+
+            {hasReviewWorkspace && clarificationTranscript.length > 0 ? (
+              <div className="rounded-[1.75rem] border border-ink/10 bg-white/75 px-5 py-4 text-sm leading-7 text-ink shadow-sm">
+                <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate">
+                  Clarifications
+                </div>
+                <div className="space-y-3">
+                  {clarificationTranscript.map((message, index) => (
+                    <div
+                      key={`${message.role}-transcript-${index}`}
+                      className={`max-w-4xl rounded-[1.4rem] px-4 py-3 text-sm leading-7 ${
+                        message.role === "user"
+                          ? "ml-auto bg-ink text-white"
+                          : "border border-ink/8 bg-white text-ink"
+                      }`}
+                    >
+                      <div
+                        className={`mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${
+                          message.role === "user" ? "text-white/60" : "text-slate"
+                        }`}
+                      >
+                        {message.role === "user" ? "You" : "TripBreeze"}
+                      </div>
+                      {message.role === "assistant" ? renderMarkdownContent(message.content) : message.content}
+                    </div>
+                  ))}
+                </div>
+              </div>
             ) : null}
 
             {recentPlanningUpdates.length > 0 && !(hasReviewWorkspace || itinerary) ? (
