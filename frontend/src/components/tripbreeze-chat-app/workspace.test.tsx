@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { SelectionState } from "@/lib/planner";
 import type { TravelState, TripOption } from "@/lib/types";
 
+import { buildItineraryViewModel } from "./view-models";
 import { FinalItineraryPanel, ReviewPanel, type ReviewWorkspaceModel } from "./workspace";
 
 function buildSelection(overrides: Partial<SelectionState> = {}): SelectionState {
@@ -148,6 +149,7 @@ describe("workspace panels", () => {
               label: "Lisbon stay",
               kind: "hotel",
               detail: "City center",
+              mapsUrl: "https://www.google.com/maps/search/?api=1&query=38.7223,-9.1393",
             },
           ],
           itineraryLegs: [
@@ -174,6 +176,7 @@ describe("workspace panels", () => {
                   name: "Check in",
                   time_of_day: "Afternoon",
                   notes: "Drop bags and explore nearby.",
+                  maps_url: "https://www.google.com/maps/search/?api=1&query=Lisbon",
                 },
               ],
             },
@@ -197,5 +200,52 @@ describe("workspace panels", () => {
     expect(screen.getByText(/Leg 1: Berlin to Lisbon/)).toBeInTheDocument();
     expect(screen.getByText(/Day 1 · Arrival/)).toBeInTheDocument();
     expect(screen.getByText("Check in")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open in Google Maps" })).toHaveAttribute(
+      "href",
+      "https://www.google.com/maps/search/?api=1&query=Lisbon",
+    );
+  });
+
+  it("builds Google Maps links for trip map points", () => {
+    const viewModel = buildItineraryViewModel({
+      state: {
+        selected_hotel: {
+          name: "Lisbon stay",
+          latitude: 38.7223,
+          longitude: -9.1393,
+          address: "City center",
+        },
+        itinerary_data: {
+          daily_plans: [
+            {
+              day_number: 1,
+              activities: [
+                {
+                  name: "Alfama walk",
+                  latitude: 38.711,
+                  longitude: -9.13,
+                  maps_url: "https://www.google.com/maps/search/?api=1&query=Alfama",
+                },
+              ],
+            },
+          ],
+        },
+      } as unknown as TravelState,
+      itinerary: "Trip ready",
+      currencyCode: "EUR",
+    });
+
+    expect(viewModel.mapPoints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "Lisbon stay",
+          mapsUrl: "https://www.google.com/maps/search/?api=1&query=38.7223,-9.1393",
+        }),
+        expect.objectContaining({
+          label: "Alfama walk",
+          mapsUrl: "https://www.google.com/maps/search/?api=1&query=Alfama",
+        }),
+      ]),
+    );
   });
 });

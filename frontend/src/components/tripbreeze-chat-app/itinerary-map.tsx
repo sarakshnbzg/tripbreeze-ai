@@ -13,6 +13,7 @@ export type ItineraryMapPoint = {
   kind: "hotel" | "activity";
   dayNumber?: number;
   detail?: string;
+  mapsUrl?: string;
 };
 
 const HOTEL_COLOR = "#d76c4e";
@@ -116,6 +117,16 @@ export default function ItineraryMap({ points }: { points: ItineraryMapPoint[] }
                   {point.detail ? <div className="mt-1 text-xs text-slate">{point.detail}</div> : null}
                   {!isHotel && point.dayNumber ? (
                     <div className="mt-1 text-xs text-slate">Day {point.dayNumber}</div>
+                  ) : null}
+                  {point.mapsUrl ? (
+                    <a
+                      href={point.mapsUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-2 inline-flex text-xs font-semibold text-coral underline-offset-2 hover:underline"
+                    >
+                      Open in Google Maps
+                    </a>
                   ) : null}
                 </div>
               </Popup>

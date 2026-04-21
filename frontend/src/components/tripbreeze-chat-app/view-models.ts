@@ -27,6 +27,7 @@ export type ItineraryMapPoint = {
   kind: "hotel" | "activity";
   dayNumber?: number;
   detail?: string;
+  mapsUrl?: string;
 };
 
 export type ItineraryViewModel = {
@@ -218,6 +219,13 @@ function buildMapPoints({
         kind: "activity",
         dayNumber: Number.isFinite(dayNumber) ? dayNumber : index + 1,
         detail: detailParts.join(" · "),
+        mapsUrl: buildGoogleMapsUrl({
+          mapsUrl: readString(activity.maps_url),
+          label: name,
+          address: readString(activity.address),
+          latitude,
+          longitude,
+        }),
       });
     });
   });
@@ -244,7 +252,42 @@ function buildHotelPoint(hotel: Record<string, unknown>, fallbackLabel = "Hotel"
     label,
     kind: "hotel",
     detail: detailParts.join(" · "),
+    mapsUrl: buildGoogleMapsUrl({
+      label,
+      address: readString(hotel.address),
+      latitude,
+      longitude,
+    }),
   };
+}
+
+function buildGoogleMapsUrl({
+  mapsUrl,
+  label,
+  address,
+  latitude,
+  longitude,
+}: {
+  mapsUrl?: string;
+  label?: string;
+  address?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+}): string {
+  if (mapsUrl) {
+    return mapsUrl;
+  }
+
+  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+    return `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
+  }
+
+  const query = [label, address].filter(Boolean).join(" ").trim();
+  if (!query) {
+    return "";
+  }
+
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
 
 function buildMultiCitySnapshotItems({

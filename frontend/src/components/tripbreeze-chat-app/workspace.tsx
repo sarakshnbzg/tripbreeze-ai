@@ -691,6 +691,16 @@ export function FinalItineraryPanel({
                           </div>
                           {readString(activity.notes) ? <div className="mt-2 leading-6">{readString(activity.notes)}</div> : null}
                           {readString(activity.address) ? <div className="mt-2 text-xs text-slate">{readString(activity.address)}</div> : null}
+                          {readString(activity.maps_url) ? (
+                            <a
+                              href={readString(activity.maps_url)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="mt-3 inline-flex text-xs font-semibold text-coral underline-offset-2 hover:underline"
+                            >
+                              Open in Google Maps
+                            </a>
+                          ) : null}
                         </div>
                       ))}
                     </div>
