@@ -409,12 +409,37 @@ def _backfill_activity_coordinates(daily_plans: list, destination_by_date: dict[
             fallback_hint = day_hint or (activity.destination or "")
             if not address and not activity.name:
                 continue
+            if not address and _is_generic_logistics_activity(activity.name):
+                continue
             query_parts = [part for part in [activity.name, address, fallback_hint] if part]
             if not query_parts:
                 continue
             coords = geocode_address(", ".join(query_parts))
             if coords:
                 activity.latitude, activity.longitude = coords
+
+
+def _is_generic_logistics_activity(name: str | None) -> bool:
+    """Return True for generic transfer/check-out activities that should not be geocoded by name alone."""
+    text = (name or "").strip().lower()
+    if not text:
+        return False
+
+    generic_phrases = (
+        "airport transfer",
+        "transfer to airport",
+        "airport",
+        "check out",
+        "checkout",
+        "hotel checkout",
+        "baggage storage",
+        "luggage storage",
+        "depart",
+        "departure",
+        "station transfer",
+        "transfer to station",
+    )
+    return any(phrase in text for phrase in generic_phrases)
 
 
 PACE_TO_ACTIVITIES = {"relaxed": 2, "moderate": 3, "packed": 4}

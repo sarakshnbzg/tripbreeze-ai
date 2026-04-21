@@ -6,6 +6,7 @@ from domain.nodes.trip_finaliser import (
     Activity,
     DayPlan,
     _build_multi_city_daily_plans,
+    _backfill_activity_coordinates,
     _apply_activity_location_metadata,
     _finaliser_success_response,
     _single_city_plan_context,
@@ -213,6 +214,28 @@ class TestActivityLocationMetadata:
         assert activity.longitude == 2.3376
         assert "google.com/maps/search" in activity.maps_url
         assert activity.destination == "Paris"
+
+    @patch("domain.nodes.trip_finaliser.geocode_address")
+    def test_skips_geocoding_generic_departure_logistics_without_address(self, mock_geocode):
+        plans = [
+            DayPlan(
+                day_number=4,
+                date="2026-06-14",
+                theme="Departure day",
+                activities=[
+                    Activity(name="Airport transfer", time_of_day="morning", notes="Head to the airport"),
+                    Activity(name="Baggage storage", time_of_day="afternoon", notes="Store bags nearby"),
+                ],
+            )
+        ]
+
+        _backfill_activity_coordinates(plans, destination_by_date={"2026-06-14": "Paris"})
+
+        assert mock_geocode.call_count == 0
+        assert plans[0].activities[0].latitude is None
+        assert plans[0].activities[0].longitude is None
+        assert plans[0].activities[1].latitude is None
+        assert plans[0].activities[1].longitude is None
 
 
 class TestSelectedFlightContext:
