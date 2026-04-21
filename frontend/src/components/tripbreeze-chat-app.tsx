@@ -7,11 +7,6 @@ import {
 } from "lucide-react";
 
 import {
-  login,
-  register,
-  saveProfile,
-} from "@/lib/api";
-import {
   defaultForm,
   selectedOption,
   type PlannerForm,
@@ -21,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import type { SelectionState } from "@/lib/planner";
 import { AuthScreen } from "@/components/tripbreeze-chat-app/auth-screen";
+import { ModelSettingsPanel } from "@/components/tripbreeze-chat-app/model-settings-panel";
 import { PlannerComposer } from "@/components/tripbreeze-chat-app/planner-composer";
 import { AppSidebar } from "@/components/tripbreeze-chat-app/sidebar";
 import {
@@ -31,17 +27,16 @@ import {
   type ReviewWorkspaceRefs,
 } from "@/components/tripbreeze-chat-app/workspace";
 import { useAuthSession } from "@/components/tripbreeze-chat-app/hooks/use-auth-session";
+import { useAuthController } from "@/components/tripbreeze-chat-app/hooks/use-auth-controller";
 import { useReferenceData } from "@/components/tripbreeze-chat-app/hooks/use-reference-data";
 import { useReviewEffects } from "@/components/tripbreeze-chat-app/hooks/use-review-effects";
-import { useTripPlanner, type PlannerLoadingState } from "@/components/tripbreeze-chat-app/hooks/use-trip-planner";
+import { useTripPlanner } from "@/components/tripbreeze-chat-app/hooks/use-trip-planner";
 import {
   ChatMessage,
   createDefaultSelection,
-  expandStarThresholds,
   isMultiCitySelectionComplete,
   latestAssistantMessage,
   renderMarkdownContent,
-  safeErrorMessage,
   summariseTokenUsage,
 } from "@/components/tripbreeze-chat-app/helpers";
 import {
@@ -49,25 +44,10 @@ import {
   OPENAI_MODELS,
   PACE_OPTIONS,
 } from "@/components/tripbreeze-chat-app/constants";
+import type { PlannerLoadingState } from "@/components/tripbreeze-chat-app/ui-types";
 import { buildItineraryViewModel } from "@/components/tripbreeze-chat-app/view-models";
 
 export function TripBreezeChatApp() {
-  const [authMode, setAuthMode] = useState<"login" | "register">("login");
-  const [loginForm, setLoginForm] = useState({ userId: "", password: "" });
-  const [registerForm, setRegisterForm] = useState({
-    userId: "",
-    password: "",
-    confirmPassword: "",
-    homeCity: "",
-    passportCountry: "",
-    travelClass: "ECONOMY",
-    preferredAirlines: [] as string[],
-    preferredHotelStars: [] as number[],
-    outboundWindowStart: 0,
-    outboundWindowEnd: 23,
-    returnWindowStart: 0,
-    returnWindowEnd: 23,
-  });
   const [form, setForm] = useState<PlannerForm>(defaultForm);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [planningUpdates, setPlanningUpdates] = useState<string[]>([]);
@@ -112,6 +92,23 @@ export function TripBreezeChatApp() {
   } = useAuthSession({
     setForm,
     setEmailAddress,
+  });
+  const {
+    authMode,
+    setAuthMode,
+    loginForm,
+    setLoginForm,
+    registerForm,
+    setRegisterForm,
+    handleLogin,
+    handleRegister,
+    handleSaveProfile,
+  } = useAuthController({
+    authenticatedUser,
+    profile,
+    persistAuth,
+    setLoading,
+    setError,
   });
 
   const currencyCode = String(state?.trip_request?.currency ?? form.currency ?? "EUR");
@@ -269,65 +266,6 @@ export function TripBreezeChatApp() {
     setReturnOptionsLoading,
   });
 
-  async function handleLogin() {
-    setError("");
-    setLoading("auth");
-    try {
-      const result = await login(loginForm.userId.trim(), loginForm.password);
-      persistAuth(result.user_id, result.profile);
-    } catch (authError) {
-      setError(safeErrorMessage(authError));
-    } finally {
-      setLoading(null);
-    }
-  }
-
-  async function handleRegister() {
-    setError("");
-    if (registerForm.password !== registerForm.confirmPassword) {
-      setError("Passwords do not match.");
-      return;
-    }
-    setLoading("auth");
-    try {
-      const result = await register(registerForm.userId.trim(), registerForm.password, {
-        home_city: registerForm.homeCity,
-        passport_country: registerForm.passportCountry,
-        travel_class: registerForm.travelClass,
-        preferred_airlines: registerForm.preferredAirlines,
-        preferred_hotel_stars: expandStarThresholds(registerForm.preferredHotelStars),
-        preferred_outbound_time_window: [
-          registerForm.outboundWindowStart,
-          registerForm.outboundWindowEnd,
-        ],
-        preferred_return_time_window: [
-          registerForm.returnWindowStart,
-          registerForm.returnWindowEnd,
-        ],
-      });
-      persistAuth(result.user_id, result.profile);
-    } catch (authError) {
-      setError(safeErrorMessage(authError));
-    } finally {
-      setLoading(null);
-    }
-  }
-
-  async function handleSaveProfile() {
-    if (!authenticatedUser || !profile) {
-      return;
-    }
-    setError("");
-    setLoading("saving");
-    try {
-      const result = await saveProfile(authenticatedUser, profile);
-      persistAuth(result.user_id, result.profile);
-    } catch (saveError) {
-      setError(safeErrorMessage(saveError));
-    } finally {
-      setLoading(null);
-    }
-  }
   const {
     logout,
     resetTrip,
@@ -455,68 +393,11 @@ export function TripBreezeChatApp() {
             ) : null}
 
             {showModelSettings ? (
-              <div className="rounded-[1.6rem] border border-ink/10 bg-mist/55 p-4">
-                <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-ink">
-                  <Settings2 className="h-4 w-4" />
-                  Settings
-                </div>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <label className="block">
-                    <span className="mb-2 block text-sm font-medium text-slate">Provider</span>
-                    <select
-                      className="w-full rounded-full border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
-                      value={form.provider}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          provider: event.target.value as PlannerForm["provider"],
-                          model: event.target.value === "google" ? GOOGLE_MODELS[0] : OPENAI_MODELS[0],
-                        }))
-                      }
-                    >
-                      <option value="openai">OpenAI</option>
-                      <option value="google">Google</option>
-                    </select>
-                  </label>
-                  <label className="block">
-                    <span className="mb-2 block text-sm font-medium text-slate">Model</span>
-                    <select
-                      className="w-full rounded-full border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
-                      value={form.model}
-                      onChange={(event) => setForm((current) => ({ ...current, model: event.target.value }))}
-                    >
-                      {availableModels.map((model) => (
-                        <option key={model} value={model}>
-                          {model}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <label className="mt-3 block">
-                  <div className="mb-2 flex items-center justify-between text-sm font-medium text-slate">
-                    <span>Temperature</span>
-                    <span className="font-semibold text-ink">{form.temperature.toFixed(1)}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.1"
-                    value={form.temperature}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        temperature: Number(event.target.value),
-                      }))
-                    }
-                    className="w-full accent-coral"
-                  />
-                  <p className="mt-2 text-xs text-slate">
-                    Lower values keep planning stricter and more deterministic. Higher values allow more variation.
-                  </p>
-                </label>
-              </div>
+              <ModelSettingsPanel
+                form={form}
+                setForm={setForm}
+                availableModels={availableModels}
+              />
             ) : null}
 
             {messages.length > 0 ? (

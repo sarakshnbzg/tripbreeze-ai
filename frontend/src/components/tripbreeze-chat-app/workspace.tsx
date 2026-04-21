@@ -21,19 +21,9 @@ import {
   selectionLabel,
   sentenceLabel,
 } from "./helpers";
+import type { PlannerLoadingState } from "./ui-types";
 
 const ItineraryMap = dynamic(() => import("./itinerary-map"), { ssr: false });
-
-export type WorkspaceLoadingState =
-  | "auth"
-  | "planning"
-  | "clarifying"
-  | "approving"
-  | "saving"
-  | "voice"
-  | "pdf"
-  | "email"
-  | null;
 
 export type ReviewWorkspaceModel = {
   hasReviewWorkspace: boolean;
@@ -57,7 +47,7 @@ export type ReviewWorkspaceModel = {
   interests: string[];
   pace: (typeof PACE_OPTIONS)[number];
   feedback: string;
-  loading: WorkspaceLoadingState;
+  loading: PlannerLoadingState;
 };
 
 export type ReviewWorkspaceActions = {
@@ -475,7 +465,7 @@ export function FinalItineraryPanel({
 }: {
   viewModel: ItineraryViewModel;
   shareState: {
-    loading: WorkspaceLoadingState;
+    loading: PlannerLoadingState;
     emailAddress: string;
     setEmailAddress: React.Dispatch<React.SetStateAction<string>>;
     onDownloadPdf: () => Promise<void>;

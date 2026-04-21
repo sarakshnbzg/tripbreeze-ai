@@ -6,6 +6,7 @@ import type { PlannerForm } from "@/lib/planner";
 import { HotelStarTierPicker } from "./controls";
 import { CURRENCIES, TRAVEL_CLASSES } from "./constants";
 import { compressStarPreferences, expandStarThresholds } from "./helpers";
+import type { PlannerLoadingState } from "./ui-types";
 
 export function PlannerComposer({
   form,
@@ -20,7 +21,7 @@ export function PlannerComposer({
   form: PlannerForm;
   setForm: React.Dispatch<React.SetStateAction<PlannerForm>>;
   showComposer: boolean;
-  loading: "auth" | "planning" | "clarifying" | "approving" | "saving" | "voice" | "pdf" | "email" | null;
+  loading: PlannerLoadingState;
   recording: boolean;
   error: string;
   onPlanTrip: () => void;

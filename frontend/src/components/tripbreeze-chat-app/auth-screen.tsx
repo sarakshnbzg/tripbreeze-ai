@@ -5,21 +5,12 @@ import { Card } from "@/components/ui/card";
 
 import { HotelStarTierPicker, TimeWindowPicker, FieldGroup } from "./controls";
 import { TRAVEL_CLASSES } from "./constants";
-
-type RegisterFormState = {
-  userId: string;
-  password: string;
-  confirmPassword: string;
-  homeCity: string;
-  passportCountry: string;
-  travelClass: string;
-  preferredAirlines: string[];
-  preferredHotelStars: number[];
-  outboundWindowStart: number;
-  outboundWindowEnd: number;
-  returnWindowStart: number;
-  returnWindowEnd: number;
-};
+import type {
+  AuthMode,
+  LoginFormState,
+  PlannerLoadingState,
+  RegisterFormState,
+} from "./ui-types";
 
 export function AuthScreen({
   authMode,
@@ -36,16 +27,16 @@ export function AuthScreen({
   onLogin,
   onRegister,
 }: {
-  authMode: "login" | "register";
-  setAuthMode: (mode: "login" | "register") => void;
-  loginForm: { userId: string; password: string };
-  setLoginForm: React.Dispatch<React.SetStateAction<{ userId: string; password: string }>>;
+  authMode: AuthMode;
+  setAuthMode: (mode: AuthMode) => void;
+  loginForm: LoginFormState;
+  setLoginForm: React.Dispatch<React.SetStateAction<LoginFormState>>;
   registerForm: RegisterFormState;
   setRegisterForm: React.Dispatch<React.SetStateAction<RegisterFormState>>;
   cities: string[];
   countries: string[];
   airlines: string[];
-  loading: "auth" | "planning" | "clarifying" | "approving" | "saving" | "voice" | "pdf" | "email" | null;
+  loading: PlannerLoadingState;
   error: string;
   onLogin: () => void;
   onRegister: () => void;

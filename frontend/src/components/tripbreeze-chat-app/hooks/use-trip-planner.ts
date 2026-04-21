@@ -16,6 +16,7 @@ import {
   type SelectionState,
 } from "@/lib/planner";
 import type { ApproveRequest, StreamEvent, TravelState, UserProfile } from "@/lib/types";
+import type { PlannerLoadingState } from "../ui-types";
 
 import {
   buildItineraryFileName,
@@ -26,17 +27,6 @@ import {
   safeErrorMessage,
   summariseTokenUsage,
 } from "../helpers";
-
-export type PlannerLoadingState =
-  | "auth"
-  | "planning"
-  | "clarifying"
-  | "approving"
-  | "saving"
-  | "voice"
-  | "pdf"
-  | "email"
-  | null;
 
 type ChatMessage = {
   role: "user" | "assistant";
