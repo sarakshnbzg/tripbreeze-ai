@@ -73,6 +73,7 @@ async function mockPlannerFlow(page: Page) {
           event: "state",
           data: {
             thread_id: "thread-123",
+            current_step: "awaiting_review",
             trip_request: {
               origin: "Berlin",
               destination: "Lisbon",
