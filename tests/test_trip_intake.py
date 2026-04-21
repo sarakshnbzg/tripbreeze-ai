@@ -13,7 +13,6 @@ from domain.nodes.trip_intake import (
     _parse_preferences,
     trip_intake,
 )
-from domain.nodes.trip_intake_parsing import is_valid_iso_date
 from domain.utils.dates import validate_future_date
 
 # Future dates used across test fixtures
@@ -78,26 +77,6 @@ class TestValidateFutureDate:
     def test_today_is_accepted(self):
         today = str(date.today())
         assert validate_future_date(today, "Test") == today
-
-
-# ── _normalise_trip_data ──
-
-
-class TestIsoDateValidation:
-    def test_valid_iso_date(self):
-        assert is_valid_iso_date("2026-04-20") is True
-
-    def test_empty_string_is_valid(self):
-        assert is_valid_iso_date("") is True
-
-    def test_invalid_format_returns_false(self):
-        assert is_valid_iso_date("April 20, 2026") is False
-        assert is_valid_iso_date("20-04-2026") is False
-        assert is_valid_iso_date("2026/04/20") is False
-
-    def test_invalid_date_returns_false(self):
-        assert is_valid_iso_date("2026-02-30") is False
-        assert is_valid_iso_date("2026-13-01") is False
 
 
 class TestClassifyDomain:

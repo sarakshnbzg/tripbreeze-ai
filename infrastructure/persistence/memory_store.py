@@ -358,16 +358,6 @@ def sync_country_state_city_reference_options() -> None:
 # ── Public API ───────────────────────────────────────────────────────
 
 
-def list_profiles() -> list[str]:
-    """Return available saved profile ids."""
-    with _get_pool().connection() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT user_id FROM profiles ORDER BY user_id")
-            profiles = [row[0] for row in cursor.fetchall()]
-    logger.info("Discovered %s saved profiles", len(profiles))
-    return profiles
-
-
 def load_profile(user_id: str) -> dict:
     """Load a user's stored profile, or return defaults."""
     safe_user_id = _sanitise_user_id(user_id)
@@ -768,47 +758,3 @@ def load_destination_daily_expense(destination: str) -> tuple[float | None, str]
         if str(normalized_name) and str(normalized_name) in normalized_destination:
             return float(daily_expense_eur), str(normalized_name)
     return None, ""
-
-
-def save_destination_daily_expense(
-    destination: str,
-    *,
-    daily_expense_eur: float,
-    display_name: str | None = None,
-    source: str = "manual",
-) -> None:
-    """Persist a destination daily-expense baseline in EUR."""
-    normalized_name = _normalise_place_name(destination)
-    if not normalized_name:
-        return
-
-    pool = _get_pool()
-    try:
-        connection_context = pool.connection(timeout=1)
-    except TypeError:
-        connection_context = pool.connection()
-
-    with connection_context as conn:
-        with conn.cursor() as cursor:
-            cursor.execute(
-                """
-                INSERT INTO destination_daily_expenses (
-                    normalized_name,
-                    display_name,
-                    daily_expense_eur,
-                    source
-                )
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT(normalized_name) DO UPDATE SET
-                    display_name = excluded.display_name,
-                    daily_expense_eur = excluded.daily_expense_eur,
-                    source = excluded.source
-                """,
-                (
-                    normalized_name,
-                    (display_name or destination).strip(),
-                    float(daily_expense_eur),
-                    source.strip() or "manual",
-                ),
-            )
-        conn.commit()

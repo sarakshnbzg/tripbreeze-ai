@@ -4,7 +4,6 @@ import type {
   SearchRequest,
   StreamEvent,
   StreamEventType,
-  TravelState,
   UserProfile,
 } from "@/lib/types";
 
@@ -102,18 +101,6 @@ export async function streamApprove(
   await readSseStream(response, onEvent);
 }
 
-export async function getState(threadId: string): Promise<TravelState> {
-  const response = await fetch(`${API_BASE_URL}/api/search/${threadId}/state`, {
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    throw new Error(await response.text());
-  }
-
-  return (await response.json()) as TravelState;
-}
-
 export async function fetchReturnFlights(
   threadId: string,
   params: {
@@ -161,14 +148,6 @@ export async function register(userId: string, password: string, profile: UserPr
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ user_id: userId, password, profile }),
-    }),
-  );
-}
-
-export async function getProfile(userId: string): Promise<AuthResponse> {
-  return parseJsonResponse<AuthResponse>(
-    await fetch(`${API_BASE_URL}/api/profile/${encodeURIComponent(userId)}`, {
-      cache: "no-store",
     }),
   );
 }

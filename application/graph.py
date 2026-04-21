@@ -4,10 +4,7 @@ Dependency direction:  application → domain → infrastructure
 This module only imports from the domain layer (nodes & agents).
 """
 
-import re
-
 from langgraph.graph import StateGraph, START, END
-from langgraph.types import Command
 
 from application.state import TravelState
 from infrastructure.persistence.checkpointer import get_checkpointer
@@ -16,20 +13,13 @@ from domain.nodes.profile_loader import profile_loader
 from domain.nodes.trip_intake import trip_intake
 from domain.nodes.budget_aggregator import budget_aggregator
 from domain.nodes.hitl_review import hitl_review
-from domain.nodes.review_router import build_revision_query, review_router
+from domain.nodes.review_router import review_router
 from domain.nodes.trip_finaliser import trip_finaliser
 from domain.nodes.memory_updater import memory_updater
 from domain.nodes.research_orchestrator import research_orchestrator
 from infrastructure.logging_utils import get_logger
 
 logger = get_logger(__name__)
-
-
-def _iter_text_chunks(text: str):
-    """Yield markdown text in word-sized chunks for a smoother UI reveal."""
-    for chunk in re.split(r"(\s+)", text):
-        if chunk:
-            yield chunk
 
 
 # ── Routing ──
@@ -118,19 +108,3 @@ def compile_graph():
     """
     logger.info("Compiling travel planning graph")
     return build_graph().compile(checkpointer=get_checkpointer())
-
-
-def run_finalisation_streaming(graph, thread_id: str, state_updates: dict):
-    """Resume the graph after review and yield final itinerary chunks."""
-    logger.info("Resuming graph for finalisation thread_id=%s", thread_id)
-    config = {"configurable": {"thread_id": thread_id}}
-
-    for event in graph.stream(Command(resume=state_updates), config):
-        for node_name, node_output in event.items():
-            if node_name != "finalise" or not isinstance(node_output, dict):
-                continue
-            itinerary_markdown = str(node_output.get("final_itinerary") or "")
-            if itinerary_markdown:
-                yield from _iter_text_chunks(itinerary_markdown)
-
-    yield dict(graph.get_state(config).values)

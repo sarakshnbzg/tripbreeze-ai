@@ -8,7 +8,6 @@ from infrastructure.persistence.memory_store import (
     _DEFAULT_PROFILE,
     _normalise_place_name,
     _sanitise_user_id,
-    list_profiles,
     list_place_aliases,
     list_reference_values,
     load_destination_daily_expense,
@@ -16,7 +15,6 @@ from infrastructure.persistence.memory_store import (
     load_place_country,
     load_profile,
     register_user,
-    save_destination_daily_expense,
     save_place_alias,
     save_profile,
     update_profile_from_trip,
@@ -308,28 +306,6 @@ class TestLoadSaveProfile:
         with pytest.raises(ValueError, match="Invalid profile ID"):
             save_profile("../bad", {})
 
-
-class TestListProfiles:
-    def test_empty_returns_empty(self, monkeypatch):
-        fake_connection = FakeConnection()
-        list_reference_values.cache_clear()
-        lookup_airport_code.cache_clear()
-        monkeypatch.setattr("infrastructure.persistence.memory_store._get_pool", lambda: FakePool(fake_connection))
-
-        assert list_profiles() == []
-
-    def test_lists_saved_profiles(self, monkeypatch):
-        fake_connection = FakeConnection()
-        list_reference_values.cache_clear()
-        lookup_airport_code.cache_clear()
-        monkeypatch.setattr("infrastructure.persistence.memory_store._get_pool", lambda: FakePool(fake_connection))
-
-        save_profile("alice", {})
-        save_profile("bob", {})
-
-        assert list_profiles() == ["alice", "bob"]
-
-
 class TestUpdateProfileFromTrip:
     def test_adds_destination_to_past_trips(self, monkeypatch):
         fake_connection = FakeConnection()
@@ -489,19 +465,6 @@ class TestPlaceAliases:
 
 
 class TestDestinationDailyExpenses:
-    def test_save_and_load_destination_daily_expense_roundtrip(self, monkeypatch):
-        fake_connection = FakeConnection()
-        list_reference_values.cache_clear()
-        lookup_airport_code.cache_clear()
-        monkeypatch.setattr("infrastructure.persistence.memory_store._get_pool", lambda: FakePool(fake_connection))
-
-        save_destination_daily_expense("Paris", daily_expense_eur=125.0, source="manual")
-
-        rate, source_key = load_destination_daily_expense("Paris")
-        assert rate == 125.0
-        assert source_key == "paris"
-        assert fake_connection.destination_daily_expenses["paris"]["source"] == "manual"
-
     def test_load_destination_daily_expense_matches_substring(self, monkeypatch):
         fake_connection = FakeConnection()
         list_reference_values.cache_clear()

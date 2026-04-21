@@ -3,19 +3,17 @@
 from langgraph.checkpoint.memory import MemorySaver
 
 from application.graph import (
-    build_revision_query,
     _route_after_intake,
     _route_after_review_router,
     build_graph,
     compile_graph,
-    run_finalisation_streaming,
 )
 from domain.nodes.hitl_review import (
     _markdown_table_value,
     _format_trip_summary,
     hitl_review,
 )
-from domain.nodes.review_router import _build_revision_baseline, review_router
+from domain.nodes.review_router import _build_revision_baseline, build_revision_query, review_router
 from domain.nodes.research_orchestrator import _format_destination_info
 
 
@@ -278,35 +276,3 @@ class TestGraphConstruction:
         compiled = compile_graph()
         assert hasattr(compiled, "stream")
         assert hasattr(compiled, "invoke")
-
-
-# ── run_finalisation_streaming ──
-
-
-class TestRunFinalisationStreaming:
-    def test_callable_with_correct_signature(self):
-        """run_finalisation_streaming must accept (graph, thread_id, state_updates)."""
-        import inspect
-        sig = inspect.signature(run_finalisation_streaming)
-        params = list(sig.parameters)
-        assert params == ["graph", "thread_id", "state_updates"]
-
-    def test_streams_itinerary_chunks_before_final_state(self, monkeypatch):
-        class DummyGraph:
-            def __init__(self):
-                self.state = {"trip_request": {"destination": "Paris"}, "final_itinerary": "Hello Paris"}
-
-            def update_state(self, config, updates, as_node=None):
-                self.state.update(updates)
-
-            def get_state(self, config):
-                from types import SimpleNamespace
-                return SimpleNamespace(values=self.state)
-
-            def stream(self, initial_state, config):
-                yield {"finalise": {"final_itinerary": "Hello Paris", "current_step": "finalised"}}
-
-        items = list(run_finalisation_streaming(DummyGraph(), "thread-123", {"user_approved": True}))
-
-        assert items[:-1] == ["Hello", " ", "Paris"]
-        assert items[-1]["final_itinerary"] == "Hello Paris"

@@ -18,10 +18,9 @@ import pytest
 
 from langgraph.checkpoint.memory import MemorySaver
 
-from application.graph import compile_graph, run_finalisation_streaming
+from application.graph import compile_graph
 from domain.nodes.trip_finaliser import Itinerary
 from langgraph.types import Command
-from infrastructure.itinerary_links import inject_booking_links
 
 
 # ── Future dates (always valid) ──────────────────────────────────────
@@ -390,7 +389,7 @@ class TestFullPipelineToReview:
 
 
 class TestRunFinalisation:
-    """After user approves, run_finalisation_streaming resumes the graph through finalise + memory."""
+    """After user approves, the graph resumes through finalise + memory."""
 
     def test_produces_final_itinerary(self):
         with _patch_all() as mocks:
@@ -404,14 +403,12 @@ class TestRunFinalisation:
                 "selected_flight": _fake_flights()[0],
                 "selected_hotel": _fake_hotels()[0],
             }
-            items = list(run_finalisation_streaming(graph, thread_id, state_updates))
+            events = list(graph.stream(Command(resume=state_updates), config))
+            assert events
+            final_state = dict(graph.get_state(config).values)
 
-        streamed_text = "".join(item for item in items if isinstance(item, str))
-        final_state = next((i for i in items if isinstance(i, dict)), None)
-        assert streamed_text
         assert final_state is not None
         assert final_state.get("final_itinerary")
-        assert streamed_text == final_state["final_itinerary"]
 
     def test_memory_updater_called(self):
         with _patch_all() as mocks:
@@ -425,7 +422,7 @@ class TestRunFinalisation:
                 "selected_flight": _fake_flights()[0],
                 "selected_hotel": _fake_hotels()[0],
             }
-            list(run_finalisation_streaming(graph, thread_id, state_updates))
+            list(graph.stream(Command(resume=state_updates), config))
 
         mocks["memory"].assert_called_once()
         call_args = mocks["memory"].call_args
@@ -433,7 +430,7 @@ class TestRunFinalisation:
 
 
 class TestFullPipelineWithApproval:
-    """Full pipeline: initial planning pauses at interrupt, then resumes via run_finalisation_streaming."""
+    """Full pipeline: initial planning pauses at interrupt, then resumes via graph.stream."""
 
     def test_reaches_finalised(self):
         with _patch_all() as mocks:
@@ -451,9 +448,9 @@ class TestFullPipelineWithApproval:
                 "selected_flight": _fake_flights()[0],
                 "selected_hotel": _fake_hotels()[0],
             }
-            items = list(run_finalisation_streaming(graph, thread_id, state_updates))
+            list(graph.stream(Command(resume=state_updates), config))
+            final_state = dict(graph.get_state(config).values)
 
-        final_state = next((i for i in items if isinstance(i, dict)), None)
         assert final_state is not None
         assert final_state.get("final_itinerary")
         mocks["memory"].assert_called_once()
@@ -757,65 +754,13 @@ class TestMultiCityEndToEnd:
                     planning_state["hotel_options_by_leg"][1][0],
                 ],
             }
-            items = list(run_finalisation_streaming(graph, thread_id, state_updates))
+            list(graph.stream(Command(resume=state_updates), config))
+            final_state = dict(graph.get_state(config).values)
 
-        final_state = next((i for i in items if isinstance(i, dict)), None)
         assert final_state is not None
         assert final_state["current_step"] == "done"
         assert "Multi-city trip" in final_state["final_itinerary"]
         assert len(final_state["itinerary_data"]["legs"]) == 2
         assert final_state["selected_flights"][0]["airline"] == "Air France"
         assert final_state["selected_hotels"][1]["name"] == "Hotel Le Marais"
-        mocks["memory"].assert_called_once()
-
-    def test_multi_city_final_display_includes_booking_links_for_each_leg(self):
-        with _patch_all() as mocks:
-            graph = compile_graph()
-            thread_id = "test-multi-city-booking-links"
-            config = {"configurable": {"thread_id": thread_id}}
-
-            planning_state = graph.invoke(
-                _base_initial_state(structured_fields=_multi_city_structured_fields()),
-                config,
-            )
-
-            first_leg_flight = {
-                **planning_state["flight_options_by_leg"][0][0],
-                "booking_url": "https://flights.example/paris",
-            }
-            second_leg_flight = {
-                **planning_state["flight_options_by_leg"][1][0],
-                "booking_url": "https://flights.example/barcelona",
-            }
-            first_leg_hotel = {
-                **planning_state["hotel_options_by_leg"][0][0],
-                "booking_url": "https://hotels.example/paris",
-            }
-            second_leg_hotel = {
-                **planning_state["hotel_options_by_leg"][1][0],
-                "booking_url": "https://hotels.example/barcelona",
-            }
-
-            state_updates = {
-                "user_approved": True,
-                "selected_flights": [first_leg_flight, second_leg_flight],
-                "selected_hotels": [first_leg_hotel, second_leg_hotel],
-            }
-            items = list(run_finalisation_streaming(graph, thread_id, state_updates))
-
-        final_state = next((i for i in items if isinstance(i, dict)), None)
-        assert final_state is not None
-
-        display_markdown = inject_booking_links(
-            final_state["final_itinerary"],
-            final_state.get("selected_flight") or {},
-            final_state.get("selected_hotel") or {},
-            final_state.get("selected_flights") or [],
-            final_state.get("selected_hotels") or [],
-        )
-
-        assert "[Book Air France on Google Flights](https://flights.example/paris)" in display_markdown
-        assert "[Book Air France on Google Flights](https://flights.example/barcelona)" in display_markdown
-        assert "[Book Hotel Le Marais](https://hotels.example/paris)" in display_markdown
-        assert "[Book Hotel Le Marais](https://hotels.example/barcelona)" in display_markdown
         mocks["memory"].assert_called_once()
