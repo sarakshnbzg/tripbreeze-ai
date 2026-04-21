@@ -9,7 +9,7 @@ export function ModelSettingsPanel({
 }: {
   form: PlannerForm;
   setForm: React.Dispatch<React.SetStateAction<PlannerForm>>;
-  availableModels: string[];
+  availableModels: readonly string[];
 }) {
   return (
     <div className="rounded-[1.6rem] border border-ink/10 bg-mist/55 p-4">
