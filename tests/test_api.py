@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
 from presentation import api
+from presentation import api_routes_planning as planning_routes
 
 
 client = TestClient(api.app)
@@ -28,7 +29,7 @@ class TestAPIHelpers:
 
 class TestAPIEndpoints:
     def test_search_rejects_unavailable_provider(self, monkeypatch):
-        monkeypatch.setattr(api, "get_provider_status", lambda provider: (False, "Provider unavailable"))
+        monkeypatch.setattr(planning_routes, "get_provider_status", lambda provider: (False, "Provider unavailable"))
 
         response = client.post("/api/search", json={"llm_provider": "openai"})
 
@@ -36,14 +37,14 @@ class TestAPIEndpoints:
         assert response.json()["detail"] == "Provider unavailable"
 
     def test_get_state_returns_404_for_missing_thread(self, monkeypatch):
-        monkeypatch.setattr(api, "_get_graph", lambda: DummyGraph(values={}))
+        monkeypatch.setattr(planning_routes, "get_graph", lambda: DummyGraph(values={}))
 
         response = client.get("/api/search/thread-123/state")
 
         assert response.status_code == 404
 
     def test_get_state_returns_values_with_thread_id(self, monkeypatch):
-        monkeypatch.setattr(api, "_get_graph", lambda: DummyGraph(values={"current_step": "review"}))
+        monkeypatch.setattr(planning_routes, "get_graph", lambda: DummyGraph(values={"current_step": "review"}))
 
         response = client.get("/api/search/thread-123/state")
 
@@ -58,7 +59,7 @@ class TestAPIEndpoints:
             captured.update(kwargs)
             return [{"airline": "Test Air"}]
 
-        monkeypatch.setattr(api, "fetch_return_flights", fake_fetch_return_flights)
+        monkeypatch.setattr(planning_routes, "fetch_return_flights", fake_fetch_return_flights)
 
         response = client.post(
             "/api/search/thread-123/return-flights",
@@ -83,7 +84,7 @@ class TestAPIEndpoints:
         assert response.json()["detail"] == "Answer cannot be empty"
 
     def test_approve_rejects_unavailable_provider(self, monkeypatch):
-        monkeypatch.setattr(api, "get_provider_status", lambda provider: (False, "Provider unavailable"))
+        monkeypatch.setattr(planning_routes, "get_provider_status", lambda provider: (False, "Provider unavailable"))
 
         response = client.post(
             "/api/search/thread-123/approve",
@@ -102,11 +103,11 @@ class TestAPIEndpoints:
                 self.calls.append(fn)
 
         loop = DummyLoop()
-        monkeypatch.setattr(api, "get_provider_status", lambda provider: (True, ""))
-        monkeypatch.setattr(api.asyncio, "get_event_loop", lambda: loop)
+        monkeypatch.setattr(planning_routes, "get_provider_status", lambda provider: (True, ""))
+        monkeypatch.setattr(planning_routes.asyncio, "get_event_loop", lambda: loop)
 
         response = asyncio.run(
-            api.approve(
+            planning_routes.approve(
                 "thread-123",
                 api.ApproveRequest(
                     llm_provider="openai",
@@ -117,4 +118,4 @@ class TestAPIEndpoints:
         )
 
         assert response.status_code == 200
-        assert loop.calls == [api._run_post_review_sync]
+        assert loop.calls == [planning_routes.run_post_review_sync]
