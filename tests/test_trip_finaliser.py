@@ -21,6 +21,7 @@ from domain.nodes.trip_finaliser import (
     _traveler_preference_context,
     trip_finaliser,
 )
+from infrastructure.streaming import token_emitter_context
 
 
 class TestRenderItineraryMarkdown:
@@ -643,3 +644,86 @@ class TestFinaliserFallbacks:
         assert result["finaliser_metadata"]["mode"] == "multi_city"
         assert result["finaliser_metadata"]["used_fallback"] is True
         assert result["finaliser_metadata"]["fallback_reason"] == "no_tool_calls"
+
+
+class TestLiveMarkdownStreaming:
+    @patch("domain.nodes.trip_finaliser.fetch_weather_for_trip", return_value={})
+    @patch("domain.nodes.trip_finaliser.create_chat_model")
+    def test_streams_markdown_tokens_when_emitter_present(self, mock_create, _mock_weather):
+        structured_response = MagicMock()
+        structured_response.tool_calls = [
+            {
+                "id": "final-1",
+                "name": "Itinerary",
+                "args": {
+                    "trip_overview": "Berlin to Paris, June 11-14",
+                    "flight_details": "- Air France direct",
+                    "hotel_details": "- Hotel Le Marais",
+                    "destination_highlights": "Paris highlights",
+                    "daily_plans": [],
+                    "budget_breakdown": "- Total estimated trip cost: EUR 1,184",
+                    "visa_entry_info": "US citizens can visit visa-free.",
+                    "packing_tips": "Bring light layers.",
+                    "sources": [],
+                },
+            }
+        ]
+        structured_response.usage_metadata = {"input_tokens": 20, "output_tokens": 30}
+
+        structured_llm = MagicMock()
+        structured_llm.bind_tools.return_value = structured_llm
+        structured_llm.invoke.return_value = structured_response
+
+        render_llm = MagicMock()
+        render_llm.stream.return_value = iter([
+            MagicMock(content="#### ✈️ Trip Overview\nBerlin to Paris, June 11-14\n\n"),
+            MagicMock(content="#### 🛫 Flight Details\n- Air France direct"),
+        ])
+
+        mock_create.side_effect = [structured_llm, render_llm]
+
+        state = {
+            "trip_request": {
+                "origin": "Berlin",
+                "destination": "Paris",
+                "departure_date": "2026-06-11",
+                "return_date": "2026-06-14",
+                "currency": "EUR",
+                "num_travelers": 2,
+                "interests": ["art", "food"],
+                "pace": "moderate",
+            },
+            "selected_flight": {
+                "airline": "Air France",
+                "departure_time": "08:35",
+                "arrival_time": "10:25",
+                "duration": "1h 50m",
+                "stops": 0,
+                "total_price": 117,
+            },
+            "selected_hotel": {
+                "name": "Hotel Le Marais",
+                "rating": 4,
+                "address": "Paris Center",
+            },
+            "destination_info": "Paris overview",
+            "budget": {"total_estimated": 1184},
+            "llm_provider": "openai",
+            "llm_model": "gpt-4o-mini",
+            "llm_temperature": 0.5,
+            "user_profile": {},
+            "rag_sources": [],
+            "attraction_candidates": [],
+        }
+
+        emitted: list[str] = []
+        with token_emitter_context(emitted.append):
+            result = trip_finaliser(state)
+
+        assert emitted == [
+            "#### ✈️ Trip Overview\nBerlin to Paris, June 11-14\n\n",
+            "#### 🛫 Flight Details\n- Air France direct",
+        ]
+        assert result["final_itinerary"] == "".join(emitted)
+        assert structured_llm.invoke.call_count == 1
+        assert render_llm.stream.call_count == 1

@@ -3,11 +3,11 @@
 import asyncio
 import json
 import queue
-import re
 from typing import Any
 
 from langgraph.types import Command
 
+from infrastructure.streaming import token_emitter_context
 from presentation.api_runtime import NODE_LABELS, get_graph, logger
 
 SENTINEL = object()
@@ -16,12 +16,6 @@ SENTINEL = object()
 def sse_event(event: str, data: dict | str) -> str:
     payload = data if isinstance(data, str) else json.dumps(data, default=str)
     return f"event: {event}\ndata: {payload}\n\n"
-
-
-def iter_text_chunks(text: str):
-    for chunk in re.split(r"(\s+)", text):
-        if chunk:
-            yield chunk
 
 
 def _emit_clarification_if_present(q: queue.Queue, thread_id: str, state_snapshot: Any) -> bool:
@@ -89,15 +83,12 @@ def run_post_review_sync(q: queue.Queue, thread_id: str, state_updates: dict[str
     try:
         graph = get_graph()
         config = {"configurable": {"thread_id": thread_id}}
-        for event in graph.stream(Command(resume=state_updates), config):
-            for node_name, node_output in event.items():
-                if not isinstance(node_output, dict):
-                    continue
-                emit_node_events(q, node_name, node_output)
-                if node_name == "finalise":
-                    itinerary_markdown = str(node_output.get("final_itinerary") or "")
-                    for chunk in iter_text_chunks(itinerary_markdown):
-                        q.put(sse_event("token", {"content": chunk}))
+        with token_emitter_context(lambda chunk: q.put(sse_event("token", {"content": chunk}))):
+            for event in graph.stream(Command(resume=state_updates), config):
+                for node_name, node_output in event.items():
+                    if not isinstance(node_output, dict):
+                        continue
+                    emit_node_events(q, node_name, node_output)
 
         state_snapshot = graph.get_state(config)
         if not _emit_clarification_if_present(q, thread_id, state_snapshot):

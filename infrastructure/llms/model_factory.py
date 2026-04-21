@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+from collections.abc import Iterator
 from typing import Any
 
 from langchain_openai import ChatOpenAI
@@ -181,6 +182,25 @@ def invoke_with_retry(llm, prompt, *, max_attempts: int = 3):
         return llm.invoke(prompt)
 
     return _call()
+
+
+def stream_with_retry(llm, prompt, *, max_attempts: int = 3) -> Iterator[Any]:
+    """Stream LLM chunks with retry on startup failures.
+
+    Once streaming has begun, yielded chunks are passed through directly.
+    """
+
+    @retry(
+        retry=retry_if_exception_type(_RETRYABLE_EXCEPTIONS),
+        stop=stop_after_attempt(max_attempts),
+        wait=wait_exponential(multiplier=1, min=1, max=16),
+        before_sleep=before_sleep_log(logger, 30),  # logging.WARNING
+        reraise=True,
+    )
+    def _start_stream():
+        return llm.stream(prompt)
+
+    return _start_stream()
 
 
 def create_embeddings(provider: str | None = None):

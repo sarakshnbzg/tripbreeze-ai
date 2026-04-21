@@ -3,6 +3,7 @@
 import json
 import re
 from datetime import datetime, timedelta
+from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from pydantic import BaseModel, Field, ValidationError
@@ -16,8 +17,10 @@ from infrastructure.llms.model_factory import (
     create_chat_model,
     extract_token_usage,
     invoke_with_retry,
+    stream_with_retry,
 )
 from infrastructure.logging_utils import get_logger
+from infrastructure.streaming import get_token_emitter
 logger = get_logger(__name__)
 
 
@@ -280,6 +283,44 @@ When calling `MultiCityItinerary`, follow these requirements:
 - explicitly connect selected flights, hotels, and daily pacing to the user's stated preferences when relevant
 - if you do not have enough information for a fully detailed activity schedule, still provide one DayPlan per trip day with a useful theme and date
 - sources: knowledge-base documents referenced from destination_info"""
+
+
+MARKDOWN_RENDER_PROMPT = """You are formatting a finished travel itinerary into polished markdown for the traveler.
+
+Write only the final markdown document. Do not add commentary before or after it.
+Preserve the exact section headings and overall structure shown below.
+
+Required section order for a single-city itinerary:
+#### ✈️ Trip Overview
+#### 🛫 Flight Details
+#### 🏨 Hotel Details
+#### 🌍 Destination Highlights
+#### 🗓️ Day-by-Day Plan
+#### 💰 Budget Breakdown
+#### 🛂 Visa & Entry Information
+#### 🎒 Packing & Preparation Tips
+
+Required section order for a multi-city itinerary:
+#### ✈️ Trip Overview
+#### 🗺️ Trip Legs
+#### 🌍 Destination Highlights
+#### 🗓️ Day-by-Day Plan
+#### 💰 Budget Breakdown
+#### 🛂 Visa & Entry Information
+#### 🎒 Packing & Preparation Tips
+
+If sources are provided, append:
+#### 📚 Sources (from Knowledge Base)
+
+Formatting rules:
+- Keep the output faithful to the itinerary data.
+- Use concise markdown bullet lists where appropriate.
+- Preserve Google Maps links when present in activity maps_url fields using markdown links.
+- Do not invent facts, destinations, timings, or prices.
+
+Structured itinerary JSON:
+{itinerary_json}
+"""
 
 
 # ── Helpers ───────────────────────────────────────────────────────────
@@ -583,6 +624,56 @@ def _enrich_multi_city_weather(itinerary: MultiCityItinerary, trip_legs: list[di
                 )
 
 
+def _chunk_text(chunk: Any) -> str:
+    """Extract plain text from a LangChain streaming chunk."""
+    content = getattr(chunk, "content", "")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text = item.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "".join(parts)
+    return str(content or "")
+
+
+def _render_markdown_with_live_stream(state: dict, itinerary, fallback_markdown: str) -> str:
+    """Render the user-facing markdown with true model streaming when an emitter is active."""
+    token_emitter = get_token_emitter()
+    if token_emitter is None:
+        return fallback_markdown
+
+    model = state.get("llm_model")
+    llm = create_chat_model(
+        state.get("llm_provider"),
+        model,
+        temperature=0,
+    )
+    prompt = MARKDOWN_RENDER_PROMPT.format(
+        itinerary_json=json.dumps(itinerary.model_dump(), indent=2, ensure_ascii=True),
+    )
+
+    rendered_parts: list[str] = []
+    try:
+        for chunk in stream_with_retry(llm, prompt):
+            text = _chunk_text(chunk)
+            if not text:
+                continue
+            rendered_parts.append(text)
+            token_emitter(text)
+    except Exception:
+        logger.exception("Live markdown rendering failed; falling back to deterministic renderer")
+        return fallback_markdown
+
+    rendered_markdown = "".join(rendered_parts).strip()
+    return rendered_markdown or fallback_markdown
+
+
 def _finaliser_success_response(
     *,
     itinerary,
@@ -593,8 +684,11 @@ def _finaliser_success_response(
     finaliser_metadata: dict | None = None,
     selected_hotel: dict | None = None,
     selected_hotels: list[dict] | None = None,
+    state: dict | None = None,
 ) -> dict:
     markdown = render_markdown(itinerary)
+    if state is not None:
+        markdown = _render_markdown_with_live_stream(state, itinerary, markdown)
     response = {
         "final_itinerary": markdown,
         "itinerary_data": itinerary.model_dump(),
@@ -1399,6 +1493,7 @@ def _finalise_multi_city(state: dict) -> dict:
             token_usage=token_usage,
             finaliser_metadata=finaliser_metadata,
             selected_hotels=selected_hotels,
+            state=state,
         )
 
     itinerary = _parse_structured_itinerary(
@@ -1435,6 +1530,7 @@ def _finalise_multi_city(state: dict) -> dict:
         token_usage=token_usage,
         finaliser_metadata=finaliser_metadata,
         selected_hotels=selected_hotels,
+        state=state,
     )
 
 
@@ -1513,6 +1609,7 @@ def _finalise_single_city(state: dict) -> dict:
             token_usage=token_usage,
             finaliser_metadata=finaliser_metadata,
             selected_hotel=selected_hotel,
+            state=state,
         )
 
     itinerary = _parse_structured_itinerary(
@@ -1544,6 +1641,7 @@ def _finalise_single_city(state: dict) -> dict:
         token_usage=token_usage,
         finaliser_metadata=finaliser_metadata,
         selected_hotel=selected_hotel,
+        state=state,
     )
 
 
