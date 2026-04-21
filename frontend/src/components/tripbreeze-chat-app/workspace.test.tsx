@@ -129,6 +129,7 @@ describe("workspace panels", () => {
       <FinalItineraryPanel
         viewModel={{
           finalItinerary: "Trip ready",
+          hasStructuredItinerary: true,
           snapshotItems: [
             { label: "Route", value: "Berlin -> Lisbon" },
             { label: "Dates", value: "2026-06-10 to 2026-06-15" },
@@ -206,6 +207,36 @@ describe("workspace panels", () => {
     );
   });
 
+  it("shows a streaming shell until structured itinerary data is ready", () => {
+    render(
+      <FinalItineraryPanel
+        viewModel={{
+          finalItinerary: "#### Trip Overview\nBerlin to Lisbon",
+          hasStructuredItinerary: false,
+          snapshotItems: [],
+          bookingLinks: [],
+          primarySections: [],
+          secondarySections: [],
+          mapPoints: [],
+          itineraryLegs: [],
+          itineraryDays: [],
+        }}
+        shareState={{
+          loading: "approving",
+          emailAddress: "",
+          setEmailAddress: vi.fn(),
+          onDownloadPdf: vi.fn(async () => undefined),
+          onEmailItinerary: vi.fn(async () => undefined),
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Generating final itinerary...")).toBeInTheDocument();
+    expect(screen.getByText("Live draft")).toBeInTheDocument();
+    expect(screen.queryByText("Trip snapshot")).not.toBeInTheDocument();
+    expect(screen.getByText("Berlin to Lisbon")).toBeInTheDocument();
+  });
+
   it("builds Google Maps links for trip map points", () => {
     const viewModel = buildItineraryViewModel({
       state: {
@@ -247,5 +278,6 @@ describe("workspace panels", () => {
         }),
       ]),
     );
+    expect(viewModel.hasStructuredItinerary).toBe(true);
   });
 });

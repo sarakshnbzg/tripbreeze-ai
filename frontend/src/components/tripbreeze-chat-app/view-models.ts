@@ -32,6 +32,7 @@ export type ItineraryMapPoint = {
 
 export type ItineraryViewModel = {
   finalItinerary: string;
+  hasStructuredItinerary: boolean;
   snapshotItems: ItinerarySnapshotItem[];
   bookingLinks: Array<{ label: string; url: string }>;
   primarySections: ItinerarySection[];
@@ -62,6 +63,7 @@ export function buildItineraryViewModel({
   const itineraryLegs = readRecordArray(itineraryData.legs);
   const itineraryDays = readRecordArray(itineraryData.daily_plans);
   const finalItinerary = itinerary || String(state?.final_itinerary ?? "");
+  const hasStructuredItinerary = Object.keys(itineraryData).length > 0;
   const finalSelectedFlight = readRecord(state?.selected_flight);
   const finalSelectedHotel = readRecord(state?.selected_hotel);
   const finalSelectedTransport = readRecord(state?.selected_transport);
@@ -123,6 +125,7 @@ export function buildItineraryViewModel({
 
   return {
     finalItinerary,
+    hasStructuredItinerary,
     snapshotItems,
     bookingLinks,
     primarySections,

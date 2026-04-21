@@ -511,6 +511,7 @@ export function FinalItineraryPanel({
 }) {
   const {
     finalItinerary,
+    hasStructuredItinerary,
     snapshotItems: itinerarySnapshotItems,
     bookingLinks: itineraryBookingLinks,
     primarySections: primaryItinerarySections,
@@ -529,6 +530,36 @@ export function FinalItineraryPanel({
 
   if (!finalItinerary) {
     return null;
+  }
+
+  if (!hasStructuredItinerary) {
+    return (
+      <div className="rounded-[1.9rem] border border-ink/10 bg-gradient-to-br from-[#fffaf4] via-white to-[#f6f1ea] p-5 shadow-[0_24px_60px_rgba(16,33,43,0.08)]">
+        <div className="rounded-[1.6rem] border border-white/80 bg-white/85 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2 text-lg font-semibold text-ink">
+                <LoaderCircle className="h-5 w-5 animate-spin text-coral" />
+                Generating final itinerary...
+              </div>
+              <div className="mt-1 text-sm text-slate">
+                We&apos;re streaming your itinerary now and will switch to the full structured view as soon as it&apos;s ready.
+              </div>
+            </div>
+            <div className="rounded-full border border-coral/20 bg-coral/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-coral">
+              Draft streaming
+            </div>
+          </div>
+
+          <div className="mt-5 rounded-[1.4rem] border border-ink/10 bg-[#fffdf9] p-4">
+            <div className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate">Live draft</div>
+            <div className="text-sm leading-7 text-ink">
+              {renderMarkdownContent(finalItinerary) ?? finalItinerary}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
