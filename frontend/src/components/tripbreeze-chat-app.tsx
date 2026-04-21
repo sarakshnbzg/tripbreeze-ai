@@ -23,7 +23,13 @@ import type { SelectionState } from "@/lib/planner";
 import { AuthScreen } from "@/components/tripbreeze-chat-app/auth-screen";
 import { PlannerComposer } from "@/components/tripbreeze-chat-app/planner-composer";
 import { AppSidebar } from "@/components/tripbreeze-chat-app/sidebar";
-import { FinalItineraryPanel, ReviewPanel } from "@/components/tripbreeze-chat-app/workspace";
+import {
+  FinalItineraryPanel,
+  ReviewPanel,
+  type ReviewWorkspaceActions,
+  type ReviewWorkspaceModel,
+  type ReviewWorkspaceRefs,
+} from "@/components/tripbreeze-chat-app/workspace";
 import { useAuthSession } from "@/components/tripbreeze-chat-app/hooks/use-auth-session";
 import { useReferenceData } from "@/components/tripbreeze-chat-app/hooks/use-reference-data";
 import { useReviewEffects } from "@/components/tripbreeze-chat-app/hooks/use-review-effects";
@@ -194,15 +200,7 @@ export function TripBreezeChatApp() {
     () => buildItineraryViewModel({ state, itinerary, currencyCode }),
     [currencyCode, itinerary, state],
   );
-  const {
-    finalItinerary,
-    snapshotItems: itinerarySnapshotItems,
-    bookingLinks: itineraryBookingLinks,
-    primarySections: primaryItinerarySections,
-    secondarySections: secondaryItinerarySections,
-    itineraryLegs,
-    itineraryDays,
-  } = itineraryView;
+  const { finalItinerary } = itineraryView;
   const recentPlanningUpdates = useMemo(() => {
     const filtered = planningUpdates
       .map((update) => String(update).trim())
@@ -210,6 +208,36 @@ export function TripBreezeChatApp() {
       .filter((update, index, items) => items.indexOf(update) === index);
     return filtered.slice(-4);
   }, [planningUpdates]);
+  const reviewWorkspaceModel: ReviewWorkspaceModel = {
+    hasReviewWorkspace,
+    finalItinerary,
+    state,
+    isRoundTrip,
+    completedMultiCityLegs,
+    hasSelectedSingleFlight,
+    hasSelectedSingleHotel,
+    selectedOutboundOption,
+    selectedReturnIndex,
+    selectedReturnOption,
+    selectedHotelOption,
+    hasOptionResults,
+    currencyCode,
+    selection,
+    returnOptions,
+    showPersonalisationPanel,
+    selectedTransportIndex,
+    canApprove,
+    interests,
+    pace,
+    feedback,
+    loading,
+  };
+  const reviewWorkspaceRefs: ReviewWorkspaceRefs = {
+    outboundSectionRef,
+    returnSectionRef,
+    hotelSectionRef,
+    personaliseSectionRef,
+  };
 
   useReviewEffects({
     hasReviewWorkspace,
@@ -338,6 +366,15 @@ export function TripBreezeChatApp() {
     setLoading,
     setError,
   });
+  const reviewWorkspaceActions: ReviewWorkspaceActions = {
+    setSelectedReturnIndex,
+    setSelection,
+    setSelectedTransportIndex,
+    setInterests,
+    setPace,
+    setFeedback,
+    handleReview,
+  };
 
   if (!authenticatedUser) {
     return (
@@ -543,54 +580,20 @@ export function TripBreezeChatApp() {
             ) : null}
 
             <ReviewPanel
-              hasReviewWorkspace={hasReviewWorkspace}
-              finalItinerary={finalItinerary}
-              state={state}
-              isRoundTrip={isRoundTrip}
-              completedMultiCityLegs={completedMultiCityLegs}
-              hasSelectedSingleFlight={hasSelectedSingleFlight}
-              hasSelectedSingleHotel={hasSelectedSingleHotel}
-              selectedOutboundOption={selectedOutboundOption}
-              selectedReturnIndex={selectedReturnIndex}
-              setSelectedReturnIndex={setSelectedReturnIndex}
-              selectedReturnOption={selectedReturnOption}
-              selectedHotelOption={selectedHotelOption}
-              hasOptionResults={hasOptionResults}
-              currencyCode={currencyCode}
-              selection={selection}
-              setSelection={setSelection}
-              returnOptions={returnOptions}
-              showPersonalisationPanel={showPersonalisationPanel}
-              selectedTransportIndex={selectedTransportIndex}
-              setSelectedTransportIndex={setSelectedTransportIndex}
-              canApprove={canApprove}
-              interests={interests}
-              setInterests={setInterests}
-              pace={pace}
-              setPace={setPace}
-              feedback={feedback}
-              setFeedback={setFeedback}
-              loading={loading}
-              handleReview={handleReview}
-              outboundSectionRef={outboundSectionRef}
-              returnSectionRef={returnSectionRef}
-              hotelSectionRef={hotelSectionRef}
-              personaliseSectionRef={personaliseSectionRef}
+              model={reviewWorkspaceModel}
+              actions={reviewWorkspaceActions}
+              refs={reviewWorkspaceRefs}
             />
 
             <FinalItineraryPanel
-              finalItinerary={finalItinerary}
-              loading={loading}
-              emailAddress={emailAddress}
-              setEmailAddress={setEmailAddress}
-              onDownloadPdf={handleDownloadPdf}
-              onEmailItinerary={handleEmailItinerary}
-              itinerarySnapshotItems={itinerarySnapshotItems}
-              itineraryBookingLinks={itineraryBookingLinks}
-              primaryItinerarySections={primaryItinerarySections}
-              secondaryItinerarySections={secondaryItinerarySections}
-              itineraryLegs={itineraryLegs}
-              itineraryDays={itineraryDays}
+              viewModel={itineraryView}
+              shareState={{
+                loading,
+                emailAddress,
+                setEmailAddress,
+                onDownloadPdf: handleDownloadPdf,
+                onEmailItinerary: handleEmailItinerary,
+              }}
             />
           </div>
 

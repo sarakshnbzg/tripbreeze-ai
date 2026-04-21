@@ -183,6 +183,10 @@ export function useTripPlanner({
     }
     if (event.event === "clarification") {
       const question = String(event.data.question ?? "");
+      const threadId = String(event.data.thread_id ?? "").trim();
+      if (threadId) {
+        setState((current) => ({ ...(current ?? {}), thread_id: threadId }));
+      }
       setClarificationQuestion(question);
       setMessages((current) => [...current, { role: "assistant", content: question }]);
       return;

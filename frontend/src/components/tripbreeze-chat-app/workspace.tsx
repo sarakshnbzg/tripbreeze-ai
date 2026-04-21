@@ -3,6 +3,7 @@ import { LoaderCircle, Mail, Plane } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatCurrency, selectedOption, type SelectionState } from "@/lib/planner";
 import type { ApproveRequest, TravelState, TripOption } from "@/lib/types";
+import type { ItineraryViewModel } from "./view-models";
 
 import { ReviewOptionCard } from "./controls";
 import { INTEREST_OPTIONS, PACE_OPTIONS } from "./constants";
@@ -21,41 +22,18 @@ import {
   transportLabel,
 } from "./helpers";
 
-export function ReviewPanel({
-  hasReviewWorkspace,
-  finalItinerary,
-  state,
-  isRoundTrip,
-  completedMultiCityLegs,
-  hasSelectedSingleFlight,
-  hasSelectedSingleHotel,
-  selectedOutboundOption,
-  selectedReturnIndex,
-  setSelectedReturnIndex,
-  selectedReturnOption,
-  selectedHotelOption,
-  hasOptionResults,
-  currencyCode,
-  selection,
-  setSelection,
-  returnOptions,
-  showPersonalisationPanel,
-  selectedTransportIndex,
-  setSelectedTransportIndex,
-  canApprove,
-  interests,
-  setInterests,
-  pace,
-  setPace,
-  feedback,
-  setFeedback,
-  loading,
-  handleReview,
-  outboundSectionRef,
-  returnSectionRef,
-  hotelSectionRef,
-  personaliseSectionRef,
-}: {
+export type WorkspaceLoadingState =
+  | "auth"
+  | "planning"
+  | "clarifying"
+  | "approving"
+  | "saving"
+  | "voice"
+  | "pdf"
+  | "email"
+  | null;
+
+export type ReviewWorkspaceModel = {
   hasReviewWorkspace: boolean;
   finalItinerary: string;
   state: TravelState | null;
@@ -65,31 +43,87 @@ export function ReviewPanel({
   hasSelectedSingleHotel: boolean;
   selectedOutboundOption: Record<string, unknown>;
   selectedReturnIndex: number | null;
-  setSelectedReturnIndex: React.Dispatch<React.SetStateAction<number | null>>;
   selectedReturnOption: Record<string, unknown>;
   selectedHotelOption: Record<string, unknown>;
   hasOptionResults: boolean;
   currencyCode: string;
   selection: SelectionState;
-  setSelection: React.Dispatch<React.SetStateAction<SelectionState>>;
   returnOptions: TripOption[];
   showPersonalisationPanel: boolean;
   selectedTransportIndex: number | null;
-  setSelectedTransportIndex: React.Dispatch<React.SetStateAction<number | null>>;
   canApprove: boolean;
   interests: string[];
-  setInterests: React.Dispatch<React.SetStateAction<string[]>>;
   pace: (typeof PACE_OPTIONS)[number];
-  setPace: React.Dispatch<React.SetStateAction<(typeof PACE_OPTIONS)[number]>>;
   feedback: string;
+  loading: WorkspaceLoadingState;
+};
+
+export type ReviewWorkspaceActions = {
+  setSelectedReturnIndex: React.Dispatch<React.SetStateAction<number | null>>;
+  setSelection: React.Dispatch<React.SetStateAction<SelectionState>>;
+  setSelectedTransportIndex: React.Dispatch<React.SetStateAction<number | null>>;
+  setInterests: React.Dispatch<React.SetStateAction<string[]>>;
+  setPace: React.Dispatch<React.SetStateAction<(typeof PACE_OPTIONS)[number]>>;
   setFeedback: React.Dispatch<React.SetStateAction<string>>;
-  loading: "auth" | "planning" | "clarifying" | "approving" | "saving" | "voice" | "pdf" | "email" | null;
   handleReview: (feedbackType: ApproveRequest["feedback_type"]) => Promise<void>;
+};
+
+export type ReviewWorkspaceRefs = {
   outboundSectionRef: React.RefObject<HTMLDivElement | null>;
   returnSectionRef: React.RefObject<HTMLDivElement | null>;
   hotelSectionRef: React.RefObject<HTMLDivElement | null>;
   personaliseSectionRef: React.RefObject<HTMLDivElement | null>;
+};
+
+export function ReviewPanel({
+  model,
+  actions,
+  refs,
+}: {
+  model: ReviewWorkspaceModel;
+  actions: ReviewWorkspaceActions;
+  refs: ReviewWorkspaceRefs;
 }) {
+  const {
+    hasReviewWorkspace,
+    finalItinerary,
+    state,
+    isRoundTrip,
+    completedMultiCityLegs,
+    hasSelectedSingleFlight,
+    hasSelectedSingleHotel,
+    selectedOutboundOption,
+    selectedReturnIndex,
+    selectedReturnOption,
+    selectedHotelOption,
+    hasOptionResults,
+    currencyCode,
+    selection,
+    returnOptions,
+    showPersonalisationPanel,
+    selectedTransportIndex,
+    canApprove,
+    interests,
+    pace,
+    feedback,
+    loading,
+  } = model;
+  const {
+    setSelectedReturnIndex,
+    setSelection,
+    setSelectedTransportIndex,
+    setInterests,
+    setPace,
+    setFeedback,
+    handleReview,
+  } = actions;
+  const {
+    outboundSectionRef,
+    returnSectionRef,
+    hotelSectionRef,
+    personaliseSectionRef,
+  } = refs;
+
   if (!hasReviewWorkspace || finalItinerary || !state) {
     return null;
   }
@@ -175,7 +209,7 @@ export function ReviewPanel({
                             currencyCode={currencyCode}
                             selected={selection.byLegFlights[legIndex] === optionIndex}
                             onSelect={() =>
-                              setSelection((current) => {
+                              setSelection((current: SelectionState) => {
                                 const next = [...current.byLegFlights];
                                 next[legIndex] = optionIndex;
                                 return { ...current, byLegFlights: next };
@@ -206,7 +240,7 @@ export function ReviewPanel({
                                 currencyCode={currencyCode}
                                 selected={selection.byLegHotels[legIndex] === optionIndex}
                                 onSelect={() =>
-                                  setSelection((current) => {
+                                  setSelection((current: SelectionState) => {
                                     const next = [...current.byLegHotels];
                                     next[legIndex] = optionIndex;
                                     return { ...current, byLegHotels: next };
@@ -243,7 +277,7 @@ export function ReviewPanel({
                       currencyCode={currencyCode}
                       selected={selection.flightIndex === index}
                       onSelect={() => {
-                        setSelection((current) => ({ ...current, flightIndex: index }));
+                        setSelection((current: SelectionState) => ({ ...current, flightIndex: index }));
                       }}
                     />
                   ))
@@ -295,7 +329,7 @@ export function ReviewPanel({
                         allOptions={state.hotel_options ?? []}
                         currencyCode={currencyCode}
                         selected={selection.hotelIndex === index}
-                        onSelect={() => setSelection((current) => ({ ...current, hotelIndex: index }))}
+                        onSelect={() => setSelection((current: SelectionState) => ({ ...current, hotelIndex: index }))}
                       />
                     ))
                   ) : (
@@ -347,8 +381,8 @@ export function ReviewPanel({
                         key={interest}
                         type="button"
                         onClick={() =>
-                          setInterests((current) => (
-                            active ? current.filter((value) => value !== interest) : [...current, interest]
+                          setInterests((current: string[]) => (
+                            active ? current.filter((value: string) => value !== interest) : [...current, interest]
                           ))
                         }
                         className={`rounded-[1.2rem] border px-4 py-3 text-left text-sm transition ${
@@ -419,32 +453,35 @@ export function ReviewPanel({
 }
 
 export function FinalItineraryPanel({
-  finalItinerary,
-  loading,
-  emailAddress,
-  setEmailAddress,
-  onDownloadPdf,
-  onEmailItinerary,
-  itinerarySnapshotItems,
-  itineraryBookingLinks,
-  primaryItinerarySections,
-  secondaryItinerarySections,
-  itineraryLegs,
-  itineraryDays,
+  viewModel,
+  shareState,
 }: {
-  finalItinerary: string;
-  loading: "auth" | "planning" | "clarifying" | "approving" | "saving" | "voice" | "pdf" | "email" | null;
-  emailAddress: string;
-  setEmailAddress: React.Dispatch<React.SetStateAction<string>>;
-  onDownloadPdf: () => Promise<void>;
-  onEmailItinerary: () => Promise<void>;
-  itinerarySnapshotItems: Array<{ label: string; value: string }>;
-  itineraryBookingLinks: Array<{ label: string; url: string }>;
-  primaryItinerarySections: Array<{ key: string; title: string; content: string }>;
-  secondaryItinerarySections: Array<{ key: string; title: string; content: string }>;
-  itineraryLegs: Array<Record<string, unknown>>;
-  itineraryDays: Array<Record<string, unknown>>;
+  viewModel: ItineraryViewModel;
+  shareState: {
+    loading: WorkspaceLoadingState;
+    emailAddress: string;
+    setEmailAddress: React.Dispatch<React.SetStateAction<string>>;
+    onDownloadPdf: () => Promise<void>;
+    onEmailItinerary: () => Promise<void>;
+  };
 }) {
+  const {
+    finalItinerary,
+    snapshotItems: itinerarySnapshotItems,
+    bookingLinks: itineraryBookingLinks,
+    primarySections: primaryItinerarySections,
+    secondarySections: secondaryItinerarySections,
+    itineraryLegs,
+    itineraryDays,
+  } = viewModel;
+  const {
+    loading,
+    emailAddress,
+    setEmailAddress,
+    onDownloadPdf,
+    onEmailItinerary,
+  } = shareState;
+
   if (!finalItinerary) {
     return null;
   }

@@ -1,12 +1,10 @@
-import type { ComponentProps } from "react";
-
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { SelectionState } from "@/lib/planner";
 import type { TravelState, TripOption } from "@/lib/types";
 
-import { FinalItineraryPanel, ReviewPanel } from "./workspace";
+import { FinalItineraryPanel, ReviewPanel, type ReviewWorkspaceModel } from "./workspace";
 
 function buildSelection(overrides: Partial<SelectionState> = {}): SelectionState {
   return {
@@ -18,7 +16,39 @@ function buildSelection(overrides: Partial<SelectionState> = {}): SelectionState
   };
 }
 
-function renderReviewPanel(overrides: Partial<ComponentProps<typeof ReviewPanel>> = {}) {
+function buildReviewWorkspaceModel(overrides: Partial<ReviewWorkspaceModel> = {}): ReviewWorkspaceModel {
+  return {
+    hasReviewWorkspace: true,
+    finalItinerary: "",
+    state: {
+      destination_info: "### Entry\nPassport required.",
+      flight_options: [],
+      hotel_options: [],
+    } as unknown as TravelState,
+    isRoundTrip: false,
+    completedMultiCityLegs: 0,
+    hasSelectedSingleFlight: false,
+    hasSelectedSingleHotel: false,
+    selectedOutboundOption: {},
+    selectedReturnIndex: null,
+    selectedReturnOption: {},
+    selectedHotelOption: {},
+    hasOptionResults: false,
+    currencyCode: "EUR",
+    selection: buildSelection(),
+    returnOptions: [],
+    showPersonalisationPanel: false,
+    selectedTransportIndex: null,
+    canApprove: false,
+    interests: [],
+    pace: "moderate",
+    feedback: "",
+    loading: null,
+    ...overrides,
+  };
+}
+
+function renderReviewPanel(overrides: Partial<ReviewWorkspaceModel> = {}) {
   const setSelectedReturnIndex = vi.fn();
   const setSelection = vi.fn();
   const setSelectedTransportIndex = vi.fn();
@@ -29,46 +59,22 @@ function renderReviewPanel(overrides: Partial<ComponentProps<typeof ReviewPanel>
 
   render(
     <ReviewPanel
-      hasReviewWorkspace={true}
-      finalItinerary=""
-      state={
-        {
-          destination_info: "### Entry\nPassport required.",
-          flight_options: [],
-          hotel_options: [],
-        } as unknown as TravelState
-      }
-      isRoundTrip={false}
-      completedMultiCityLegs={0}
-      hasSelectedSingleFlight={false}
-      hasSelectedSingleHotel={false}
-      selectedOutboundOption={{}}
-      selectedReturnIndex={null}
-      setSelectedReturnIndex={setSelectedReturnIndex}
-      selectedReturnOption={{}}
-      selectedHotelOption={{}}
-      hasOptionResults={false}
-      currencyCode="EUR"
-      selection={buildSelection()}
-      setSelection={setSelection}
-      returnOptions={[]}
-      showPersonalisationPanel={false}
-      selectedTransportIndex={null}
-      setSelectedTransportIndex={setSelectedTransportIndex}
-      canApprove={false}
-      interests={[]}
-      setInterests={setInterests}
-      pace="moderate"
-      setPace={setPace}
-      feedback=""
-      setFeedback={setFeedback}
-      loading={null}
-      handleReview={handleReview}
-      outboundSectionRef={{ current: null }}
-      returnSectionRef={{ current: null }}
-      hotelSectionRef={{ current: null }}
-      personaliseSectionRef={{ current: null }}
-      {...overrides}
+      model={buildReviewWorkspaceModel(overrides)}
+      actions={{
+        setSelectedReturnIndex,
+        setSelection,
+        setSelectedTransportIndex,
+        setInterests,
+        setPace,
+        setFeedback,
+        handleReview,
+      }}
+      refs={{
+        outboundSectionRef: { current: null },
+        returnSectionRef: { current: null },
+        hotelSectionRef: { current: null },
+        personaliseSectionRef: { current: null },
+      }}
     />,
   );
 
@@ -119,53 +125,57 @@ describe("workspace panels", () => {
   it("renders final itinerary snapshot, booking links, and day plan details", () => {
     render(
       <FinalItineraryPanel
-        finalItinerary="Trip ready"
-        loading={null}
-        emailAddress=""
-        setEmailAddress={vi.fn()}
-        onDownloadPdf={vi.fn(async () => undefined)}
-        onEmailItinerary={vi.fn(async () => undefined)}
-        itinerarySnapshotItems={[
-          { label: "Route", value: "Berlin -> Lisbon" },
-          { label: "Dates", value: "2026-06-10 to 2026-06-15" },
-        ]}
-        itineraryBookingLinks={[
-          { label: "Flight booking", url: "https://example.com/flight" },
-        ]}
-        primaryItinerarySections={[
-          { key: "flight", title: "Flight details", content: "Nonstop outbound" },
-        ]}
-        secondaryItinerarySections={[
-          { key: "packing", title: "Packing tips", content: "Bring layers." },
-        ]}
-        itineraryLegs={[
-          {
-            leg_number: 1,
-            origin: "Berlin",
-            destination: "Lisbon",
-            departure_date: "2026-06-10",
-            flight_summary: "Morning departure",
-          },
-        ]}
-        itineraryDays={[
-          {
-            day_number: 1,
-            theme: "Arrival",
-            date: "2026-06-10",
-            weather: {
-              condition: "Sunny",
-              temp_min: 18,
-              temp_max: 26,
+        viewModel={{
+          finalItinerary: "Trip ready",
+          snapshotItems: [
+            { label: "Route", value: "Berlin -> Lisbon" },
+            { label: "Dates", value: "2026-06-10 to 2026-06-15" },
+          ],
+          bookingLinks: [
+            { label: "Flight booking", url: "https://example.com/flight" },
+          ],
+          primarySections: [
+            { key: "flight", title: "Flight details", content: "Nonstop outbound" },
+          ],
+          secondarySections: [
+            { key: "packing", title: "Packing tips", content: "Bring layers." },
+          ],
+          itineraryLegs: [
+            {
+              leg_number: 1,
+              origin: "Berlin",
+              destination: "Lisbon",
+              departure_date: "2026-06-10",
+              flight_summary: "Morning departure",
             },
-            activities: [
-              {
-                name: "Check in",
-                time_of_day: "Afternoon",
-                notes: "Drop bags and explore nearby.",
+          ],
+          itineraryDays: [
+            {
+              day_number: 1,
+              theme: "Arrival",
+              date: "2026-06-10",
+              weather: {
+                condition: "Sunny",
+                temp_min: 18,
+                temp_max: 26,
               },
-            ],
-          },
-        ]}
+              activities: [
+                {
+                  name: "Check in",
+                  time_of_day: "Afternoon",
+                  notes: "Drop bags and explore nearby.",
+                },
+              ],
+            },
+          ],
+        }}
+        shareState={{
+          loading: null,
+          emailAddress: "",
+          setEmailAddress: vi.fn(),
+          onDownloadPdf: vi.fn(async () => undefined),
+          onEmailItinerary: vi.fn(async () => undefined),
+        }}
       />,
     );
 
