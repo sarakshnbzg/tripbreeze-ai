@@ -1,5 +1,5 @@
 services:
-  tripbreeze:
+  backend:
     build:
       context: .
     image: tripbreeze-ai
@@ -13,3 +13,13 @@ services:
       REBUILD_RAG_IF_MISSING: 1
     volumes:
       - ./chroma_db:/app/chroma_db
+  frontend:
+    build:
+      context: ./frontend
+    image: tripbreeze-web
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8100
+    ports:
+      - "3000:3000"

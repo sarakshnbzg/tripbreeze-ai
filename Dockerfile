@@ -1,6 +1,6 @@
 FROM python:3.13-slim
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.8.17 /uv /usr/local/bin/uv
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -17,7 +17,14 @@ RUN apt-get update \
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
-COPY . .
+COPY AGENTS.md ./
+COPY app.py config.py docker-entrypoint.sh ./
+COPY application ./application
+COPY domain ./domain
+COPY infrastructure ./infrastructure
+COPY knowledge_base ./knowledge_base
+COPY presentation ./presentation
+COPY scripts ./scripts
 
 RUN useradd --create-home --shell /bin/bash appuser \
     && mkdir -p /app/chroma_db \

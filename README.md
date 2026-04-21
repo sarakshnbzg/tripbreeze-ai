@@ -103,7 +103,7 @@ Choose the path that matches how you want to work:
 
 - Backend only: run the FastAPI API directly with `uv`
 - Full stack: run the FastAPI backend and Next.js frontend together
-- Docker: run the backend in a container
+- Docker: run the backend and frontend in containers
 
 ## Prerequisites
 
@@ -299,17 +299,23 @@ uv run pytest tests/test_golden_prompts.py -k finaliser
 
 ## Docker Setup
 
-Build the image:
+Build the backend image:
 
 ```bash
 docker build -t tripbreeze-ai .
 ```
 
-Or start with Docker Compose:
+Or start the full stack with Docker Compose:
 
 ```bash
 docker compose up --build
 ```
+
+That brings up:
+
+- frontend at `http://localhost:3000`
+- backend API at `http://localhost:8100`
+- backend docs at `http://localhost:8100/docs`
 
 Run the container with your local `.env`:
 
