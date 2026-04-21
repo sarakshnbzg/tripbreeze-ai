@@ -501,6 +501,29 @@ export function TripBreezeChatApp() {
                     </select>
                   </label>
                 </div>
+                <label className="mt-3 block">
+                  <div className="mb-2 flex items-center justify-between text-sm font-medium text-slate">
+                    <span>Temperature</span>
+                    <span className="font-semibold text-ink">{form.temperature.toFixed(1)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.1"
+                    value={form.temperature}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        temperature: Number(event.target.value),
+                      }))
+                    }
+                    className="w-full accent-coral"
+                  />
+                  <p className="mt-2 text-xs text-slate">
+                    Lower values keep planning stricter and more deterministic. Higher values allow more variation.
+                  </p>
+                </label>
               </div>
             ) : null}
 

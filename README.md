@@ -416,6 +416,7 @@ tripbreeze-ai/
 
 - HITL review state is only restart-safe when `DATABASE_URL` or `NEON_DATABASE_URL` is configured. In deployed environments, `REQUIRE_PERSISTENT_CHECKPOINTER=true` should be enabled so the app fails fast instead of silently falling back to in-memory checkpoints.
 - Live search depends on SerpAPI-backed Google Flights and Google Hotels, so quotas, latency, and API costs affect availability.
+- The app is typically deployed in a single region, so users far from that region may see higher latency and there is no multi-region failover strategy yet.
 - Authentication is intentionally lightweight and suitable for a course project, not a full production identity stack.
 - The research and finalisation steps rely on LLM tool calling. Even with structured outputs and retrieval grounding, results can still be imperfect when source data is sparse or ambiguous.
 - Evaluation coverage is solid but not exhaustive. Real-world travel planning still benefits from monitoring and human review.

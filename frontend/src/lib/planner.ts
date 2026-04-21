@@ -22,6 +22,7 @@ export type PlannerForm = {
   userId: string;
   provider: "openai" | "google";
   model: string;
+  temperature: number;
 };
 
 export type SelectionState = {
@@ -51,6 +52,7 @@ export const defaultForm: PlannerForm = {
   userId: "default_user",
   provider: "openai",
   model: "gpt-4o-mini",
+  temperature: 0.3,
 };
 
 export const defaultSelection: SelectionState = {

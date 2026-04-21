@@ -146,6 +146,7 @@ export function useTripPlanner({
   function clearPlannerState({ showComposer = true }: { showComposer?: boolean } = {}) {
     const preservedProvider = form.provider;
     const preservedModel = form.model;
+    const preservedTemperature = form.temperature;
     setMessages([]);
     setPlanningUpdates([]);
     setState(null);
@@ -167,6 +168,7 @@ export function useTripPlanner({
       origin: profile?.home_city ?? "",
       provider: preservedProvider,
       model: preservedModel,
+      temperature: preservedTemperature,
     });
   }
 
@@ -288,7 +290,7 @@ export function useTripPlanner({
           structured_fields: buildStructuredFields(form),
           llm_provider: form.provider,
           llm_model: form.model,
-          llm_temperature: 0.3,
+          llm_temperature: form.temperature,
         },
         handleStreamEvent,
       );
@@ -337,7 +339,7 @@ export function useTripPlanner({
       selected_transport: selectedTransport,
       llm_provider: form.provider,
       llm_model: form.model,
-      llm_temperature: 0.3,
+      llm_temperature: form.temperature,
       trip_request: {
         ...(state.trip_request ?? {}),
         interests,
