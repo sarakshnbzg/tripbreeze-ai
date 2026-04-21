@@ -254,6 +254,7 @@ def _run_vector_retrieval(
     allowed_source_types: list[str] | None,
     require_place_match: bool,
 ) -> list:
+    started_at = time.perf_counter()
     search_filter = _build_chroma_filter(
         query_meta=query_meta,
         allowed_source_types=allowed_source_types,
@@ -264,6 +265,14 @@ def _run_vector_retrieval(
     except Exception:
         logger.warning("Filtered vector retrieval failed; retrying without metadata filter", exc_info=True)
         docs = vectorstore.similarity_search(query, k=k)
+
+    logger.info(
+        "RAG vector retrieval completed k=%s filter_applied=%s results=%s elapsed_ms=%.2f",
+        k,
+        search_filter is not None,
+        len(docs),
+        (time.perf_counter() - started_at) * 1000,
+    )
 
     if search_filter is None:
         return docs
@@ -289,6 +298,7 @@ def _run_bm25_retrieval(
     allowed_source_types: list[str] | None,
     require_place_match: bool,
 ) -> list:
+    started_at = time.perf_counter()
     filtered_chunks = [
         chunk
         for chunk in chunks
@@ -300,10 +310,19 @@ def _run_bm25_retrieval(
         )
     ]
     if not filtered_chunks:
+        logger.info("RAG BM25 retrieval skipped filtered_chunks=0 elapsed_ms=%.2f", (time.perf_counter() - started_at) * 1000)
         return []
 
     retriever = BM25Retriever.from_documents(filtered_chunks, k=k)
-    return retriever.invoke(query)
+    docs = retriever.invoke(query)
+    logger.info(
+        "RAG BM25 retrieval completed k=%s filtered_chunks=%s results=%s elapsed_ms=%.2f",
+        k,
+        len(filtered_chunks),
+        len(docs),
+        (time.perf_counter() - started_at) * 1000,
+    )
+    return docs
 
 
 def _dedupe_docs(docs: list, k: int) -> list:
@@ -488,16 +507,25 @@ def retrieve(
 ) -> list[dict[str, str]]:
     """Return the top-k relevant visa text chunks with source metadata."""
     logger.info("Running RAG retrieval query=%s k=%s provider=%s", query, k, provider)
+    started_at = time.perf_counter()
+    vectorstore_started_at = time.perf_counter()
     vs = _build_vectorstore(provider=provider)
+    logger.info("RAG vectorstore ready elapsed_ms=%.2f", (time.perf_counter() - vectorstore_started_at) * 1000)
+    chunks_started_at = time.perf_counter()
     chunks = _load_and_split_docs()
+    logger.info("RAG chunks ready count=%s elapsed_ms=%.2f", len(chunks), (time.perf_counter() - chunks_started_at) * 1000)
     query_meta = _infer_query_metadata(query)
     if "entry_requirements" not in set(query_meta.get("intents", []) or []):
-        logger.info("Skipping RAG retrieval because query is outside visa scope")
+        logger.info(
+            "Skipping RAG retrieval because query is outside visa scope total_elapsed_ms=%.2f",
+            (time.perf_counter() - started_at) * 1000,
+        )
         return []
     candidate_k = max(k * 3, 8)
 
     docs: list = []
-    for plan in _iter_retrieval_plans(query_meta):
+    for plan_index, plan in enumerate(_iter_retrieval_plans(query_meta), start=1):
+        plan_started_at = time.perf_counter()
         allowed_source_types = plan["allowed_source_types"]
         require_place_match = bool(plan["require_place_match"])
 
@@ -529,11 +557,24 @@ def retrieve(
 
         docs.extend(merged_plan_docs)
         docs = _dedupe_docs(docs, candidate_k)
+        logger.info(
+            "RAG retrieval plan completed plan=%s require_place_match=%s allowed_source_types=%s merged_docs=%s deduped_docs=%s elapsed_ms=%.2f",
+            plan_index,
+            require_place_match,
+            allowed_source_types,
+            len(merged_plan_docs),
+            len(docs),
+            (time.perf_counter() - plan_started_at) * 1000,
+        )
         if len(docs) >= k:
             break
 
     docs = _dedupe_docs(docs, k)
-    logger.info("RAG retrieval returned %s documents after metadata-aware retrieval", len(docs))
+    logger.info(
+        "RAG retrieval returned %s documents after metadata-aware retrieval total_elapsed_ms=%.2f",
+        len(docs),
+        (time.perf_counter() - started_at) * 1000,
+    )
     return [
         {
             "content": doc.page_content,

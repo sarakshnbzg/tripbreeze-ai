@@ -2,6 +2,7 @@
 
 import json
 import re
+import time
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -303,8 +304,11 @@ def _research_multi_city_legs(state: dict) -> dict:
     flight_options_by_leg: list[list[dict]] = []
     hotel_options_by_leg: list[list[dict]] = []
 
+    total_started_at = time.perf_counter()
+
     for leg in trip_legs:
         leg_idx = leg.get("leg_index", 0)
+        leg_started_at = time.perf_counter()
         logger.info(
             "Researching leg %d: %s → %s (%s, %d nights)",
             leg_idx, leg.get("origin"), leg.get("destination"),
@@ -312,15 +316,36 @@ def _research_multi_city_legs(state: dict) -> dict:
         )
 
         # Search flights for this leg
+        flight_started_at = time.perf_counter()
         leg_flights = search_leg_flights(leg, trip_request, user_profile)
+        logger.info(
+            "Multi-city leg flight search completed leg=%s destination=%s options=%s elapsed_ms=%.2f",
+            leg_idx,
+            leg.get("destination"),
+            len(leg_flights),
+            (time.perf_counter() - flight_started_at) * 1000,
+        )
         flight_options_by_leg.append(leg_flights)
 
         # Search hotels if this leg needs accommodation
         if leg.get("needs_hotel"):
+            hotel_started_at = time.perf_counter()
             leg_hotels = search_leg_hotels(leg, trip_request, user_profile)
+            logger.info(
+                "Multi-city leg hotel search completed leg=%s destination=%s options=%s elapsed_ms=%.2f",
+                leg_idx,
+                leg.get("destination"),
+                len(leg_hotels),
+                (time.perf_counter() - hotel_started_at) * 1000,
+            )
         else:
             leg_hotels = []
         hotel_options_by_leg.append(leg_hotels)
+        logger.info(
+            "Multi-city leg research completed leg=%s elapsed_ms=%.2f",
+            leg_idx,
+            (time.perf_counter() - leg_started_at) * 1000,
+        )
 
     # Summary message
     total_flights = sum(len(f) for f in flight_options_by_leg)
@@ -328,8 +353,9 @@ def _research_multi_city_legs(state: dict) -> dict:
     summary = f"Multi-city research complete: found {total_flights} flights and {total_hotels} hotels across {len(trip_legs)} legs."
 
     logger.info(
-        "Multi-city research finished: %d legs, %d total flights, %d total hotels",
+        "Multi-city research finished: %d legs, %d total flights, %d total hotels elapsed_ms=%.2f",
         len(trip_legs), total_flights, total_hotels,
+        (time.perf_counter() - total_started_at) * 1000,
     )
 
     return {
@@ -350,11 +376,17 @@ def research_orchestrator(state: dict) -> dict:
 
     # Multi-city trips: search each leg separately, then do RAG for destination info
     if trip_legs:
+        overall_started_at = time.perf_counter()
         logger.info(
             "Research orchestrator handling multi-city trip with %d legs",
             len(trip_legs),
         )
+        legs_started_at = time.perf_counter()
         multi_city_result = _research_multi_city_legs(state)
+        logger.info(
+            "Research orchestrator multi-city leg search stage completed elapsed_ms=%.2f",
+            (time.perf_counter() - legs_started_at) * 1000,
+        )
 
         # Now do visa lookup for unique destinations
         unique_destinations = _ordered_unique_destinations(trip_legs)
@@ -362,11 +394,13 @@ def research_orchestrator(state: dict) -> dict:
         rag_trace: list[dict[str, Any]] = list(state.get("rag_trace", []))
         destination_sections = []
 
+        rag_stage_started_at = time.perf_counter()
         for destination in unique_destinations:
             passport_country = _resolve_passport_country(trip_request, user_profile)
             entry_query = f"visa entry requirements {destination}"
             if passport_country:
                 entry_query += f" for {passport_country} passport"
+            destination_rag_started_at = time.perf_counter()
             entry_results = retrieve(entry_query, provider=state.get("llm_provider"))
             record_rag_event(
                 rag_trace,
@@ -374,6 +408,12 @@ def research_orchestrator(state: dict) -> dict:
                 query=entry_query,
                 provider=state.get("llm_provider"),
                 results=entry_results,
+            )
+            logger.info(
+                "Research orchestrator multi-city RAG completed destination=%s results=%s elapsed_ms=%.2f",
+                destination,
+                len(entry_results),
+                (time.perf_counter() - destination_rag_started_at) * 1000,
             )
 
             # Build section for this destination
@@ -399,6 +439,12 @@ def research_orchestrator(state: dict) -> dict:
         multi_city_result["rag_trace"] = rag_trace
         multi_city_result["token_usage"] = []  # No LLM calls for multi-city flight/hotel search
         multi_city_result["current_step"] = "research_complete"
+        logger.info(
+            "Research orchestrator multi-city completed destinations=%s rag_elapsed_ms=%.2f total_elapsed_ms=%.2f",
+            len(unique_destinations),
+            (time.perf_counter() - rag_stage_started_at) * 1000,
+            (time.perf_counter() - overall_started_at) * 1000,
+        )
         return multi_city_result
 
     # Single-destination trip: use existing ReAct orchestration
@@ -527,9 +573,17 @@ def research_orchestrator(state: dict) -> dict:
         "retrieve_knowledge": retrieve_knowledge_tool,
     }
 
+    overall_started_at = time.perf_counter()
     max_iterations = 6
     for iteration in range(max_iterations):
+        llm_started_at = time.perf_counter()
         response = invoke_with_retry(llm_with_tools, messages)
+        logger.info(
+            "Research orchestrator LLM turn completed iteration=%s tool_calls=%s elapsed_ms=%.2f",
+            iteration + 1,
+            len(getattr(response, "tool_calls", None) or []),
+            (time.perf_counter() - llm_started_at) * 1000,
+        )
         messages.append(response)
         token_usage.append(extract_token_usage(response, model=model, node="research_orchestrator"))
 
@@ -558,7 +612,14 @@ def research_orchestrator(state: dict) -> dict:
                 ))
                 continue
             try:
+                tool_started_at = time.perf_counter()
                 tool_result = tools_by_name[tool_name].invoke(tool_call.get("args", {}))
+                logger.info(
+                    "Research orchestrator tool completed iteration=%s tool=%s elapsed_ms=%.2f",
+                    iteration + 1,
+                    tool_name,
+                    (time.perf_counter() - tool_started_at) * 1000,
+                )
             except Exception as exc:
                 logger.exception("Research orchestrator tool %s failed", tool_name)
                 tool_result = json.dumps({"error": str(exc)})
@@ -583,10 +644,11 @@ def research_orchestrator(state: dict) -> dict:
 
     summary = final_result.get("summary") or _build_research_summary(collected, final_response)
     logger.info(
-        "Research orchestrator finished flights=%s hotels=%s destination_info_present=%s",
+        "Research orchestrator finished flights=%s hotels=%s destination_info_present=%s total_elapsed_ms=%.2f",
         len(collected.get("flight_options") or []),
         len(collected.get("hotel_options") or []),
         bool(collected.get("destination_info")),
+        (time.perf_counter() - overall_started_at) * 1000,
     )
 
     return {

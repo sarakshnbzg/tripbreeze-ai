@@ -6,8 +6,9 @@ means changing only this file.
 """
 
 from datetime import datetime
-from urllib.parse import quote_plus
 import re
+import time
+from urllib.parse import quote_plus
 
 from serpapi import GoogleSearch
 
@@ -127,6 +128,7 @@ def search_flights(
     exclude_airlines: list[str] | None = None,
 ) -> list[dict]:
     """Query Google Flights via SerpAPI and return normalised results."""
+    started_at = time.perf_counter()
     if not SERPAPI_API_KEY:
         raise RuntimeError(
             "Flight search requires `SERPAPI_API_KEY` in your environment or Streamlit secrets."
@@ -193,7 +195,14 @@ def search_flights(
         params["return_times"] = f"{return_time_window[0]},{return_time_window[1]}"
 
     try:
+        request_started_at = time.perf_counter()
         results = GoogleSearch(params).get_dict()
+        logger.info(
+            "SerpAPI flight request completed origin=%s destination=%s elapsed_ms=%.2f",
+            origin,
+            destination,
+            (time.perf_counter() - request_started_at) * 1000,
+        )
     except Exception as exc:
         logger.error("SerpAPI flight search failed: %s", exc)
         return []
@@ -251,7 +260,11 @@ def search_flights(
             "booking_url": google_flights_url,
         })
 
-    logger.info("Normalised %s raw flight candidates", len(flights))
+    logger.info(
+        "Normalised %s raw flight candidates total_elapsed_ms=%.2f",
+        len(flights),
+        (time.perf_counter() - started_at) * 1000,
+    )
     return flights
 
 
@@ -267,6 +280,7 @@ def search_return_flights(
     return_time_window: tuple[int, int] | None = None,
 ) -> list[dict]:
     """Use an outbound `departure_token` to fetch return-flight options."""
+    started_at = time.perf_counter()
     if not SERPAPI_API_KEY:
         raise RuntimeError(
             "Return flight search requires `SERPAPI_API_KEY` in your environment or Streamlit secrets."
@@ -298,7 +312,14 @@ def search_return_flights(
         params["return_times"] = f"{return_time_window[0]},{return_time_window[1]}"
 
     try:
+        request_started_at = time.perf_counter()
         results = GoogleSearch(params).get_dict()
+        logger.info(
+            "SerpAPI return flight request completed origin=%s destination=%s elapsed_ms=%.2f",
+            origin,
+            destination,
+            (time.perf_counter() - request_started_at) * 1000,
+        )
     except Exception as exc:
         logger.error("SerpAPI return flight search failed: %s", exc)
         return []
@@ -331,7 +352,11 @@ def search_return_flights(
             "booking_token": group.get("booking_token", ""),
         })
 
-    logger.info("Normalised %s return flight candidates", len(return_options))
+    logger.info(
+        "Normalised %s return flight candidates total_elapsed_ms=%.2f",
+        len(return_options),
+        (time.perf_counter() - started_at) * 1000,
+    )
     return return_options
 
 
@@ -349,6 +374,7 @@ def search_hotels(
     currency: str = "EUR",
 ) -> list[dict]:
     """Query Google Hotels via SerpAPI and return normalised results."""
+    started_at = time.perf_counter()
     if not SERPAPI_API_KEY:
         raise RuntimeError(
             "Hotel search requires `SERPAPI_API_KEY` in your environment or Streamlit secrets."
@@ -386,7 +412,13 @@ def search_hotels(
         params["min_rating"] = min_rating
 
     try:
+        request_started_at = time.perf_counter()
         results = GoogleSearch(params).get_dict()
+        logger.info(
+            "SerpAPI hotel request completed destination=%s elapsed_ms=%.2f",
+            destination,
+            (time.perf_counter() - request_started_at) * 1000,
+        )
     except Exception as exc:
         logger.error("SerpAPI hotel search failed: %s", exc)
         return []
@@ -448,7 +480,11 @@ def search_hotels(
         if len(hotels) >= MAX_HOTEL_RESULTS:
             break
 
-    logger.info("Normalised %s hotel options", len(hotels))
+    logger.info(
+        "Normalised %s hotel options total_elapsed_ms=%.2f",
+        len(hotels),
+        (time.perf_counter() - started_at) * 1000,
+    )
     return hotels
 
 
