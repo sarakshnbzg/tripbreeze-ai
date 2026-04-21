@@ -12,4 +12,5 @@ __pycache__/
 evals/results/
 frontend/.next/
 frontend/node_modules/
+frontend/*.tsbuildinfo
 frontend/.env.local
