@@ -1,26 +1,222 @@
 # TripBreeze AI
 
-TripBreeze AI is an AI-powered travel planning assistant that combines live flight and hotel search, entry-requirement guidance, budget checks, and itinerary generation in one streamlined workflow.
+TripBreeze AI is an AI-powered travel planning assistant that combines trip intake, live travel research, budget checks, entry-requirement guidance, and itinerary generation in a single workflow.
 
-## 🌐 Deployment
+The project is built as a FastAPI backend with a standalone Next.js frontend. The backend owns the LangGraph workflow, tool calls, retrieval, persistence, and streaming responses. The frontend provides the browser-based planning experience.
 
-TripBreeze runs as a FastAPI backend paired with the standalone Next.js frontend in [`frontend/`](frontend/).
+## Overview
 
-## 🆕 Next.js Frontend Foundation
+TripBreeze can:
 
-A long-term frontend foundation now lives under [`frontend/`](frontend/). It keeps the existing FastAPI + LangGraph backend and replaces the UI layer with a standalone `Next.js` app so you can grow into a more polished product experience.
+- parse free-text trip requests such as "Paris for 3 days, then Barcelona for 4"
+- accept voice input through Whisper transcription
+- search flights with SerpAPI-backed Google Flights
+- compare optional ground transport alongside flights
+- search hotels with SerpAPI-backed Google Hotels
+- retrieve grounded visa and entry guidance from a local RAG knowledge base
+- support multi-city itineraries with per-leg selections
+- estimate budget fit before itinerary generation
+- pause for human review, revision, or cancellation
+- generate a polished day-by-day itinerary with weather enrichment
+- export itineraries as PDF and optionally email them
+- remember user preferences and trip history in Postgres
 
-What is included:
+## Architecture
 
-- `Next.js` app-router scaffold with a custom visual system
-- a simplified auth-gated chat-style flow for the standalone web app
-- typed API helpers for `/api/search`, `/api/search/{thread}/clarify`, and `/api/search/{thread}/approve`
-- auth/profile/reference endpoints for browser-based login, registration, and preferences
-- itinerary PDF download and email delivery endpoints for the standalone frontend
-- streaming SSE handling for planning progress and final itinerary output
-- a starter planning/review workspace for flight and hotel selection
+```text
+Next.js frontend (frontend/, port 3000)
+    |
+    | HTTP + SSE
+    v
+FastAPI backend (port 8100)
+    |
+    +-- LangGraph workflow
+    |     load_profile
+    |     -> trip_intake
+    |     -> research
+    |     -> aggregate_budget
+    |     -> review
+    |     -> feedback_router
+    |        -> attractions
+    |        -> finalise
+    |        -> update_memory
+    |
+    +-- External services
+    |     OpenAI / Gemini
+    |     SerpAPI
+    |     Open-Meteo
+    |     SMTP
+    |
+    +-- Local + persistent data
+          ChromaDB knowledge indexes
+          Neon Postgres / Postgres memory + checkpoints
+```
 
-To run it locally:
+The backend exposes HTTP and SSE endpoints from [`presentation/api.py`](presentation/api.py), while the graph and state live in [`application/graph.py`](application/graph.py) and [`application/state.py`](application/state.py).
+
+## Workflow
+
+```text
+Profile Loader
+  -> Trip Intake
+  -> Research Orchestrator
+     -> flights
+     -> ground transport
+     -> hotels
+     -> RAG entry requirements
+  -> Budget Aggregator
+  -> HITL Review
+  -> Feedback Router
+     -> approve: Attractions Research -> Trip Finaliser -> Memory Updater
+     -> revise_plan: back to Trip Intake
+     -> cancel: end
+```
+
+Review actions behave like this:
+
+- `rewrite_itinerary`: keep the approved trip and options, but change the final itinerary wording
+- `revise_plan`: patch the current trip request and rerun intake, research, budget, and review
+- `cancel`: stop the workflow
+
+More implementation detail for every node and agent is documented in [`AGENTS.md`](AGENTS.md).
+
+## Tech Stack
+
+- `Python 3.13`
+- `FastAPI`, `uvicorn`, `sse-starlette`
+- `LangGraph`, `LangChain`
+- `OpenAI`, `Google Gemini`
+- `OpenAI Whisper`
+- `SerpAPI`
+- `ChromaDB`, `BM25`
+- `Open-Meteo`
+- `Postgres`, `psycopg`, `langgraph-checkpoint-postgres`
+- `Next.js 15`, `React 19`, `Tailwind CSS`
+- `ReportLab`
+- `bcrypt`
+- `Docker`
+- `LangSmith`
+
+## Quick Start
+
+Choose the path that matches how you want to work:
+
+- Backend only: run the FastAPI API directly with `uv`
+- Full stack: run the FastAPI backend and Next.js frontend together
+- Docker: run the backend in a container
+
+## Prerequisites
+
+Backend:
+
+- Python 3.13
+- `uv`
+- at least one LLM provider key: `OPENAI_API_KEY` or `GOOGLE_API_KEY`
+- `SERPAPI_API_KEY`
+- a Postgres connection string in `DATABASE_URL` for persistent memory and checkpoints
+
+Frontend:
+
+- Node.js and `npm`
+
+Optional:
+
+- `CSC_API_KEY` for syncing country and city reference data
+- SMTP credentials for email delivery
+- LangSmith credentials for tracing
+
+## Environment Setup
+
+Copy the example environment file and fill in the required values:
+
+```bash
+cp .env.example .env
+```
+
+Minimum recommended `.env` values:
+
+```env
+OPENAI_API_KEY=...
+GOOGLE_API_KEY=...
+SERPAPI_API_KEY=...
+DATABASE_URL=postgresql://username:password@your-neon-host/database?sslmode=require
+```
+
+Optional settings:
+
+```env
+CSC_API_KEY=...
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_PROJECT=tripbreeze-ai
+LANGCHAIN_API_KEY=...
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SENDER_EMAIL=your-email@gmail.com
+SMTP_SENDER_PASSWORD=your-app-password
+SMTP_USE_TLS=true
+REQUIRE_PERSISTENT_CHECKPOINTER=true
+```
+
+TripBreeze reads configuration centrally from [`config.py`](config.py), not directly throughout the codebase.
+
+## Backend Local Setup
+
+### 1. Install dependencies
+
+```bash
+pip install uv
+uv sync
+```
+
+### 2. Sync reference data
+
+Populate database-backed `countries` and `cities` from the Country State City API:
+
+```bash
+uv run python scripts/sync_reference_data.py
+```
+
+This step is only needed if you want the external reference dataset populated.
+
+### 3. Build the RAG index
+
+Run this once on first setup, and again after changing files in [`knowledge_base/`](knowledge_base/):
+
+```bash
+uv run python scripts/rebuild_rag.py
+```
+
+If you want provider-specific indexes for both supported providers:
+
+```bash
+uv run python scripts/rebuild_rag.py openai
+uv run python scripts/rebuild_rag.py google
+```
+
+Indexes are stored under `chroma_db/openai` and `chroma_db/google`.
+
+### 4. Start the API
+
+```bash
+uv run python app.py
+```
+
+The backend starts on `http://127.0.0.1:8100` by default.
+
+Useful endpoints:
+
+- `GET /healthz`
+- `GET /docs`
+- `POST /api/transcribe`
+- `POST /api/search`
+- `GET /api/search/{thread_id}/state`
+- `POST /api/search/{thread_id}/clarify`
+- `POST /api/search/{thread_id}/approve`
+- `POST /api/search/{thread_id}/return-flights`
+
+## Full-Stack Local Setup
+
+If you want the browser UI as well:
 
 ```bash
 cp frontend/.env.local.example frontend/.env.local
@@ -28,9 +224,14 @@ npm install --prefix frontend
 uv run python scripts/dev.py
 ```
 
+That starts:
+
+- frontend at `http://127.0.0.1:3000`
+- API at `http://127.0.0.1:8100`
+
 The frontend expects the backend at `http://127.0.0.1:8100` by default. You can override that with `NEXT_PUBLIC_API_BASE_URL`.
 
-The FastAPI backend now allows local browser access from:
+The backend allows local browser access from:
 
 - `http://localhost:3000`
 - `http://127.0.0.1:3000`
@@ -39,190 +240,23 @@ The FastAPI backend now allows local browser access from:
 
 To customize this list, set `FRONTEND_ORIGINS` in `.env` as a comma-separated list.
 
-## ✨ What It Does
+## Testing
 
-- Uses a ReAct-style research orchestrator to decide when to search flights, search hotels, and query the local knowledge base
-- 🎙️ Accepts voice input — describe your trip by speaking and it's transcribed via OpenAI Whisper
-- ✈️ Searches flights with SerpAPI / Google Flights
-- 🚆 Shows ground transport options (trains, buses, ferries) side-by-side with flights so users can compare modes. Currently backed by a stub; swap `infrastructure/apis/ground_transport_client.py` for a real provider when one becomes available.
-- 🏨 Searches hotels with SerpAPI / Google Hotels
-- 🌍 Supports **multi-city itineraries** — plan trips like "Paris for 3 days, then Barcelona for 4 days" with per-leg flight and hotel selection
-- 📚 Retrieves visa and entry requirement guidance from a local RAG knowledge base
-- 🌤️ Shows weather forecasts for each day of the trip (via Open-Meteo, no API key needed)
-- 💸 Tracks budget against the trip request
-- ✅ Lets the user review results, revise the plan, or continue to final itinerary generation
-- 🔐 Supports user accounts with securely hashed passwords (`bcrypt`)
-- 🧠 Remembers preferences such as home airport, class, and trip history (with PDF download for past trips)
-- 📄 Exports final itinerary as a downloadable PDF
-- 📧 Sends itinerary via email with PDF attachment (requires SMTP configuration)
-
-## 🧭 Workflow
-
-```text
-Profile Loader
-  -> Trip Intake
-  -> Research Orchestrator (ReAct agent: flights, ground transport, hotels, RAG for entry requirements)
-  -> Budget Aggregator
-  -> Review (HITL pause)
-  -> Feedback Router (approve / revise plan / cancel)
-     -> approve: Attractions Research -> Trip Finaliser -> Memory Updater
-     -> revise plan: back to Trip Intake, then through research/budget/review again
-     -> cancel: end
-```
-
-## 🏗️ Architecture
-
-TripBreeze uses a two-layer architecture:
-
-```text
-Next.js (frontend UI, port 3000)
-    │ HTTP / SSE
-FastAPI (backend API, port 8100)
-    ├── POST /api/transcribe           → OpenAI Whisper → text
-    ├── POST /api/search               → LangGraph pipeline → SSE stream
-    ├── GET  /api/search/{thread}/state → current graph state for HITL review
-    ├── POST /api/search/{thread}/return-flights → return flight lookup
-    ├── POST /api/search/{thread}/clarify → resume after missing-field clarification
-    └── POST /api/search/{thread}/approve → resume after review; supports approve or revise-plan SSE flows
-```
-
-Review actions currently work like this:
-
-- `rewrite_itinerary`: keep the approved trip and selected options, then use feedback only in the final itinerary wording
-- `revise_plan`: patch the current trip request and rerun intake/research/budget/review
-- `cancel`: stop the workflow
-
-The frontend is a thin client. All LangGraph orchestration, LLM calls, and API interactions run behind FastAPI, which streams progress and results back via Server-Sent Events (SSE).
-
-## 🛠️ Stack
-
-- `Python 3.13`
-- `FastAPI`, `uvicorn`, `sse-starlette`: backend API and SSE streaming
-- `Next.js`, `React`: frontend UI
-- `LangGraph`, `LangChain`: workflow orchestration, tool calling, and structured LLM interactions
-- `OpenAI`, `Google Gemini`: trip intake, research, and itinerary generation
-- `OpenAI Whisper`: voice-to-text transcription
-- `SerpAPI`, `Google Flights`, `Google Hotels`, `Google Maps`: live flight, hotel, and attraction data
-- `ChromaDB`, `BM25`: hybrid retrieval for the local RAG knowledge base
-- `Open-Meteo`: trip weather forecasts and historical fallback weather data
-- `Neon Postgres`, `psycopg`, `psycopg_pool`: long-term memory and LangGraph checkpoint persistence
-- `bcrypt`: secure password hashing for user authentication
-- `httpx`: backend HTTP integrations
-- `ReportLab`: PDF itinerary export
-- `SMTP`: itinerary email delivery
-- `Docker`: containerized deployment
-- `LangSmith`: observability and trace dashboards
-
-## 🚀 Quick Start
-
-Choose one of these paths:
-
-- `Local Python setup` if you want to run the API directly with `uv`
-- `Full-stack local setup` if you want the API and frontend together
-- `Docker setup` if you want to run the API in a container
-
-## 💻 Local Setup
-
-### 1. Prerequisites
-
-- Python 3.13
-- `SERPAPI_API_KEY`
-- `OPENAI_API_KEY`, `GOOGLE_API_KEY`, or both
-
-### 2. Install dependencies
-
-```bash
-pip install uv
-uv sync
-cp .env.example .env
-```
-
-Add your API keys and Neon Postgres connection string to `.env`:
-
-```env
-OPENAI_API_KEY=...
-GOOGLE_API_KEY=...
-SERPAPI_API_KEY=...
-CSC_API_KEY=...
-DATABASE_URL=postgresql://username:password@your-neon-host/database?sslmode=require
-```
-
-TripBreeze uses Neon Postgres for long-term profile memory.
-
-Optional LangSmith tracing:
-
-```env
-LANGCHAIN_TRACING_V2=true
-LANGCHAIN_PROJECT=tripbreeze-ai
-LANGCHAIN_API_KEY=...
-```
-
-You can view traces in your LangSmith project dashboard after enabling these settings.
-
-### 3. Sync external reference data
-
-Populate DB-backed `countries` and `cities` from Country State City API:
-
-```bash
-uv run python scripts/sync_reference_data.py
-```
-
-Optional SMTP configuration for email delivery (see [SMTP_SETUP.md](SMTP_SETUP.md) for details):
-
-```env
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_SENDER_EMAIL=your-email@gmail.com
-SMTP_SENDER_PASSWORD=your-app-password
-SMTP_USE_TLS=true
-```
-
-### 4. Build the knowledge base
-
-Run this once on first setup, and again after editing files in `knowledge_base/`:
-
-```bash
-uv run python scripts/rebuild_rag.py
-```
-
-If you want retrieval to work with both supported providers, rebuild a provider-specific index for each one:
-
-```bash
-uv run python scripts/rebuild_rag.py openai
-uv run python scripts/rebuild_rag.py google
-```
-
-TripBreeze stores these separately under `chroma_db/openai` and `chroma_db/google`, and automatically uses the matching index for the provider selected in the app.
-
-### 5. Run the app
-
-```bash
-uv run python app.py
-```
-
-This starts the FastAPI backend on `http://localhost:8100`. The interactive docs are available at `http://localhost:8100/docs`.
-
-If you want to run the standalone Next.js frontend and FastAPI backend together with one command instead, use:
-
-```bash
-npm install --prefix frontend
-uv run python scripts/dev.py
-```
-
-That starts:
-
-- the frontend at `http://127.0.0.1:3000`
-- the API at `http://127.0.0.1:8100`
-
-### 6. Run tests
+Run the full test suite:
 
 ```bash
 uv run pytest -q
 ```
 
-GitHub Actions also runs the test suite automatically on every push and pull request.
+Run a single file:
 
-### 7. Evaluate RAG
+```bash
+uv run pytest -q tests/test_trip_intake.py
+```
+
+GitHub Actions also runs the test suite on pushes and pull requests.
+
+## RAG Evaluation
 
 Install the optional evaluation dependencies:
 
@@ -230,39 +264,25 @@ Install the optional evaluation dependencies:
 uv sync --group eval
 ```
 
-Then run the offline evaluator against the sample dataset in [`evals/rag_eval_dataset.jsonl`](evals/rag_eval_dataset.jsonl):
+Run the offline evaluator against [`evals/rag_eval_dataset.jsonl`](evals/rag_eval_dataset.jsonl):
 
 ```bash
 uv run python scripts/evaluate_rag.py --provider openai
 ```
 
-Use retrieval-only mode if you just want to inspect fetched chunks without generating answers or scoring:
+Useful variants:
 
 ```bash
 uv run python scripts/evaluate_rag.py --provider openai --retrieval-only
-```
-
-You can also add an LLM-as-a-judge pass over the generated answers:
-
-```bash
 uv run python scripts/evaluate_rag.py --provider openai --llm-judge
+uv run python scripts/evaluate_rag.py --provider openai --llm-judge --judge-provider openai --judge-model gpt-4.1-mini
 ```
 
-To use a different judge provider or model:
+Results are written to `evals/results/`.
 
-```bash
-uv run python scripts/evaluate_rag.py --provider openai --llm-judge \
-  --judge-provider openai --judge-model gpt-4.1-mini
-```
+### Golden itinerary judging
 
-The judge writes row-level scores plus aggregate averages for faithfulness, correctness,
-completeness, groundedness, pass rate, and overall score to `evals/results/`.
-The script also continues to write retrieval snapshots and RAGAs score summaries there.
-
-### 8. Judge golden itineraries
-
-The replay-based golden tests stay deterministic by default, but you can opt into
-LLM-as-a-judge scoring for the final itinerary golden cases:
+Replay-based golden tests stay deterministic by default, but you can opt into LLM-as-a-judge scoring for the final itinerary cases:
 
 ```bash
 RUN_LLM_JUDGE_GOLDENS=1 uv run pytest tests/test_golden_prompts.py -k finaliser
@@ -277,34 +297,27 @@ GOLDEN_JUDGE_MODEL=gpt-4.1-mini \
 uv run pytest tests/test_golden_prompts.py -k finaliser
 ```
 
-When enabled, the tests still perform the normal structural assertions, then ask a
-judge model to score each golden itinerary on constraint following, trip relevance,
-structure quality, personalization, groundedness, and overall quality against the
-minimum thresholds stored in `tests/golden_prompts/finaliser.json`.
+## Docker Setup
 
-## 🐳 Docker Setup
-
-### 1. Build the image
+Build the image:
 
 ```bash
 docker build -t tripbreeze-ai .
 ```
 
-Or start it with Docker Compose:
+Or start with Docker Compose:
 
 ```bash
 docker compose up --build
 ```
 
-### 2. Run the container
-
-Use your local `.env` file:
+Run the container with your local `.env`:
 
 ```bash
 docker run --rm -p 8100:8100 --env-file .env tripbreeze-ai
 ```
 
-If you want cached RAG indexes to persist across container restarts, mount the Chroma directory too:
+To persist RAG indexes between container restarts:
 
 ```bash
 docker run --rm -p 8100:8100 --env-file .env \
@@ -312,14 +325,7 @@ docker run --rm -p 8100:8100 --env-file .env \
   tripbreeze-ai
 ```
 
-Then open `http://localhost:8100/docs` or connect your frontend to `http://localhost:8100`.
-TripBreeze stores long-term profile memory in Neon Postgres using `DATABASE_URL` or `NEON_DATABASE_URL`.
-
-If you want to use the same hosted database in Docker, keep `DATABASE_URL` in `.env` and pass that file with `--env-file`.
-
-On first container startup, TripBreeze will rebuild the RAG indexes automatically for any configured provider whose persisted directory is missing. Mounting `./chroma_db:/app/chroma_db` keeps those indexes between restarts and avoids rebuilding each time.
-
-You can also force a rebuild on every start:
+To force a rebuild on every container start:
 
 ```bash
 docker run --rm -p 8100:8100 --env-file .env \
@@ -328,25 +334,25 @@ docker run --rm -p 8100:8100 --env-file .env \
   tripbreeze-ai
 ```
 
-With the default Docker settings, the FastAPI docs are also reachable at `http://localhost:8100/docs`.
+The API docs remain available at `http://localhost:8100/docs`.
 
-## 🧳 Typical Flow
+## Example Prompts
 
-1. Select an LLM provider and model in the sidebar.
-2. Describe the trip in free text or by voice, optionally refining it with structured form fields for dates, destination, travellers, budget, and similar core details.
-3. The intake step merges structured fields with free text, validates dates, and extracts travel filters such as nonstop flights, airline exclusions, hotel stars, or max flight price.
-4. The ReAct-style research orchestrator decides which tools to call for this request: flights, hotels, knowledge retrieval, or any combination of them.
-5. Review flight, ground transport, hotel, destination, and budget results. Ground transport is optional — pick a train/bus/ferry alongside (or instead of) your flight.
-6. Approve to generate the final itinerary. After approval, the app fetches attraction candidates for the destination and uses them to ground the day-by-day plan.
-7. Download the itinerary as a PDF or email it directly to yourself.
-
-## 💬 Free-Text Examples
-
-The free-text field can describe the whole trip or just extra constraints. For example:
+Free-text trip requests:
 
 ```text
 I want to fly from London to Tokyo from 2026-06-10 to 2026-06-17 for 2 travelers with a budget of 3000 EUR.
 ```
+
+```text
+Paris for 3 days, then Barcelona for 4 days, then fly home.
+```
+
+```text
+Visit Tokyo for a week then Kyoto for 5 days. 2 travelers, budget 5000 USD.
+```
+
+Preference-only follow-ups:
 
 ```text
 Nonstop flights only.
@@ -360,67 +366,54 @@ Business class, exclude Ryanair, and keep the flight under 10 hours.
 4-star hotels and max flight price of 800 EUR per person.
 ```
 
-### Multi-City Trips
+Multi-city trips can be round-trip by default or open-jaw / one-way when `return_to_origin=false`. In the form UI, this is exposed through the multi-city and one-way controls.
 
-TripBreeze automatically detects multi-city itineraries:
-
-```text
-Paris for 3 days, then Barcelona for 4 days, then fly home.
-```
-
-```text
-Rome → Florence → Venice, 2 nights each, starting June 10.
-```
-
-```text
-Visit Tokyo for a week then Kyoto for 5 days. 2 travelers, budget 5000 USD.
-```
-
-For multi-city trips, the app searches flights and hotels for each leg separately, letting you select options per destination before generating the combined itinerary.
-
-Multi-city trips can be **round-trip** (return to origin, the default) or **open-jaw / one-way** (no return leg). In the form, tick both "Multi-city" and "One-way" to skip the return. In free text, phrases like "not coming back" or "ending in Rome" trigger the same behaviour via `return_to_origin=false`.
-
-## 📁 Project Structure
+## Project Structure
 
 ```text
 tripbreeze-ai/
-├── app.py                        # FastAPI entry point
-├── config.py                     # Centralised settings
-├── presentation/
-│   └── api.py                    # FastAPI backend (SSE endpoints)
+├── app.py
+├── config.py
 ├── application/
-│   ├── graph.py                  # LangGraph workflow
-│   └── state.py                  # Graph state schema
-├── domain/                       # Agents and nodes
+│   ├── graph.py
+│   └── state.py
+├── domain/
+│   ├── agents/
+│   └── nodes/
 ├── infrastructure/
-│   ├── pdf_generator.py          # PDF export using reportlab
-│   ├── email_sender.py           # SMTP email delivery
-│   └── ...                       # APIs, LLMs, persistence, RAG
+│   ├── apis/
+│   ├── llms/
+│   ├── persistence/
+│   ├── rag/
+│   ├── email_sender.py
+│   └── pdf_generator.py
+├── presentation/
+│   └── api.py
+├── frontend/
 ├── knowledge_base/
 ├── scripts/
 ├── tests/
-├── SMTP_SETUP.md                 # Email configuration guide
-└── README.md
+├── evals/
+├── SMTP_SETUP.md
+└── AGENTS.md
 ```
 
-## 📝 Notes
+## Notes
 
-- Model names, API keys, paths, and defaults are centralised in `config.py`.
-- Long-term profile memory requires `DATABASE_URL` or `NEON_DATABASE_URL`.
-- Authentication uses `bcrypt` for password hashing. If you previously created local accounts before this change, recreate them after clearing old credentials.
-- Neon Postgres is the app's long-term memory store.
-- If retrieval looks stale, rebuild the RAG index with `uv run python scripts/rebuild_rag.py`.
-- If commands are missing, run them through `uv run` or make sure the project's virtual environment is active.
+- `config.py` is the single source of truth for runtime settings, defaults, and model names.
+- Postgres persistence is strongly recommended for any workflow that uses human-in-the-loop review.
+- The ground transport provider is currently a stub in [`infrastructure/apis/ground_transport_client.py`](infrastructure/apis/ground_transport_client.py). It returns realistic mock data behind a stable contract, so it can later be replaced by a real provider.
+- If retrieval looks stale, rebuild the index with `uv run python scripts/rebuild_rag.py`.
+- SMTP setup details live in [`SMTP_SETUP.md`](SMTP_SETUP.md).
 
-## ⚠️ Limitations
+## Limitations
 
-- LangGraph HITL review state is only restart-safe when `DATABASE_URL` or `NEON_DATABASE_URL` is configured. Set `REQUIRE_PERSISTENT_CHECKPOINTER=true` in deployed environments so the app fails fast instead of silently falling back to in-memory checkpoints.
-- Live search depends on SerpAPI-backed Google Flights/Hotels calls, so quotas, rate limits, and per-request costs can affect availability and response quality.
-- The app is typically deployed as a single backend region, so users far from that region may see higher latency during research and itinerary generation.
-- Authentication is username/password based and intentionally lightweight. It is suitable for a course project, but it is not a full production identity stack with email verification, password reset, MFA, or role-based access control.
-- The research and finalisation steps use LLM tool calling. Even with structured outputs, RAG grounding, and tests, the model can still over-generalise or phrase unsupported conclusions if tool results are sparse or ambiguous.
-- Unit, integration, and golden-prompt tests are in place, but offline evaluation is still partial rather than exhaustive. Real-world travel quality still benefits from broader datasets, regression monitoring, and human review.
+- HITL review state is only restart-safe when `DATABASE_URL` or `NEON_DATABASE_URL` is configured. In deployed environments, `REQUIRE_PERSISTENT_CHECKPOINTER=true` should be enabled so the app fails fast instead of silently falling back to in-memory checkpoints.
+- Live search depends on SerpAPI-backed Google Flights and Google Hotels, so quotas, latency, and API costs affect availability.
+- Authentication is intentionally lightweight and suitable for a course project, not a full production identity stack.
+- The research and finalisation steps rely on LLM tool calling. Even with structured outputs and retrieval grounding, results can still be imperfect when source data is sparse or ambiguous.
+- Evaluation coverage is solid but not exhaustive. Real-world travel planning still benefits from monitoring and human review.
 
-## 🔮 Future Work
+## Future Work
 
-- [ ] **Replace remaining bootstrap reference data with managed sources** — Move fallback datasets such as `AIRLINES`, `CITY_TO_AIRPORT`, `DAILY_EXPENSE_BY_DESTINATION`, and similar code-level defaults into Postgres or an external API so updates do not require code changes.
+- [ ] Replace remaining bootstrap reference data with managed sources so defaults such as `AIRLINES`, `CITY_TO_AIRPORT`, and daily-expense mappings do not require code changes.
