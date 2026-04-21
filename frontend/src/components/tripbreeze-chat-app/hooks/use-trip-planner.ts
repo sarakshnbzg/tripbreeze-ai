@@ -369,6 +369,7 @@ export function useTripPlanner({
 
     try {
       await streamApprove(state.thread_id, request, handleStreamEvent);
+      setFeedback("");
     } catch (approveError) {
       setError(safeErrorMessage(approveError));
     } finally {

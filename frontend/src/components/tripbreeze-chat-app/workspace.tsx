@@ -360,6 +360,29 @@ export function ReviewPanel({
                   </div>
                 </div>
               )}
+
+              {Array.isArray(state.transport_options) && state.transport_options.length > 0 ? (
+                <div className="space-y-3">
+                  <div className="text-sm font-semibold text-slate">Ground transport (optional)</div>
+                  <div className="text-xs text-slate">
+                    Compare ground options alongside flights. Tap to select, tap again to clear.
+                  </div>
+                  {state.transport_options.slice(0, 5).map((option, index) => (
+                    <ReviewOptionCard
+                      key={`transport-${index}`}
+                      option={option}
+                      title={`Transport ${index + 1}`}
+                      variant="transport"
+                      allOptions={state.transport_options ?? []}
+                      currencyCode={currencyCode}
+                      selected={selectedTransportIndex === index}
+                      onSelect={() =>
+                        setSelectedTransportIndex(selectedTransportIndex === index ? null : index)
+                      }
+                    />
+                  ))}
+                </div>
+              ) : null}
             </div>
           )
         ) : (
@@ -372,97 +395,99 @@ export function ReviewPanel({
         )}
 
         {showPersonalisationPanel ? (
-          <>
-            <div ref={personaliseSectionRef} className="mt-5 rounded-[1.8rem] border border-ink/10 bg-gradient-to-br from-mist/90 to-white p-5">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <div className="text-sm font-semibold text-ink">Personalise the itinerary</div>
-                  <div className="mt-1 text-sm text-slate">
-                    Shape the trip around what you want to do and how full you want the days to feel.
-                  </div>
-                </div>
-                <div className="rounded-[1.2rem] bg-white/85 px-3 py-2 text-xs text-slate">
-                  <span className="font-semibold text-ink">Selected:</span>{" "}
-                  {interests.length ? interests.map(sentenceLabel).join(", ") : "No interests yet"} • {sentenceLabel(pace)} pace
+          <div ref={personaliseSectionRef} className="mt-5 rounded-[1.8rem] border border-ink/10 bg-gradient-to-br from-mist/90 to-white p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div className="text-sm font-semibold text-ink">Personalise the itinerary</div>
+                <div className="mt-1 text-sm text-slate">
+                  Shape the trip around what you want to do and how full you want the days to feel.
                 </div>
               </div>
-
-              <div className="mt-5">
-                <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate">Interests</div>
-                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                  {INTEREST_OPTIONS.map((interest) => {
-                    const active = interests.includes(interest);
-                    return (
-                      <button
-                        key={interest}
-                        type="button"
-                        onClick={() =>
-                          setInterests((current: string[]) => (
-                            active ? current.filter((value: string) => value !== interest) : [...current, interest]
-                          ))
-                        }
-                        className={`rounded-[1.2rem] border px-4 py-3 text-left text-sm transition ${
-                          active
-                            ? "border-ink bg-ink text-white shadow-[0_14px_30px_rgba(16,33,43,0.16)]"
-                            : "border-ink/10 bg-white text-slate hover:border-coral/40 hover:bg-white"
-                        }`}
-                      >
-                        <div className="font-semibold">{sentenceLabel(interest)}</div>
-                        <div className={`mt-1 text-xs ${active ? "text-white/70" : "text-slate"}`}>
-                          {active ? "Included in your itinerary" : "Tap to include"}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
+              <div className="rounded-[1.2rem] bg-white/85 px-3 py-2 text-xs text-slate">
+                <span className="font-semibold text-ink">Selected:</span>{" "}
+                {interests.length ? interests.map(sentenceLabel).join(", ") : "No interests yet"} • {sentenceLabel(pace)} pace
               </div>
+            </div>
 
-              <div className="mt-5">
-                <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate">Pace</div>
-                <div className="grid gap-2 md:grid-cols-3">
-                  {PACE_OPTIONS.map((paceOption) => (
+            <div className="mt-5">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate">Interests</div>
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                {INTEREST_OPTIONS.map((interest) => {
+                  const active = interests.includes(interest);
+                  return (
                     <button
-                      key={paceOption}
+                      key={interest}
                       type="button"
-                      onClick={() => setPace(paceOption)}
+                      onClick={() =>
+                        setInterests((current: string[]) => (
+                          active ? current.filter((value: string) => value !== interest) : [...current, interest]
+                        ))
+                      }
                       className={`rounded-[1.2rem] border px-4 py-3 text-left text-sm transition ${
-                        pace === paceOption
-                          ? "border-coral bg-coral text-white shadow-[0_14px_30px_rgba(215,108,78,0.18)]"
-                          : "border-ink/10 bg-white text-slate hover:border-coral/40"
+                        active
+                          ? "border-ink bg-ink text-white shadow-[0_14px_30px_rgba(16,33,43,0.16)]"
+                          : "border-ink/10 bg-white text-slate hover:border-coral/40 hover:bg-white"
                       }`}
                     >
-                      <div className="font-semibold">{sentenceLabel(paceOption)}</div>
-                      <div className={`mt-1 text-xs ${pace === paceOption ? "text-white/75" : "text-slate"}`}>
-                        {paceOption === "relaxed"
-                          ? "Lighter days with more breathing room"
-                          : paceOption === "moderate"
-                            ? "A balanced mix of highlights and downtime"
-                            : "A fuller schedule with more activities"}
+                      <div className="font-semibold">{sentenceLabel(interest)}</div>
+                      <div className={`mt-1 text-xs ${active ? "text-white/70" : "text-slate"}`}>
+                        {active ? "Included in your itinerary" : "Tap to include"}
                       </div>
                     </button>
-                  ))}
-                </div>
+                  );
+                })}
               </div>
             </div>
 
-            <textarea
-              className="mt-5 h-24 w-full rounded-[1.6rem] border border-ink/10 bg-white/80 px-4 py-3 text-sm outline-none transition focus:border-coral"
-              placeholder="Add notes for the itinerary or ask for changes."
-              value={feedback}
-              onChange={(event) => setFeedback(event.target.value)}
-            />
-
-            <div className="mt-4 flex flex-wrap gap-3">
-              <Button onClick={() => void handleReview("rewrite_itinerary")} disabled={loading !== null || !canApprove}>
-                {loading === "approving" ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : null}
-                Approve and Generate Itinerary
-              </Button>
-              <Button variant="secondary" onClick={() => void handleReview("revise_plan")} disabled={loading !== null}>
-                Ask planner to rework results
-              </Button>
+            <div className="mt-5">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate">Pace</div>
+              <div className="grid gap-2 md:grid-cols-3">
+                {PACE_OPTIONS.map((paceOption) => (
+                  <button
+                    key={paceOption}
+                    type="button"
+                    onClick={() => setPace(paceOption)}
+                    className={`rounded-[1.2rem] border px-4 py-3 text-left text-sm transition ${
+                      pace === paceOption
+                        ? "border-coral bg-coral text-white shadow-[0_14px_30px_rgba(215,108,78,0.18)]"
+                        : "border-ink/10 bg-white text-slate hover:border-coral/40"
+                    }`}
+                  >
+                    <div className="font-semibold">{sentenceLabel(paceOption)}</div>
+                    <div className={`mt-1 text-xs ${pace === paceOption ? "text-white/75" : "text-slate"}`}>
+                      {paceOption === "relaxed"
+                        ? "Lighter days with more breathing room"
+                        : paceOption === "moderate"
+                          ? "A balanced mix of highlights and downtime"
+                          : "A fuller schedule with more activities"}
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
-          </>
+          </div>
         ) : null}
+
+        <textarea
+          className="mt-5 h-24 w-full rounded-[1.6rem] border border-ink/10 bg-white/80 px-4 py-3 text-sm outline-none transition focus:border-coral"
+          placeholder={
+            showPersonalisationPanel
+              ? "Add notes for the itinerary or ask for changes."
+              : "Tell the planner what to change (e.g. different dates, cheaper hotels, another city)."
+          }
+          value={feedback}
+          onChange={(event) => setFeedback(event.target.value)}
+        />
+
+        <div className="mt-4 flex flex-wrap gap-3">
+          <Button onClick={() => void handleReview("rewrite_itinerary")} disabled={loading !== null || !canApprove}>
+            {loading === "approving" ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Approve and Generate Itinerary
+          </Button>
+          <Button variant="secondary" onClick={() => void handleReview("revise_plan")} disabled={loading !== null}>
+            Ask planner to rework results
+          </Button>
+        </div>
       </div>
     </>
   );

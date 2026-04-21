@@ -40,6 +40,7 @@ function buildReviewWorkspaceModel(overrides: Partial<ReviewWorkspaceModel> = {}
     showPersonalisationPanel: false,
     selectedTransportIndex: null,
     canApprove: false,
+    returnOptionsLoading: false,
     interests: [],
     pace: "moderate",
     feedback: "",
