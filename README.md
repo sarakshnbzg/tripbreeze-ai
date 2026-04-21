@@ -4,7 +4,7 @@ TripBreeze AI is an AI-powered travel planning assistant that combines trip inta
 
 The project is built as a FastAPI backend with a standalone Next.js frontend. The backend owns the LangGraph workflow, tool calls, retrieval, persistence, and streaming responses. The frontend provides the browser-based planning experience.
 
-## Overview
+## Overview at a Glance
 
 TripBreeze can:
 
@@ -21,7 +21,7 @@ TripBreeze can:
 - export itineraries as PDF and optionally email them
 - remember user preferences and trip history in Postgres
 
-## Architecture
+## Architecture 🏗️
 
 ```text
 Next.js frontend (frontend/, port 3000)
@@ -54,7 +54,7 @@ FastAPI backend (port 8100)
 
 The backend exposes HTTP and SSE endpoints from [`presentation/api.py`](presentation/api.py), while the graph and state live in [`application/graph.py`](application/graph.py) and [`application/state.py`](application/state.py).
 
-## Workflow
+## Workflow 🔄
 
 ```text
 Profile Loader
@@ -80,7 +80,7 @@ Review actions behave like this:
 
 More implementation detail for every node and agent is documented in [`AGENTS.md`](AGENTS.md).
 
-## Tech Stack
+## Tech Stack 🧰
 
 - `Python 3.13`
 - `FastAPI`, `uvicorn`, `sse-starlette`
@@ -97,7 +97,7 @@ More implementation detail for every node and agent is documented in [`AGENTS.md
 - `Docker`
 - `LangSmith`
 
-## Quick Start
+## Quick Start 🚀
 
 Choose the path that matches how you want to work:
 
@@ -105,7 +105,7 @@ Choose the path that matches how you want to work:
 - Full stack: run the FastAPI backend and Next.js frontend together
 - Docker: run the backend and frontend in containers
 
-## Prerequisites
+## Prerequisites ✅
 
 Backend:
 
@@ -125,7 +125,7 @@ Optional:
 - SMTP credentials for email delivery
 - LangSmith credentials for tracing
 
-## Environment Setup
+## Environment Setup ⚙️
 
 Copy the example environment file and fill in the required values:
 
@@ -159,7 +159,7 @@ REQUIRE_PERSISTENT_CHECKPOINTER=true
 
 TripBreeze reads configuration centrally from [`config.py`](config.py), not directly throughout the codebase.
 
-## Backend Local Setup
+## Backend Local Setup 🐍
 
 ### 1. Install dependencies
 
@@ -214,7 +214,7 @@ Useful endpoints:
 - `POST /api/search/{thread_id}/approve`
 - `POST /api/search/{thread_id}/return-flights`
 
-## Full-Stack Local Setup
+## Full-Stack Local Setup 🌐
 
 If you want the browser UI as well:
 
@@ -240,7 +240,7 @@ The backend allows local browser access from:
 
 To customize this list, set `FRONTEND_ORIGINS` in `.env` as a comma-separated list.
 
-## Testing
+## Testing 🧪
 
 Run the full test suite:
 
@@ -256,7 +256,7 @@ uv run pytest -q tests/test_trip_intake.py
 
 GitHub Actions also runs the test suite on pushes and pull requests.
 
-## RAG Evaluation
+## RAG Evaluation 📚
 
 Install the optional evaluation dependencies:
 
@@ -280,7 +280,7 @@ uv run python scripts/evaluate_rag.py --provider openai --llm-judge --judge-prov
 
 Results are written to `evals/results/`.
 
-### Golden itinerary judging
+### Golden itinerary judging 🏅
 
 Replay-based golden tests stay deterministic by default, but you can opt into LLM-as-a-judge scoring for the final itinerary cases:
 
@@ -297,7 +297,7 @@ GOLDEN_JUDGE_MODEL=gpt-4.1-mini \
 uv run pytest tests/test_golden_prompts.py -k finaliser
 ```
 
-## Docker Setup
+## Docker Setup 🐳
 
 Build the backend image:
 
@@ -342,7 +342,7 @@ docker run --rm -p 8100:8100 --env-file .env \
 
 The API docs remain available at `http://localhost:8100/docs`.
 
-## Example Prompts
+## Example Prompts 💬
 
 Free-text trip requests:
 
@@ -374,7 +374,7 @@ Business class, exclude Ryanair, and keep the flight under 10 hours.
 
 Multi-city trips can be round-trip by default or open-jaw / one-way when `return_to_origin=false`. In the form UI, this is exposed through the multi-city and one-way controls.
 
-## Project Structure
+## Project Structure 🗂️
 
 ```text
 tripbreeze-ai/
@@ -404,7 +404,7 @@ tripbreeze-ai/
 └── AGENTS.md
 ```
 
-## Notes
+## Notes 📝
 
 - `config.py` is the single source of truth for runtime settings, defaults, and model names.
 - Postgres persistence is strongly recommended for any workflow that uses human-in-the-loop review.
@@ -412,7 +412,7 @@ tripbreeze-ai/
 - If retrieval looks stale, rebuild the index with `uv run python scripts/rebuild_rag.py`.
 - SMTP setup details live in [`SMTP_SETUP.md`](SMTP_SETUP.md).
 
-## Limitations
+## Limitations ⚠️
 
 - HITL review state is only restart-safe when `DATABASE_URL` or `NEON_DATABASE_URL` is configured. In deployed environments, `REQUIRE_PERSISTENT_CHECKPOINTER=true` should be enabled so the app fails fast instead of silently falling back to in-memory checkpoints.
 - Live search depends on SerpAPI-backed Google Flights and Google Hotels, so quotas, latency, and API costs affect availability.
@@ -420,6 +420,6 @@ tripbreeze-ai/
 - The research and finalisation steps rely on LLM tool calling. Even with structured outputs and retrieval grounding, results can still be imperfect when source data is sparse or ambiguous.
 - Evaluation coverage is solid but not exhaustive. Real-world travel planning still benefits from monitoring and human review.
 
-## Future Work
+## Future Work 🔭
 
 - [ ] Replace remaining bootstrap reference data with managed sources so defaults such as `AIRLINES`, `CITY_TO_AIRPORT`, and daily-expense mappings do not require code changes.
