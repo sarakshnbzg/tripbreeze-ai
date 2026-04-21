@@ -3,17 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   LoaderCircle,
-  LogOut,
-  Save,
   Settings2,
-  UserRound,
 } from "lucide-react";
 
 import {
   downloadItineraryPdf,
   emailItinerary,
-  fetchReturnFlights,
-  getReferenceValues,
   login,
   register,
   saveProfile,
@@ -33,27 +28,22 @@ import type { ApproveRequest, StreamEvent, TravelState, TripOption, UserProfile 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import type { SelectionState } from "@/lib/planner";
-import { HotelStarTierPicker, TimeWindowPicker } from "@/components/tripbreeze-chat-app/controls";
 import { AuthScreen } from "@/components/tripbreeze-chat-app/auth-screen";
 import { PlannerComposer } from "@/components/tripbreeze-chat-app/planner-composer";
+import { AppSidebar } from "@/components/tripbreeze-chat-app/sidebar";
 import { FinalItineraryPanel, ReviewPanel } from "@/components/tripbreeze-chat-app/workspace";
+import { useAuthSession } from "@/components/tripbreeze-chat-app/hooks/use-auth-session";
+import { useReferenceData } from "@/components/tripbreeze-chat-app/hooks/use-reference-data";
+import { useReviewEffects } from "@/components/tripbreeze-chat-app/hooks/use-review-effects";
 import {
   ChatMessage,
-  budgetFlightDetail,
-  budgetHotelDetail,
-  budgetStatusNote,
   buildItineraryFileName,
-  buildTripSummary,
   buildUserMessage,
   combineRoundTripFlight,
-  compressStarPreferences,
   createDefaultSelection,
   expandStarThresholds,
-  injectBookingLinks,
   isMultiCitySelectionComplete,
   latestAssistantMessage,
-  normaliseTimeWindow,
-  optionTotalPrice,
   readRecord,
   readRecordArray,
   readString,
@@ -65,17 +55,12 @@ import {
   transportLabel,
 } from "@/components/tripbreeze-chat-app/helpers";
 import {
-  CURRENCIES,
   GOOGLE_MODELS,
-  INTEREST_OPTIONS,
   OPENAI_MODELS,
   PACE_OPTIONS,
-  TRAVEL_CLASSES,
 } from "@/components/tripbreeze-chat-app/constants";
 
 export function TripBreezeChatApp() {
-  const [authenticatedUser, setAuthenticatedUser] = useState<string>("");
-  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [loginForm, setLoginForm] = useState({ userId: "", password: "" });
   const [registerForm, setRegisterForm] = useState({
@@ -92,9 +77,6 @@ export function TripBreezeChatApp() {
     returnWindowStart: 0,
     returnWindowEnd: 23,
   });
-  const [cities, setCities] = useState<string[]>([]);
-  const [countries, setCountries] = useState<string[]>([]);
-  const [airlines, setAirlines] = useState<string[]>([]);
   const [form, setForm] = useState<PlannerForm>(defaultForm);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [planningUpdates, setPlanningUpdates] = useState<string[]>([]);
@@ -129,50 +111,24 @@ export function TripBreezeChatApp() {
   const hotelSectionRef = useRef<HTMLDivElement | null>(null);
   const personaliseSectionRef = useRef<HTMLDivElement | null>(null);
 
+  const { cities, countries, airlines } = useReferenceData();
+  const {
+    authenticatedUser,
+    profile,
+    setProfile,
+    persistAuth,
+    clearAuthSession,
+  } = useAuthSession({
+    setForm,
+    setEmailAddress,
+  });
+
   const currencyCode = String(state?.trip_request?.currency ?? form.currency ?? "EUR");
   const availableModels = form.provider === "google" ? GOOGLE_MODELS : OPENAI_MODELS;
   const selectedTransport =
     selectedTransportIndex !== null ? state?.transport_options?.[selectedTransportIndex] ?? {} : {};
   const isRoundTrip = Boolean(state?.trip_request?.return_date);
   const currentTokenSummary = useMemo(() => summariseTokenUsage(state?.token_usage), [state?.token_usage]);
-
-  useEffect(() => {
-    void Promise.all([
-      getReferenceValues("cities"),
-      getReferenceValues("countries"),
-      getReferenceValues("airlines"),
-    ])
-      .then(([cityValues, countryValues, airlineValues]) => {
-        setCities(cityValues);
-        setCountries(countryValues);
-        setAirlines(airlineValues);
-      })
-      .catch(() => {
-        // Keep the UI usable even if reference data is unavailable.
-      });
-  }, []);
-
-  useEffect(() => {
-    const savedUser = window.localStorage.getItem("tripbreeze_user");
-    const savedProfile = window.localStorage.getItem("tripbreeze_profile");
-    if (!savedUser || !savedProfile) {
-      return;
-    }
-    try {
-      const parsedProfile = JSON.parse(savedProfile) as UserProfile;
-      setAuthenticatedUser(savedUser);
-      setProfile(parsedProfile);
-      setForm((current) => ({
-        ...current,
-        userId: savedUser,
-        origin: parsedProfile.home_city ?? "",
-      }));
-      setEmailAddress(savedUser);
-    } catch {
-      window.localStorage.removeItem("tripbreeze_user");
-      window.localStorage.removeItem("tripbreeze_profile");
-    }
-  }, []);
 
   const hasOptionResults = useMemo(
     () =>
@@ -402,115 +358,26 @@ export function TripBreezeChatApp() {
     return filtered.slice(-4);
   }, [planningUpdates]);
 
-  useEffect(() => {
-    if (hasReviewWorkspace || itinerary) {
-      setShowPlanningProgress(false);
-      setShowEntryRequirements(false);
-    }
-  }, [hasReviewWorkspace, itinerary]);
-
-  useEffect(() => {
-    if (state?.trip_legs?.length || !hasOptionResults || selection.flightIndex < 0) {
-      return;
-    }
-
-    const target = isRoundTrip ? returnSectionRef.current : hotelSectionRef.current;
-    if (!target) {
-      return;
-    }
-
-    window.setTimeout(() => {
-      target.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 120);
-  }, [hasOptionResults, isRoundTrip, selection.flightIndex, state?.trip_legs]);
-
-  useEffect(() => {
-    if (state?.trip_legs?.length || !hasOptionResults || !isRoundTrip || selectedReturnIndex === null) {
-      return;
-    }
-    if (!hotelSectionRef.current) {
-      return;
-    }
-
-    window.setTimeout(() => {
-      hotelSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 120);
-  }, [hasOptionResults, isRoundTrip, selectedReturnIndex, state?.trip_legs]);
-
-  useEffect(() => {
-    if (state?.trip_legs?.length || !showPersonalisationPanel || selection.hotelIndex < 0) {
-      return;
-    }
-    if (!personaliseSectionRef.current) {
-      return;
-    }
-
-    window.setTimeout(() => {
-      personaliseSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 120);
-  }, [selection.hotelIndex, showPersonalisationPanel, state?.trip_legs]);
-
-  useEffect(() => {
-    async function loadReturnOptions() {
-      if (
-        !state?.thread_id ||
-        !isRoundTrip ||
-        !state.flight_options?.length ||
-        selection.flightIndex < 0
-      ) {
-        setReturnOptions([]);
-        setSelectedReturnIndex(null);
-        return;
-      }
-
-      const selectedOutbound = state.flight_options[selection.flightIndex];
-      const departureToken = String(selectedOutbound?.departure_token ?? "");
-      if (!departureToken) {
-        setReturnOptions([]);
-        setSelectedReturnIndex(null);
-        return;
-      }
-
-      try {
-        const returnTimeWindow = normaliseTimeWindow(profile?.preferred_return_time_window);
-        const options = await fetchReturnFlights(state.thread_id, {
-          origin: String(state.trip_request?.origin ?? ""),
-          destination: String(state.trip_request?.destination ?? ""),
-          departure_date: String(state.trip_request?.departure_date ?? ""),
-          return_date: String(state.trip_request?.return_date ?? ""),
-          departure_token: departureToken,
-          adults: Number(state.trip_request?.num_travelers ?? 1),
-          travel_class: String(state.trip_request?.travel_class ?? "ECONOMY"),
-          currency: currencyCode,
-          return_time_window: returnTimeWindow ? [...returnTimeWindow] : null,
-        });
-        setReturnOptions(options as TripOption[]);
-        setSelectedReturnIndex(null);
-      } catch {
-        setReturnOptions([]);
-        setSelectedReturnIndex(null);
-      }
-    }
-
-    void loadReturnOptions();
-  }, [
-    currencyCode,
+  useReviewEffects({
+    hasReviewWorkspace,
+    itinerary,
+    setShowPlanningProgress,
+    setShowEntryRequirements,
+    state,
+    hasOptionResults,
+    selection,
     isRoundTrip,
-    profile?.preferred_return_time_window,
-    selection.flightIndex,
-    state?.flight_options,
-    state?.thread_id,
-    state?.trip_request,
-  ]);
-
-  function persistAuth(userId: string, nextProfile: UserProfile) {
-    setAuthenticatedUser(userId);
-    setProfile(nextProfile);
-    setForm((current) => ({ ...current, userId, origin: nextProfile.home_city ?? current.origin }));
-    setEmailAddress(userId);
-    window.localStorage.setItem("tripbreeze_user", userId);
-    window.localStorage.setItem("tripbreeze_profile", JSON.stringify(nextProfile));
-  }
+    selectedReturnIndex,
+    showPersonalisationPanel,
+    outboundSectionRef,
+    returnSectionRef,
+    hotelSectionRef,
+    personaliseSectionRef,
+    profile,
+    currencyCode,
+    setReturnOptions,
+    setSelectedReturnIndex,
+  });
 
   function archiveCurrentTokenUsage() {
     if (!state?.token_usage?.length) {
@@ -528,8 +395,7 @@ export function TripBreezeChatApp() {
 
   function logout() {
     archiveCurrentTokenUsage();
-    setAuthenticatedUser("");
-    setProfile(null);
+    clearAuthSession();
     setMessages([]);
     setPlanningUpdates([]);
     setState(null);
@@ -542,8 +408,6 @@ export function TripBreezeChatApp() {
     setInterests([]);
     setPace("moderate");
     setError("");
-    window.localStorage.removeItem("tripbreeze_user");
-    window.localStorage.removeItem("tripbreeze_profile");
   }
 
   function resetTrip() {
@@ -936,223 +800,27 @@ export function TripBreezeChatApp() {
 
   return (
     <div className="mx-auto flex min-h-screen max-w-7xl gap-6 px-4 py-6">
-      <aside className="hidden w-80 shrink-0 lg:block">
-        <Card className="p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm uppercase tracking-[0.25em] text-slate">Account</p>
-              <h2 className="mt-2 font-display text-2xl text-ink">{authenticatedUser}</h2>
-            </div>
-            <button type="button" onClick={logout} className="rounded-full border border-ink/10 p-2 text-slate transition hover:bg-white">
-              <LogOut className="h-4 w-4" />
-            </button>
-          </div>
-
-          <div className="mt-6 space-y-5">
-            <div>
-              <button
-                type="button"
-                onClick={() => setShowProfilePreferences((current) => !current)}
-                className="flex w-full items-center justify-between rounded-2xl border border-ink/10 bg-white/70 px-4 py-3 text-left transition hover:bg-white"
-              >
-                <span className="flex items-center gap-2 text-sm font-semibold text-ink">
-                  <UserRound className="h-4 w-4" />
-                  Preferences
-                </span>
-                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate">
-                  {showProfilePreferences ? "Hide" : "Open"}
-                </span>
-              </button>
-              {showProfilePreferences ? (
-                <div className="mt-3 space-y-3">
-                  <input
-                    list="cities"
-                    placeholder="Home City"
-                    className="w-full rounded-full border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
-                    value={profile?.home_city ?? ""}
-                    onChange={(event) => setProfile((current) => ({ ...(current ?? {}), home_city: event.target.value }))}
-                  />
-                  <input
-                    list="countries"
-                    placeholder="Passport Country"
-                    className="w-full rounded-full border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
-                    value={profile?.passport_country ?? ""}
-                    onChange={(event) => setProfile((current) => ({ ...(current ?? {}), passport_country: event.target.value }))}
-                  />
-                  <select
-                    className="w-full rounded-full border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
-                    value={profile?.travel_class ?? "ECONOMY"}
-                    onChange={(event) => setProfile((current) => ({ ...(current ?? {}), travel_class: event.target.value }))}
-                  >
-                    {TRAVEL_CLASSES.map((travelClass) => (
-                      <option key={travelClass} value={travelClass}>
-                        {travelClass.replaceAll("_", " ")}
-                      </option>
-                    ))}
-                  </select>
-                  <TimeWindowPicker
-                    label="Preferred Outbound Flight Time"
-                    start={Number(profile?.preferred_outbound_time_window?.[0] ?? 0)}
-                    end={Number(profile?.preferred_outbound_time_window?.[1] ?? 23)}
-                    onChange={(nextStart, nextEnd) =>
-                      setProfile((current) => ({
-                        ...(current ?? {}),
-                        preferred_outbound_time_window: [nextStart, nextEnd],
-                      }))
-                    }
-                  />
-                  <TimeWindowPicker
-                    label="Preferred Return Flight Time"
-                    start={Number(profile?.preferred_return_time_window?.[0] ?? 0)}
-                    end={Number(profile?.preferred_return_time_window?.[1] ?? 23)}
-                    onChange={(nextStart, nextEnd) =>
-                      setProfile((current) => ({
-                        ...(current ?? {}),
-                        preferred_return_time_window: [nextStart, nextEnd],
-                      }))
-                    }
-                  />
-                  <select
-                    multiple
-                    className="h-32 w-full rounded-3xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
-                    value={(profile?.preferred_airlines as string[] | undefined) ?? []}
-                    onChange={(event) =>
-                      setProfile((current) => ({
-                        ...(current ?? {}),
-                        preferred_airlines: Array.from(event.target.selectedOptions, (option) => option.value),
-                      }))
-                    }
-                  >
-                    {airlines.slice(0, 60).map((airline) => (
-                      <option key={airline} value={airline}>
-                        {airline}
-                      </option>
-                    ))}
-                  </select>
-                  <HotelStarTierPicker
-                    label="Preferred Hotel Stars"
-                    helper="Choose one or more default hotel tiers like 3-star and up."
-                    thresholds={compressStarPreferences(((profile?.preferred_hotel_stars as number[] | undefined) ?? []))}
-                    onChange={(thresholds) =>
-                      setProfile((current) => ({
-                        ...(current ?? {}),
-                        preferred_hotel_stars: expandStarThresholds(thresholds),
-                      }))
-                    }
-                  />
-                  <Button variant="secondary" onClick={handleSaveProfile} disabled={loading === "saving"}>
-                    {loading === "saving" ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                    Save Profile
-                  </Button>
-                </div>
-              ) : null}
-            </div>
-
-            {profile?.past_trips?.length ? (
-              <div>
-                <div className="mb-3 text-sm font-semibold text-ink">Past Trips</div>
-                <div className="space-y-2">
-                  {profile.past_trips.slice(-5).reverse().map((trip, index) => (
-                    <div key={`${trip.destination ?? "trip"}-${index}`} className="rounded-2xl bg-white/80 p-3 text-sm">
-                      <div className="font-medium text-ink">{String(trip.destination ?? "Trip")}</div>
-                      <div className="text-slate">{String(trip.dates ?? "")}</div>
-                      {trip.final_itinerary ? (
-                        <button
-                          type="button"
-                          className="mt-2 text-xs font-semibold text-coral"
-                          onClick={async () => {
-                            try {
-                              const blob = await downloadItineraryPdf(
-                                String(trip.final_itinerary),
-                                (trip.pdf_state as Record<string, unknown>) ?? {},
-                                `${String(trip.destination ?? "trip").replaceAll(" ", "_")}_itinerary.pdf`,
-                              );
-                              const url = URL.createObjectURL(blob);
-                              const link = document.createElement("a");
-                              link.href = url;
-                              link.download = `${String(trip.destination ?? "trip").replaceAll(" ", "_")}_itinerary.pdf`;
-                              link.click();
-                              URL.revokeObjectURL(url);
-                            } catch (pastTripError) {
-                              setError(safeErrorMessage(pastTripError));
-                            }
-                          }}
-                        >
-                          Download PDF
-                        </button>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            {(currentTokenSummary.cost > 0 || tokenUsageHistory.length > 0) ? (
-              <div>
-                <button
-                  type="button"
-                  onClick={() => setShowTokenUsage((current) => !current)}
-                  className="flex w-full items-center justify-between rounded-2xl border border-ink/10 bg-white/70 px-4 py-3 text-left transition hover:bg-white"
-                >
-                  <span className="text-sm font-semibold text-ink">Token Usage</span>
-                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate">
-                    {showTokenUsage ? "Hide" : "Open"}
-                  </span>
-                </button>
-                {showTokenUsage ? (
-                  <>
-                    <div className="mt-3 rounded-2xl bg-white/80 p-3 text-sm text-slate">
-                      <div>Current cost: ${currentTokenSummary.cost.toFixed(4)}</div>
-                      <div>Input: {currentTokenSummary.input_tokens.toLocaleString()}</div>
-                      <div>Output: {currentTokenSummary.output_tokens.toLocaleString()}</div>
-                    </div>
-                    {tokenUsageHistory.length ? (
-                      <div className="mt-2 space-y-2">
-                        {tokenUsageHistory.map((item) => (
-                          <div key={`${item.label}-${item.cost}`} className="rounded-2xl bg-white/60 p-3 text-xs text-slate">
-                            <div className="font-semibold text-ink">{item.label}</div>
-                            <div>${item.cost.toFixed(4)}</div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-                  </>
-                ) : null}
-              </div>
-            ) : null}
-
-            {(hasReviewWorkspace || itinerary) && recentPlanningUpdates.length > 0 ? (
-              <div className="rounded-2xl border border-ink/10 bg-white/70 p-4">
-                <button
-                  type="button"
-                  onClick={() => setShowPlanningProgress((current) => !current)}
-                  className="flex w-full items-center justify-between gap-3 text-left"
-                >
-                  <div>
-                    <div className="flex items-center gap-2 text-sm font-semibold text-ink">
-                      <LoaderCircle className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-                      Planning progress
-                    </div>
-                    <div className="mt-1 text-xs text-slate">Latest workflow milestones from the planner.</div>
-                  </div>
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate">
-                    {showPlanningProgress ? "Hide" : "Show"}
-                  </span>
-                </button>
-                {showPlanningProgress ? (
-                  <div className="mt-4 space-y-2">
-                    {recentPlanningUpdates.map((update, index) => (
-                      <div key={`${update}-${index}`} className="rounded-[1.1rem] border border-ink/8 bg-white/80 px-3 py-2 text-sm text-slate">
-                        {update}
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        </Card>
-      </aside>
+      <AppSidebar
+        authenticatedUser={authenticatedUser}
+        profile={profile}
+        setProfile={setProfile}
+        airlines={airlines}
+        loading={loading}
+        onLogout={logout}
+        onSaveProfile={handleSaveProfile}
+        currentTokenSummary={currentTokenSummary}
+        tokenUsageHistory={tokenUsageHistory}
+        showTokenUsage={showTokenUsage}
+        setShowTokenUsage={setShowTokenUsage}
+        showProfilePreferences={showProfilePreferences}
+        setShowProfilePreferences={setShowProfilePreferences}
+        hasReviewWorkspace={hasReviewWorkspace}
+        itinerary={itinerary}
+        recentPlanningUpdates={recentPlanningUpdates}
+        showPlanningProgress={showPlanningProgress}
+        setShowPlanningProgress={setShowPlanningProgress}
+        setError={setError}
+      />
 
       <main className="min-w-0 flex-1">
         <Card className="p-6 sm:p-8">
