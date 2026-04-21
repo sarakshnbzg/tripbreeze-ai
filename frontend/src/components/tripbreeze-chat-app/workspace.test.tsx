@@ -141,6 +141,15 @@ describe("workspace panels", () => {
           secondarySections: [
             { key: "packing", title: "Packing tips", content: "Bring layers." },
           ],
+          mapPoints: [
+            {
+              latitude: 38.7223,
+              longitude: -9.1393,
+              label: "Lisbon stay",
+              kind: "hotel",
+              detail: "City center",
+            },
+          ],
           itineraryLegs: [
             {
               leg_number: 1,
@@ -184,6 +193,7 @@ describe("workspace panels", () => {
     expect(screen.getByRole("link", { name: "Flight booking" })).toHaveAttribute("href", "https://example.com/flight");
     expect(screen.getByText("Flight details")).toBeInTheDocument();
     expect(screen.getByText("Packing tips")).toBeInTheDocument();
+    expect(screen.getByText("Trip map")).toBeInTheDocument();
     expect(screen.getByText(/Leg 1: Berlin to Lisbon/)).toBeInTheDocument();
     expect(screen.getByText(/Day 1 · Arrival/)).toBeInTheDocument();
     expect(screen.getByText("Check in")).toBeInTheDocument();

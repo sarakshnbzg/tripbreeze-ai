@@ -7,6 +7,7 @@ from domain.nodes.trip_finaliser import (
     DayPlan,
     _build_multi_city_daily_plans,
     _apply_activity_location_metadata,
+    _finaliser_success_response,
     _single_city_plan_context,
     render_itinerary_markdown,
     Itinerary,
@@ -151,6 +152,31 @@ class TestItineraryModel:
         assert restored.trip_overview == "overview"
         assert len(restored.sources) == 1
         assert restored.sources[0].document == "doc.md"
+
+
+class TestFinaliserSuccessResponse:
+    def test_includes_selected_hotel_payload_when_provided(self):
+        itinerary = Itinerary(
+            trip_overview="overview",
+            flight_details="flight",
+            hotel_details="hotel",
+            destination_highlights="highlights",
+            budget_breakdown="budget",
+            visa_entry_info="visa",
+            packing_tips="packing",
+        )
+
+        response = _finaliser_success_response(
+            itinerary=itinerary,
+            render_markdown=render_itinerary_markdown,
+            rag_sources=[],
+            rag_trace=[],
+            token_usage=[],
+            selected_hotel={"name": "Hotel Le Marais", "latitude": 48.86, "longitude": 2.33},
+        )
+
+        assert response["selected_hotel"]["name"] == "Hotel Le Marais"
+        assert response["selected_hotel"]["latitude"] == 48.86
 
 
 class TestActivityLocationMetadata:

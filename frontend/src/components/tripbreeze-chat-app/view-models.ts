@@ -20,12 +20,22 @@ export type ItinerarySection = {
   content: string;
 };
 
+export type ItineraryMapPoint = {
+  latitude: number;
+  longitude: number;
+  label: string;
+  kind: "hotel" | "activity";
+  dayNumber?: number;
+  detail?: string;
+};
+
 export type ItineraryViewModel = {
   finalItinerary: string;
   snapshotItems: ItinerarySnapshotItem[];
   bookingLinks: Array<{ label: string; url: string }>;
   primarySections: ItinerarySection[];
   secondarySections: ItinerarySection[];
+  mapPoints: ItineraryMapPoint[];
   itineraryLegs: Array<Record<string, unknown>>;
   itineraryDays: Array<Record<string, unknown>>;
 };
@@ -91,6 +101,12 @@ export function buildItineraryViewModel({
     finalSelectedFlights,
     finalSelectedHotels,
   });
+  const mapPoints = buildMapPoints({
+    tripLegs,
+    itineraryDays,
+    finalSelectedHotel,
+    finalSelectedHotels,
+  });
 
   const primarySections = [
     itineraryFlightDetails ? { key: "flight", title: "Flight details", content: itineraryFlightDetails } : null,
@@ -110,8 +126,124 @@ export function buildItineraryViewModel({
     bookingLinks,
     primarySections,
     secondarySections,
+    mapPoints,
     itineraryLegs,
     itineraryDays,
+  };
+}
+
+function toFiniteNumber(value: unknown): number | null {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function buildPointKey(point: ItineraryMapPoint): string {
+  return [
+    point.kind,
+    point.label.trim().toLowerCase(),
+    point.dayNumber ?? "",
+    point.latitude.toFixed(5),
+    point.longitude.toFixed(5),
+  ].join("|");
+}
+
+function dedupePoints(points: ItineraryMapPoint[]): ItineraryMapPoint[] {
+  const seen = new Set<string>();
+  const deduped: ItineraryMapPoint[] = [];
+
+  points.forEach((point) => {
+    const key = buildPointKey(point);
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    deduped.push(point);
+  });
+
+  return deduped;
+}
+
+function buildMapPoints({
+  tripLegs,
+  itineraryDays,
+  finalSelectedHotel,
+  finalSelectedHotels,
+}: {
+  tripLegs: Array<Record<string, unknown>>;
+  itineraryDays: Array<Record<string, unknown>>;
+  finalSelectedHotel: Record<string, unknown>;
+  finalSelectedHotels: Array<Record<string, unknown>>;
+}): ItineraryMapPoint[] {
+  const points: ItineraryMapPoint[] = [];
+
+  if (tripLegs.length) {
+    finalSelectedHotels.forEach((hotel, index) => {
+      const point = buildHotelPoint(
+        hotel,
+        readString(tripLegs[index]?.destination) || `Stop ${index + 1}`,
+      );
+      if (point) {
+        points.push(point);
+      }
+    });
+  } else {
+    const point = buildHotelPoint(finalSelectedHotel);
+    if (point) {
+      points.push(point);
+    }
+  }
+
+  itineraryDays.forEach((day, index) => {
+    const dayNumber = Number(day.day_number ?? index + 1);
+    const activities = readRecordArray(day.activities);
+    const dayTheme = readString(day.theme);
+
+    activities.forEach((activity, activityIndex) => {
+      const latitude = toFiniteNumber(activity.latitude);
+      const longitude = toFiniteNumber(activity.longitude);
+      if (latitude === null || longitude === null) {
+        return;
+      }
+
+      const name = readString(activity.name) || `Activity ${activityIndex + 1}`;
+      const detailParts = [
+        readString(activity.time_of_day),
+        readString(activity.address),
+        dayTheme,
+      ].filter(Boolean);
+      points.push({
+        latitude,
+        longitude,
+        label: name,
+        kind: "activity",
+        dayNumber: Number.isFinite(dayNumber) ? dayNumber : index + 1,
+        detail: detailParts.join(" · "),
+      });
+    });
+  });
+
+  return dedupePoints(points);
+}
+
+function buildHotelPoint(hotel: Record<string, unknown>, fallbackLabel = "Hotel"): ItineraryMapPoint | null {
+  const latitude = toFiniteNumber(hotel.latitude);
+  const longitude = toFiniteNumber(hotel.longitude);
+  if (latitude === null || longitude === null) {
+    return null;
+  }
+
+  const label = readString(hotel.name) || fallbackLabel;
+  const detailParts = [
+    readString(hotel.address),
+    readString(hotel.description),
+  ].filter(Boolean);
+
+  return {
+    latitude,
+    longitude,
+    label,
+    kind: "hotel",
+    detail: detailParts.join(" · "),
   };
 }
 

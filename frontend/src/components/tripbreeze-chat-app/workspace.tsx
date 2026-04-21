@@ -1,3 +1,4 @@
+import dynamic from "next/dynamic";
 import { LoaderCircle, Mail, Plane } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,8 @@ import {
   sentenceLabel,
   transportLabel,
 } from "./helpers";
+
+const ItineraryMap = dynamic(() => import("./itinerary-map"), { ssr: false });
 
 export type WorkspaceLoadingState =
   | "auth"
@@ -512,6 +515,7 @@ export function FinalItineraryPanel({
     bookingLinks: itineraryBookingLinks,
     primarySections: primaryItinerarySections,
     secondarySections: secondaryItinerarySections,
+    mapPoints,
     itineraryLegs,
     itineraryDays,
   } = viewModel;
@@ -613,6 +617,16 @@ export function FinalItineraryPanel({
               </div>
             ))}
           </div>
+        </div>
+      ) : null}
+
+      {mapPoints.length ? (
+        <div className="mb-4 rounded-[1.6rem] border border-white/80 bg-white/80 p-5">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate">Trip map</div>
+            <div className="text-xs text-slate">{mapPoints.length} stop{mapPoints.length === 1 ? "" : "s"}</div>
+          </div>
+          <ItineraryMap points={mapPoints} />
         </div>
       ) : null}
 

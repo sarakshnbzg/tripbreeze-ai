@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+import time
 from functools import lru_cache
 from typing import NamedTuple
 
@@ -13,6 +15,14 @@ from infrastructure.persistence.memory_store import load_place_country, save_pla
 logger = get_logger(__name__)
 
 GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
+
+# Nominatim (OpenStreetMap) for free-form address geocoding.
+# Usage policy: max 1 req/s and a descriptive User-Agent.
+NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+NOMINATIM_USER_AGENT = "tripbreeze-ai/0.1 (itinerary map feature)"
+_NOMINATIM_MIN_INTERVAL_S = 1.05
+_nominatim_lock = threading.Lock()
+_nominatim_last_request_ts = 0.0
 
 
 class GeocodedPlace(NamedTuple):
@@ -85,6 +95,61 @@ def geocode_place(destination: str) -> GeocodedPlace | None:
         return place
 
     logger.warning("Geocoding found no results for '%s'", destination)
+    return None
+
+
+def _nominatim_throttle() -> None:
+    """Enforce Nominatim's 1 req/s usage policy across threads."""
+    global _nominatim_last_request_ts
+    with _nominatim_lock:
+        now = time.monotonic()
+        wait = _NOMINATIM_MIN_INTERVAL_S - (now - _nominatim_last_request_ts)
+        if wait > 0:
+            time.sleep(wait)
+        _nominatim_last_request_ts = time.monotonic()
+
+
+@lru_cache(maxsize=1024)
+def geocode_address(query: str) -> tuple[float, float] | None:
+    """Resolve a free-form address or landmark to (latitude, longitude).
+
+    Uses Nominatim (OpenStreetMap). Results are cached in-process. Returns
+    None if the query is empty or the lookup fails.
+    """
+    cleaned = (query or "").strip()
+    if not cleaned:
+        return None
+
+    _nominatim_throttle()
+    try:
+        response = requests.get(
+            NOMINATIM_URL,
+            params={"q": cleaned, "format": "json", "limit": 1},
+            headers={"User-Agent": NOMINATIM_USER_AGENT},
+            timeout=10,
+        )
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        logger.warning("Address geocoding failed for '%s': %s", cleaned, exc)
+        return None
+
+    try:
+        results = response.json() or []
+    except ValueError:
+        logger.warning("Address geocoding returned non-JSON for '%s'", cleaned)
+        return None
+
+    for result in results:
+        lat = result.get("lat")
+        lon = result.get("lon")
+        if lat is None or lon is None:
+            continue
+        try:
+            return float(lat), float(lon)
+        except (TypeError, ValueError):
+            continue
+
+    logger.info("Address geocoding found no results for '%s'", cleaned)
     return None
 
 

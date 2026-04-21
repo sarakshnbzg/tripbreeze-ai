@@ -8,6 +8,7 @@ from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from pydantic import BaseModel, Field, ValidationError
 
 from domain.utils.dates import trip_duration_with_dates
+from infrastructure.apis.geocoding_client import geocode_address
 from infrastructure.apis.serpapi_client import fetch_hotel_address
 from infrastructure.apis.weather_client import fetch_weather_for_trip
 from infrastructure.currency_utils import format_currency
@@ -333,6 +334,48 @@ def _enrich_hotel_address(selected_hotel: dict, trip_request: dict) -> None:
         logger.info("Resolved hotel address via property_token")
 
 
+def _enrich_hotel_coordinates(selected_hotel: dict, destination_hint: str = "") -> None:
+    """Geocode the hotel's address into latitude/longitude (in-place)."""
+    if not selected_hotel:
+        return
+    if selected_hotel.get("latitude") is not None and selected_hotel.get("longitude") is not None:
+        return
+    address = str(selected_hotel.get("address", "") or "").strip()
+    if not address:
+        return
+    query = address
+    hint = (destination_hint or "").strip()
+    if hint and hint.lower() not in address.lower():
+        query = f"{address}, {hint}"
+    coords = geocode_address(query)
+    if coords:
+        selected_hotel["latitude"], selected_hotel["longitude"] = coords
+        logger.info("Geocoded hotel '%s' to (%.5f, %.5f)", selected_hotel.get("name", "?"), *coords)
+
+
+def _backfill_activity_coordinates(daily_plans: list, destination_by_date: dict[str, str] | None = None) -> None:
+    """Geocode any activity that has an address but no coordinates (in-place)."""
+    if not daily_plans:
+        return
+    for day in daily_plans:
+        day_hint = ""
+        if destination_by_date and getattr(day, "date", None):
+            day_hint = destination_by_date.get(day.date, "") or ""
+        for activity in getattr(day, "activities", []) or []:
+            if activity.latitude is not None and activity.longitude is not None:
+                continue
+            address = (activity.address or "").strip()
+            fallback_hint = day_hint or (activity.destination or "")
+            if not address and not activity.name:
+                continue
+            query_parts = [part for part in [activity.name, address, fallback_hint] if part]
+            if not query_parts:
+                continue
+            coords = geocode_address(", ".join(query_parts))
+            if coords:
+                activity.latitude, activity.longitude = coords
+
+
 PACE_TO_ACTIVITIES = {"relaxed": 2, "moderate": 3, "packed": 4}
 
 
@@ -548,9 +591,11 @@ def _finaliser_success_response(
     rag_trace: list[dict],
     token_usage: list[dict],
     finaliser_metadata: dict | None = None,
+    selected_hotel: dict | None = None,
+    selected_hotels: list[dict] | None = None,
 ) -> dict:
     markdown = render_markdown(itinerary)
-    return {
+    response = {
         "final_itinerary": markdown,
         "itinerary_data": itinerary.model_dump(),
         "rag_sources": rag_sources,
@@ -560,6 +605,11 @@ def _finaliser_success_response(
         "messages": [{"role": "assistant", "content": markdown}],
         "current_step": "finalised",
     }
+    if selected_hotel is not None:
+        response["selected_hotel"] = selected_hotel
+    if selected_hotels is not None:
+        response["selected_hotels"] = selected_hotels
+    return response
 
 
 def _finaliser_error_response_with_tokens(
@@ -1329,11 +1379,15 @@ def _finalise_multi_city(state: dict) -> dict:
             diagnostics.get("tool_calls", []),
         )
         itinerary = _build_multi_city_fallback_itinerary(state, fallback_reason)
+        destination_by_date = _weather_destination_by_date(trip_legs)
         _apply_activity_location_metadata(
             itinerary.daily_plans,
             attraction_candidates,
-            destination_by_date=_weather_destination_by_date(trip_legs),
+            destination_by_date=destination_by_date,
         )
+        _backfill_activity_coordinates(itinerary.daily_plans, destination_by_date)
+        for hotel, leg in zip(selected_hotels, trip_legs):
+            _enrich_hotel_coordinates(hotel or {}, destination_hint=str(leg.get("destination", "") or ""))
         _enrich_multi_city_weather(itinerary, trip_legs)
         finaliser_metadata["used_fallback"] = True
         finaliser_metadata["fallback_reason"] = fallback_reason or "missing_final_tool"
@@ -1344,6 +1398,7 @@ def _finalise_multi_city(state: dict) -> dict:
             rag_trace=rag_trace,
             token_usage=token_usage,
             finaliser_metadata=finaliser_metadata,
+            selected_hotels=selected_hotels,
         )
 
     itinerary = _parse_structured_itinerary(
@@ -1361,11 +1416,15 @@ def _finalise_multi_city(state: dict) -> dict:
         finaliser_metadata["used_fallback"] = True
         finaliser_metadata["fallback_reason"] = "structured_parse_failed"
 
+    destination_by_date = _weather_destination_by_date(trip_legs)
     _apply_activity_location_metadata(
         itinerary.daily_plans,
         attraction_candidates,
-        destination_by_date=_weather_destination_by_date(trip_legs),
+        destination_by_date=destination_by_date,
     )
+    _backfill_activity_coordinates(itinerary.daily_plans, destination_by_date)
+    for hotel, leg in zip(selected_hotels, trip_legs):
+        _enrich_hotel_coordinates(hotel or {}, destination_hint=str(leg.get("destination", "") or ""))
     _enrich_multi_city_weather(itinerary, trip_legs)
     logger.info("Multi-city finaliser completed via LLM itinerary generation")
     return _finaliser_success_response(
@@ -1375,6 +1434,7 @@ def _finalise_multi_city(state: dict) -> dict:
         rag_trace=rag_trace,
         token_usage=token_usage,
         finaliser_metadata=finaliser_metadata,
+        selected_hotels=selected_hotels,
     )
 
 
@@ -1440,6 +1500,8 @@ def _finalise_single_city(state: dict) -> dict:
         )
         itinerary = _build_single_city_fallback_itinerary(state, fallback_reason)
         _apply_activity_location_metadata(itinerary.daily_plans, attraction_candidates)
+        _backfill_activity_coordinates(itinerary.daily_plans)
+        _enrich_hotel_coordinates(selected_hotel, destination_hint=destination)
         _enrich_single_city_weather(itinerary, destination)
         finaliser_metadata["used_fallback"] = True
         finaliser_metadata["fallback_reason"] = fallback_reason or "missing_final_tool"
@@ -1450,6 +1512,7 @@ def _finalise_single_city(state: dict) -> dict:
             rag_trace=rag_trace,
             token_usage=token_usage,
             finaliser_metadata=finaliser_metadata,
+            selected_hotel=selected_hotel,
         )
 
     itinerary = _parse_structured_itinerary(
@@ -1470,6 +1533,8 @@ def _finalise_single_city(state: dict) -> dict:
     logger.info("Finaliser completed itinerary generation")
 
     _apply_activity_location_metadata(itinerary.daily_plans, attraction_candidates)
+    _backfill_activity_coordinates(itinerary.daily_plans)
+    _enrich_hotel_coordinates(selected_hotel, destination_hint=destination)
     _enrich_single_city_weather(itinerary, destination)
     return _finaliser_success_response(
         itinerary=itinerary,
@@ -1478,6 +1543,7 @@ def _finalise_single_city(state: dict) -> dict:
         rag_trace=rag_trace,
         token_usage=token_usage,
         finaliser_metadata=finaliser_metadata,
+        selected_hotel=selected_hotel,
     )
 
 
