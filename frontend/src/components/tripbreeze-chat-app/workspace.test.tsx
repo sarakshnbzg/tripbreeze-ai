@@ -1,0 +1,180 @@
+import type { ComponentProps } from "react";
+
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+
+import type { SelectionState } from "@/lib/planner";
+import type { TravelState, TripOption } from "@/lib/types";
+
+import { FinalItineraryPanel, ReviewPanel } from "./workspace";
+
+function buildSelection(overrides: Partial<SelectionState> = {}): SelectionState {
+  return {
+    flightIndex: -1,
+    hotelIndex: -1,
+    byLegFlights: [],
+    byLegHotels: [],
+    ...overrides,
+  };
+}
+
+function renderReviewPanel(overrides: Partial<ComponentProps<typeof ReviewPanel>> = {}) {
+  const setSelectedReturnIndex = vi.fn();
+  const setSelection = vi.fn();
+  const setSelectedTransportIndex = vi.fn();
+  const setInterests = vi.fn();
+  const setPace = vi.fn();
+  const setFeedback = vi.fn();
+  const handleReview = vi.fn();
+
+  render(
+    <ReviewPanel
+      hasReviewWorkspace={true}
+      finalItinerary=""
+      state={
+        {
+          destination_info: "### Entry\nPassport required.",
+          flight_options: [],
+          hotel_options: [],
+        } as unknown as TravelState
+      }
+      isRoundTrip={false}
+      completedMultiCityLegs={0}
+      hasSelectedSingleFlight={false}
+      hasSelectedSingleHotel={false}
+      selectedOutboundOption={{}}
+      selectedReturnIndex={null}
+      setSelectedReturnIndex={setSelectedReturnIndex}
+      selectedReturnOption={{}}
+      selectedHotelOption={{}}
+      hasOptionResults={false}
+      currencyCode="EUR"
+      selection={buildSelection()}
+      setSelection={setSelection}
+      returnOptions={[]}
+      showPersonalisationPanel={false}
+      selectedTransportIndex={null}
+      setSelectedTransportIndex={setSelectedTransportIndex}
+      canApprove={false}
+      interests={[]}
+      setInterests={setInterests}
+      pace="moderate"
+      setPace={setPace}
+      feedback=""
+      setFeedback={setFeedback}
+      loading={null}
+      handleReview={handleReview}
+      outboundSectionRef={{ current: null }}
+      returnSectionRef={{ current: null }}
+      hotelSectionRef={{ current: null }}
+      personaliseSectionRef={{ current: null }}
+      {...overrides}
+    />,
+  );
+
+  return {
+    setSelectedReturnIndex,
+    setSelection,
+    setSelectedTransportIndex,
+    setInterests,
+    setPace,
+    setFeedback,
+    handleReview,
+  };
+}
+
+describe("workspace panels", () => {
+  it("renders the destination briefing in the review workspace", () => {
+    renderReviewPanel();
+
+    expect(screen.getByText("Destination briefing")).toBeInTheDocument();
+    expect(screen.getByText("Passport required.")).toBeInTheDocument();
+  });
+
+  it("lets the user choose a return option in round-trip review", () => {
+    const returnOption: TripOption = {
+      airline: "Return Air",
+      outbound_summary: "Madrid to Berlin",
+      total_price: 220,
+    };
+
+    const { setSelectedReturnIndex } = renderReviewPanel({
+      state: {
+        flight_options: [{ airline: "Outbound Air", outbound_summary: "Berlin to Madrid", total_price: 200 }],
+        hotel_options: [{ name: "City Stay", total_price: 400 }],
+      } as TravelState,
+      isRoundTrip: true,
+      hasOptionResults: true,
+      hasSelectedSingleFlight: true,
+      hasSelectedSingleHotel: false,
+      selection: buildSelection({ flightIndex: 0 }),
+      returnOptions: [returnOption],
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /return air/i }));
+
+    expect(setSelectedReturnIndex).toHaveBeenCalledWith(0);
+  });
+
+  it("renders final itinerary snapshot, booking links, and day plan details", () => {
+    render(
+      <FinalItineraryPanel
+        finalItinerary="Trip ready"
+        loading={null}
+        emailAddress=""
+        setEmailAddress={vi.fn()}
+        onDownloadPdf={vi.fn(async () => undefined)}
+        onEmailItinerary={vi.fn(async () => undefined)}
+        itinerarySnapshotItems={[
+          { label: "Route", value: "Berlin -> Lisbon" },
+          { label: "Dates", value: "2026-06-10 to 2026-06-15" },
+        ]}
+        itineraryBookingLinks={[
+          { label: "Flight booking", url: "https://example.com/flight" },
+        ]}
+        primaryItinerarySections={[
+          { key: "flight", title: "Flight details", content: "Nonstop outbound" },
+        ]}
+        secondaryItinerarySections={[
+          { key: "packing", title: "Packing tips", content: "Bring layers." },
+        ]}
+        itineraryLegs={[
+          {
+            leg_number: 1,
+            origin: "Berlin",
+            destination: "Lisbon",
+            departure_date: "2026-06-10",
+            flight_summary: "Morning departure",
+          },
+        ]}
+        itineraryDays={[
+          {
+            day_number: 1,
+            theme: "Arrival",
+            date: "2026-06-10",
+            weather: {
+              condition: "Sunny",
+              temp_min: 18,
+              temp_max: 26,
+            },
+            activities: [
+              {
+                name: "Check in",
+                time_of_day: "Afternoon",
+                notes: "Drop bags and explore nearby.",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Trip snapshot")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Flight booking" })).toHaveAttribute("href", "https://example.com/flight");
+    expect(screen.getByText("Flight details")).toBeInTheDocument();
+    expect(screen.getByText("Packing tips")).toBeInTheDocument();
+    expect(screen.getByText(/Leg 1: Berlin to Lisbon/)).toBeInTheDocument();
+    expect(screen.getByText(/Day 1 · Arrival/)).toBeInTheDocument();
+    expect(screen.getByText("Check in")).toBeInTheDocument();
+  });
+});
