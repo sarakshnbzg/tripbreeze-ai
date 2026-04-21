@@ -30,7 +30,6 @@
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
     "@vitejs/plugin-react": "^6.0.1",
-    "@playwright/test": "^1.55.1",
     "autoprefixer": "^10.4.20",
     "jsdom": "^29.0.2",
     "postcss": "^8.4.49",
