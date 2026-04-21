@@ -2,10 +2,42 @@
 
 TripBreeze AI is an AI-powered travel planning assistant that combines live flight and hotel search, entry-requirement guidance, budget checks, and itinerary generation in one streamlined workflow.
 
-## 🌐 Live Deployment
+## 🌐 Deployment
 
-TripBreeze is deployed on Streamlit Community Cloud:
-<https://tripbreeze-ai.streamlit.app/>
+TripBreeze runs as a FastAPI backend paired with the standalone Next.js frontend in [`frontend/`](frontend/).
+
+## 🆕 Next.js Frontend Foundation
+
+A long-term frontend foundation now lives under [`frontend/`](frontend/). It keeps the existing FastAPI + LangGraph backend and replaces the UI layer with a standalone `Next.js` app so you can grow into a more polished product experience.
+
+What is included:
+
+- `Next.js` app-router scaffold with a custom visual system
+- a simplified auth-gated chat-style flow for the standalone web app
+- typed API helpers for `/api/search`, `/api/search/{thread}/clarify`, and `/api/search/{thread}/approve`
+- auth/profile/reference endpoints for browser-based login, registration, and preferences
+- itinerary PDF download and email delivery endpoints for the standalone frontend
+- streaming SSE handling for planning progress and final itinerary output
+- a starter planning/review workspace for flight and hotel selection
+
+To run it locally:
+
+```bash
+cp frontend/.env.local.example frontend/.env.local
+npm install --prefix frontend
+uv run python scripts/dev.py
+```
+
+The frontend expects the backend at `http://127.0.0.1:8100` by default. You can override that with `NEXT_PUBLIC_API_BASE_URL`.
+
+The FastAPI backend now allows local browser access from:
+
+- `http://localhost:3000`
+- `http://127.0.0.1:3000`
+- `http://localhost:3001`
+- `http://127.0.0.1:3001`
+
+To customize this list, set `FRONTEND_ORIGINS` in `.env` as a comma-separated list.
 
 ## ✨ What It Does
 
@@ -40,12 +72,12 @@ Profile Loader
 
 ## 🏗️ Architecture
 
-TripBreeze uses a two-layer architecture running in a single process:
+TripBreeze uses a two-layer architecture:
 
 ```text
-Streamlit (UI client, port 8501)
-    │ httpx
-FastAPI (backend API, port 8100 — background thread)
+Next.js (frontend UI, port 3000)
+    │ HTTP / SSE
+FastAPI (backend API, port 8100)
     ├── POST /api/transcribe           → OpenAI Whisper → text
     ├── POST /api/search               → LangGraph pipeline → SSE stream
     ├── GET  /api/search/{thread}/state → current graph state for HITL review
@@ -60,13 +92,13 @@ Review actions currently work like this:
 - `revise_plan`: patch the current trip request and rerun intake/research/budget/review
 - `cancel`: stop the workflow
 
-Streamlit is a thin UI client. All LangGraph orchestration, LLM calls, and API interactions run behind FastAPI, which streams progress and results back via Server-Sent Events (SSE). This separation allows the backend to be deployed independently for multi-user scaling.
+The frontend is a thin client. All LangGraph orchestration, LLM calls, and API interactions run behind FastAPI, which streams progress and results back via Server-Sent Events (SSE).
 
 ## 🛠️ Stack
 
 - `Python 3.13`
 - `FastAPI`, `uvicorn`, `sse-starlette`: backend API and SSE streaming
-- `Streamlit`: frontend UI
+- `Next.js`, `React`: frontend UI
 - `LangGraph`, `LangChain`: workflow orchestration, tool calling, and structured LLM interactions
 - `OpenAI`, `Google Gemini`: trip intake, research, and itinerary generation
 - `OpenAI Whisper`: voice-to-text transcription
@@ -75,7 +107,7 @@ Streamlit is a thin UI client. All LangGraph orchestration, LLM calls, and API i
 - `Open-Meteo`: trip weather forecasts and historical fallback weather data
 - `Neon Postgres`, `psycopg`, `psycopg_pool`: long-term memory and LangGraph checkpoint persistence
 - `bcrypt`: secure password hashing for user authentication
-- `httpx`: Streamlit-to-FastAPI communication
+- `httpx`: backend HTTP integrations
 - `ReportLab`: PDF itinerary export
 - `SMTP`: itinerary email delivery
 - `Docker`: containerized deployment
@@ -85,8 +117,9 @@ Streamlit is a thin UI client. All LangGraph orchestration, LLM calls, and API i
 
 Choose one of these paths:
 
-- `Local Python setup` if you want to run the app directly with `uv`
-- `Docker setup` if you want to run everything in a container
+- `Local Python setup` if you want to run the API directly with `uv`
+- `Full-stack local setup` if you want the API and frontend together
+- `Docker setup` if you want to run the API in a container
 
 ## 💻 Local Setup
 
@@ -164,10 +197,22 @@ TripBreeze stores these separately under `chroma_db/openai` and `chroma_db/googl
 ### 5. Run the app
 
 ```bash
-uv run streamlit run app.py
+uv run python app.py
 ```
 
-This starts both the Streamlit UI on `http://localhost:8501` and the FastAPI backend on `http://localhost:8100` (background thread). The FastAPI interactive docs are available at `http://localhost:8100/docs`.
+This starts the FastAPI backend on `http://localhost:8100`. The interactive docs are available at `http://localhost:8100/docs`.
+
+If you want to run the standalone Next.js frontend and FastAPI backend together with one command instead, use:
+
+```bash
+npm install --prefix frontend
+uv run python scripts/dev.py
+```
+
+That starts:
+
+- the frontend at `http://127.0.0.1:3000`
+- the API at `http://127.0.0.1:8100`
 
 ### 6. Run tests
 
@@ -256,18 +301,18 @@ docker compose up --build
 Use your local `.env` file:
 
 ```bash
-docker run --rm -p 8501:8501 -p 8100:8100 --env-file .env tripbreeze-ai
+docker run --rm -p 8100:8100 --env-file .env tripbreeze-ai
 ```
 
 If you want cached RAG indexes to persist across container restarts, mount the Chroma directory too:
 
 ```bash
-docker run --rm -p 8501:8501 -p 8100:8100 --env-file .env \
+docker run --rm -p 8100:8100 --env-file .env \
   -v "$(pwd)/chroma_db:/app/chroma_db" \
   tripbreeze-ai
 ```
 
-Then open `http://localhost:8501`.
+Then open `http://localhost:8100/docs` or connect your frontend to `http://localhost:8100`.
 TripBreeze stores long-term profile memory in Neon Postgres using `DATABASE_URL` or `NEON_DATABASE_URL`.
 
 If you want to use the same hosted database in Docker, keep `DATABASE_URL` in `.env` and pass that file with `--env-file`.
@@ -277,7 +322,7 @@ On first container startup, TripBreeze will rebuild the RAG indexes automaticall
 You can also force a rebuild on every start:
 
 ```bash
-docker run --rm -p 8501:8501 -p 8100:8100 --env-file .env \
+docker run --rm -p 8100:8100 --env-file .env \
   -e REBUILD_RAG_ON_START=1 \
   -v "$(pwd)/chroma_db:/app/chroma_db" \
   tripbreeze-ai
@@ -339,12 +384,10 @@ Multi-city trips can be **round-trip** (return to origin, the default) or **open
 
 ```text
 tripbreeze-ai/
-├── app.py                        # Entry point — starts FastAPI + Streamlit
+├── app.py                        # FastAPI entry point
 ├── config.py                     # Centralised settings
 ├── presentation/
-│   ├── api.py                    # FastAPI backend (SSE endpoints)
-│   ├── api_client.py             # httpx client for Streamlit → FastAPI
-│   └── streamlit_app.py          # Streamlit UI (thin client)
+│   └── api.py                    # FastAPI backend (SSE endpoints)
 ├── application/
 │   ├── graph.py                  # LangGraph workflow
 │   └── state.py                  # Graph state schema

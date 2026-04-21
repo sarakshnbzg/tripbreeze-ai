@@ -13,19 +13,44 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
 from langgraph.types import Command
 
 from application.graph import compile_graph
+from config import (
+    FRONTEND_ORIGINS,
+    SMTP_HOST,
+    SMTP_PORT,
+    SMTP_SENDER_EMAIL,
+    SMTP_SENDER_PASSWORD,
+    SMTP_USE_TLS,
+)
 from domain.agents.flight_agent import fetch_return_flights
+from infrastructure.email_sender import SMTPConfig, send_itinerary_email
 from infrastructure.logging_utils import get_logger
 from infrastructure.llms.model_factory import get_provider_status
+from infrastructure.persistence.memory_store import (
+    list_reference_values,
+    load_profile,
+    register_user,
+    save_profile,
+    verify_user,
+)
+from infrastructure.pdf_generator import generate_trip_pdf
 
 logger = get_logger(__name__)
 
 app = FastAPI(title="TripBreeze API")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=FRONTEND_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 _executor = ThreadPoolExecutor(max_workers=4)
 
@@ -38,6 +63,12 @@ def _get_graph():
     if _graph is None:
         _graph = compile_graph()
     return _graph
+
+
+@app.get("/healthz")
+async def healthcheck() -> dict[str, str]:
+    """Lightweight container/lb health endpoint."""
+    return {"status": "ok"}
 
 
 # ── SSE helpers ──
@@ -85,6 +116,7 @@ class ApproveRequest(BaseModel):
     # Legacy single-selection (backward compat)
     selected_flight: dict[str, Any] = {}
     selected_hotel: dict[str, Any] = {}
+    selected_transport: dict[str, Any] = {}
     # Multi-city selections (one per leg)
     selected_flights: list[dict[str, Any]] = []
     selected_hotels: list[dict[str, Any]] = []
@@ -108,6 +140,34 @@ class ReturnFlightRequest(BaseModel):
     travel_class: str = "ECONOMY"
     currency: str = "EUR"
     return_time_window: list[int] | None = None
+
+
+class LoginRequest(BaseModel):
+    user_id: str
+    password: str
+
+
+class RegisterRequest(BaseModel):
+    user_id: str
+    password: str
+    profile: dict[str, Any] | None = None
+
+
+class SaveProfileRequest(BaseModel):
+    profile: dict[str, Any]
+
+
+class ItineraryPdfRequest(BaseModel):
+    final_itinerary: str
+    graph_state: dict[str, Any] | None = None
+    file_name: str = "trip_itinerary.pdf"
+
+
+class ItineraryEmailRequest(BaseModel):
+    recipient_email: str
+    recipient_name: str = ""
+    final_itinerary: str
+    graph_state: dict[str, Any] | None = None
 
 
 # ── Streaming bridges (sync graph -> async SSE) ──
@@ -318,6 +378,81 @@ async def transcribe(file: UploadFile = File(...)):
         raise HTTPException(status_code=502, detail=f"Transcription failed: {exc}")
 
 
+@app.post("/api/auth/login")
+async def login(req: LoginRequest):
+    """Validate credentials and return the user's profile."""
+    if not req.user_id.strip() or not req.password:
+        raise HTTPException(status_code=400, detail="Username and password are required")
+
+    try:
+        authenticated = verify_user(req.user_id.strip(), req.password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Login failed")
+        raise HTTPException(status_code=500, detail=f"Login failed: {exc}") from exc
+
+    if not authenticated:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    return {"user_id": req.user_id.strip(), "profile": load_profile(req.user_id.strip())}
+
+
+@app.post("/api/auth/register")
+async def register(req: RegisterRequest):
+    """Register a new user and return the created profile."""
+    if not req.user_id.strip() or not req.password:
+        raise HTTPException(status_code=400, detail="Username and password are required")
+
+    try:
+        created = register_user(req.user_id.strip(), req.password, req.profile or {})
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Registration failed")
+        raise HTTPException(status_code=500, detail=f"Registration failed: {exc}") from exc
+
+    if not created:
+        raise HTTPException(status_code=409, detail="Username is already taken")
+
+    return {"user_id": req.user_id.strip(), "profile": load_profile(req.user_id.strip())}
+
+
+@app.get("/api/profile/{user_id}")
+async def get_profile(user_id: str):
+    """Return a user's stored profile."""
+    try:
+        return {"user_id": user_id, "profile": load_profile(user_id)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Profile load failed")
+        raise HTTPException(status_code=500, detail=f"Profile load failed: {exc}") from exc
+
+
+@app.put("/api/profile/{user_id}")
+async def update_profile(user_id: str, req: SaveProfileRequest):
+    """Persist a user's profile updates."""
+    try:
+        save_profile(user_id, req.profile)
+        return {"user_id": user_id, "profile": load_profile(user_id)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Profile save failed")
+        raise HTTPException(status_code=500, detail=f"Profile save failed: {exc}") from exc
+
+
+@app.get("/api/reference-values/{category}")
+async def reference_values(category: str):
+    """Return reference values such as cities, countries, and airlines."""
+    try:
+        return {"category": category, "values": list_reference_values(category)}
+    except Exception as exc:
+        logger.exception("Reference values load failed")
+        raise HTTPException(status_code=500, detail=f"Reference values load failed: {exc}") from exc
+
+
 @app.post("/api/search")
 async def search(req: SearchRequest):
     """Start trip planning. Returns an SSE stream of progress events."""
@@ -433,6 +568,7 @@ async def approve(thread_id: str, req: ApproveRequest):
         # Legacy single-selection
         state_updates["selected_flight"] = req.selected_flight
         state_updates["selected_hotel"] = req.selected_hotel
+    state_updates["selected_transport"] = req.selected_transport
 
     if req.trip_request:
         state_updates["trip_request"] = req.trip_request
@@ -449,3 +585,61 @@ async def approve(thread_id: str, req: ApproveRequest):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.post("/api/itinerary/pdf")
+async def itinerary_pdf(req: ItineraryPdfRequest):
+    """Generate a PDF for a final itinerary."""
+    if not req.final_itinerary.strip():
+        raise HTTPException(status_code=400, detail="Final itinerary is required")
+
+    try:
+        pdf_bytes = generate_trip_pdf(
+            final_itinerary=req.final_itinerary,
+            graph_state=req.graph_state or {},
+        )
+    except Exception as exc:
+        logger.exception("PDF generation failed")
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {exc}") from exc
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{req.file_name or "trip_itinerary.pdf"}"'},
+    )
+
+
+@app.post("/api/itinerary/email")
+async def itinerary_email(req: ItineraryEmailRequest):
+    """Email the itinerary PDF to a recipient."""
+    if not req.recipient_email.strip():
+        raise HTTPException(status_code=400, detail="Recipient email is required")
+    if not req.final_itinerary.strip():
+        raise HTTPException(status_code=400, detail="Final itinerary is required")
+
+    try:
+        pdf_bytes = generate_trip_pdf(
+            final_itinerary=req.final_itinerary,
+            graph_state=req.graph_state or {},
+        )
+        smtp_config = SMTPConfig(
+            smtp_host=SMTP_HOST,
+            smtp_port=SMTP_PORT,
+            sender_email=SMTP_SENDER_EMAIL,
+            sender_password=SMTP_SENDER_PASSWORD,
+            use_tls=SMTP_USE_TLS,
+        )
+        success, message = send_itinerary_email(
+            recipient_email=req.recipient_email.strip(),
+            pdf_bytes=pdf_bytes,
+            smtp_config=smtp_config,
+            recipient_name=req.recipient_name.strip() or "traveler",
+        )
+    except Exception as exc:
+        logger.exception("Itinerary email failed")
+        raise HTTPException(status_code=500, detail=f"Itinerary email failed: {exc}") from exc
+
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+
+    return {"success": True, "message": message}

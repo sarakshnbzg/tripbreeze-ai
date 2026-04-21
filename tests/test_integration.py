@@ -21,7 +21,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from application.graph import compile_graph, run_finalisation_streaming
 from domain.nodes.trip_finaliser import Itinerary
 from langgraph.types import Command
-from presentation.planning_flow import inject_booking_links
+from infrastructure.itinerary_links import inject_booking_links
 
 
 # ── Future dates (always valid) ──────────────────────────────────────

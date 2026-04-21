@@ -126,6 +126,45 @@ def generate_trip_pdf(
     # Build story (list of elements to add to PDF)
     story = []
 
+    def add_markdown_block(text: str, *, heading_text: str | None = None) -> None:
+        if not text or not text.strip():
+            return
+        if heading_text:
+            story.append(Paragraph(heading_text, heading_style))
+        lines = text.split('\n')
+        bullet_buffer: list[str] = []
+
+        def flush_local_bullets() -> None:
+            nonlocal bullet_buffer
+            if bullet_buffer:
+                for bullet_text in bullet_buffer:
+                    story.append(Paragraph(f"<bullet>&bull;</bullet> {_convert_inline_markdown(bullet_text)}", bullet_style))
+                bullet_buffer = []
+
+        for raw_line in lines:
+            line = raw_line.strip()
+            if not line:
+                flush_local_bullets()
+                story.append(Spacer(1, 0.04 * inch))
+                continue
+            if line.startswith("- ") or line.startswith("* "):
+                bullet_buffer.append(line[2:])
+                continue
+            flush_local_bullets()
+            if line.startswith("##### "):
+                story.append(Paragraph(f"<b>{_convert_inline_markdown(line[6:])}</b>", normal_style))
+            elif line.startswith("#### "):
+                story.append(Paragraph(f"<b>{_convert_inline_markdown(line[5:])}</b>", normal_style))
+            elif line.startswith("### "):
+                story.append(Paragraph(f"<b>{_convert_inline_markdown(line[4:])}</b>", normal_style))
+            elif line.startswith("## "):
+                story.append(Paragraph(_convert_inline_markdown(line[3:]), subheading_style))
+            elif line.startswith("# "):
+                story.append(Paragraph(_convert_inline_markdown(line[2:]), heading_style))
+            else:
+                story.append(Paragraph(_convert_inline_markdown(line), normal_style))
+        flush_local_bullets()
+
     # Title and subtitle
     story.append(Paragraph("TripBreeze AI", title_style))
     timestamp = datetime.now().strftime("%B %d, %Y at %I:%M %p")
@@ -222,11 +261,6 @@ def generate_trip_pdf(
             story.append(summary_table)
             story.append(Spacer(1, 0.25*inch))
 
-    # Main itinerary content
-    story.append(Paragraph("Your Itinerary", heading_style))
-    story.append(Spacer(1, 0.1*inch))
-
-    # Style for bullet points with proper indentation
     bullet_style = ParagraphStyle(
         'BulletStyle',
         parent=normal_style,
@@ -235,53 +269,110 @@ def generate_trip_pdf(
         spaceAfter=4,
     )
 
-    # Convert markdown-style itinerary to PDF-friendly format
-    itinerary_paragraphs = final_itinerary.split('\n')
-    current_bullets = []
+    itinerary_data = graph_state.get("itinerary_data", {}) if isinstance(graph_state, dict) else {}
+    if not isinstance(itinerary_data, dict):
+        itinerary_data = {}
 
-    def flush_bullets():
-        """Add accumulated bullet points as a list."""
-        nonlocal current_bullets
-        if current_bullets:
-            for bullet_text in current_bullets:
-                story.append(Paragraph(f"<bullet>&bull;</bullet> {_convert_inline_markdown(bullet_text)}", bullet_style))
-            current_bullets = []
+    story.append(Paragraph("Your Itinerary", heading_style))
+    story.append(Spacer(1, 0.1 * inch))
 
-    for para in itinerary_paragraphs:
-        para = para.strip()
-        if not para:
-            flush_bullets()
-            story.append(Spacer(1, 0.05*inch))
-        elif para.startswith('##### '):
-            # Level 5 heading - treat as bold text
-            flush_bullets()
-            story.append(Paragraph(f"<b>{_convert_inline_markdown(para[6:])}</b>", normal_style))
-        elif para.startswith('#### '):
-            # Level 4 heading - treat as bold text
-            flush_bullets()
-            story.append(Paragraph(f"<b>{_convert_inline_markdown(para[5:])}</b>", normal_style))
-        elif para.startswith('### '):
-            flush_bullets()
-            story.append(Paragraph(f"<b>{_convert_inline_markdown(para[4:])}</b>", normal_style))
-        elif para.startswith('## '):
-            flush_bullets()
-            story.append(Paragraph(_convert_inline_markdown(para[3:]), subheading_style))
-        elif para.startswith('# '):
-            flush_bullets()
-            story.append(Spacer(1, 0.1*inch))
-            story.append(Paragraph(_convert_inline_markdown(para[2:]), heading_style))
-        elif para.startswith('**') and para.endswith('**'):
-            flush_bullets()
-            story.append(Paragraph(f"<b>{_escape_xml(para[2:-2])}</b>", normal_style))
-        elif para.startswith('- ') or para.startswith('* '):
-            # Collect bullet points
-            current_bullets.append(para[2:])
-        else:
-            flush_bullets()
-            story.append(Paragraph(_convert_inline_markdown(para), normal_style))
+    if itinerary_data:
+        add_markdown_block(str(itinerary_data.get("trip_overview", "")).strip(), heading_text="Overview")
 
-    # Flush any remaining bullets
-    flush_bullets()
+        legs = itinerary_data.get("legs", [])
+        if isinstance(legs, list) and legs:
+            story.append(Paragraph("Trip Legs", heading_style))
+            leg_rows = [[Paragraph("<b>Route</b>", normal_style), Paragraph("<b>Details</b>", normal_style)]]
+            for leg in legs:
+                if not isinstance(leg, dict):
+                    continue
+                route = f"{leg.get('origin', '?')} → {leg.get('destination', '?')}"
+                details_parts = []
+                if leg.get("departure_date"):
+                    details_parts.append(str(leg["departure_date"]))
+                if leg.get("flight_summary"):
+                    details_parts.append(str(leg["flight_summary"]))
+                if leg.get("hotel_summary"):
+                    details_parts.append(str(leg["hotel_summary"]))
+                leg_rows.append([
+                    Paragraph(_convert_inline_markdown(route), normal_style),
+                    Paragraph(_convert_inline_markdown("<br/>".join(details_parts)), normal_style),
+                ])
+            leg_table = Table(leg_rows, colWidths=[1.7 * inch, 3.8 * inch])
+            leg_table.setStyle(TableStyle([
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f5f7fa')),
+                ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#dddddd')),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ]))
+            story.append(leg_table)
+            story.append(Spacer(1, 0.18 * inch))
+
+        add_markdown_block(str(itinerary_data.get("flight_details", "")).strip(), heading_text="Flight Details")
+        add_markdown_block(str(itinerary_data.get("hotel_details", "")).strip(), heading_text="Hotel Details")
+        add_markdown_block(str(itinerary_data.get("destination_highlights", "")).strip(), heading_text="Destination Highlights")
+
+        daily_plans = itinerary_data.get("daily_plans", [])
+        if isinstance(daily_plans, list) and daily_plans:
+            story.append(Paragraph("Day-by-Day Plan", heading_style))
+            for day in daily_plans:
+                if not isinstance(day, dict):
+                    continue
+                day_number = day.get("day_number", "?")
+                theme = str(day.get("theme", "")).strip()
+                date_text = str(day.get("date", "")).strip()
+                day_title = f"Day {day_number}"
+                if theme:
+                    day_title += f" • {theme}"
+                story.append(Paragraph(day_title, subheading_style))
+                if date_text:
+                    story.append(Paragraph(_convert_inline_markdown(date_text), normal_style))
+                weather = day.get("weather", {})
+                if isinstance(weather, dict) and weather:
+                    condition = str(weather.get("condition", "")).strip()
+                    temp_min = weather.get("temp_min")
+                    temp_max = weather.get("temp_max")
+                    weather_text = condition
+                    if temp_min is not None and temp_max is not None:
+                        weather_text = f"{condition} • {temp_min}° to {temp_max}°" if condition else f"{temp_min}° to {temp_max}°"
+                    if weather_text:
+                        story.append(Paragraph(_convert_inline_markdown(weather_text), normal_style))
+                activities = day.get("activities", [])
+                if isinstance(activities, list):
+                    for activity in activities:
+                        if not isinstance(activity, dict):
+                            continue
+                        activity_name = str(activity.get("name", "Activity")).strip()
+                        time_of_day = str(activity.get("time_of_day", "")).strip()
+                        notes = str(activity.get("notes", "")).strip()
+                        address = str(activity.get("address", "")).strip()
+                        bullet_text = activity_name
+                        if time_of_day:
+                            bullet_text = f"{time_of_day.title()}: {bullet_text}"
+                        if notes:
+                            bullet_text += f" — {notes}"
+                        if address:
+                            bullet_text += f" ({address})"
+                        story.append(Paragraph(f"<bullet>&bull;</bullet> {_convert_inline_markdown(bullet_text)}", bullet_style))
+                story.append(Spacer(1, 0.08 * inch))
+
+        add_markdown_block(str(itinerary_data.get("budget_breakdown", "")).strip(), heading_text="Budget Breakdown")
+        add_markdown_block(str(itinerary_data.get("visa_entry_info", "")).strip(), heading_text="Visa & Entry Information")
+        add_markdown_block(str(itinerary_data.get("packing_tips", "")).strip(), heading_text="Packing Tips")
+
+        sources = itinerary_data.get("sources", [])
+        if isinstance(sources, list) and sources:
+            story.append(Paragraph("Sources", heading_style))
+            for source in sources:
+                if not isinstance(source, dict):
+                    continue
+                document = str(source.get("document", "Source")).strip()
+                snippet = str(source.get("snippet", "")).strip()
+                source_text = document if not snippet else f"{document}: {snippet}"
+                story.append(Paragraph(f"<bullet>&bull;</bullet> {_convert_inline_markdown(source_text)}", bullet_style))
+    else:
+        add_markdown_block(final_itinerary)
 
     # Build PDF
     doc.build(story)

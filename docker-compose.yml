@@ -4,13 +4,10 @@ services:
       context: .
     image: tripbreeze-ai
     ports:
-      - "8501:8501"
       - "8100:8100"
     env_file:
       - .env
     environment:
-      STREAMLIT_HOST: 0.0.0.0
-      STREAMLIT_PORT: 8501
       API_HOST: 0.0.0.0
       API_PORT: 8100
       REBUILD_RAG_IF_MISSING: 1

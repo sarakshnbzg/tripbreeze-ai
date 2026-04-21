@@ -35,6 +35,6 @@ elif [[ "${REBUILD_RAG_IF_MISSING:-1}" == "1" ]]; then
   fi
 fi
 
-exec uv run streamlit run app.py \
-  --server.port="${STREAMLIT_PORT}" \
-  --server.address="${STREAMLIT_HOST}"
+exec uv run uvicorn app:app \
+  --host="${API_HOST}" \
+  --port="${API_PORT}"

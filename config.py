@@ -18,19 +18,10 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 
 def _get_config_value(name: str, default: str = "") -> str:
-    """Read configuration from env vars first, then Streamlit secrets if available."""
+    """Read configuration from environment variables."""
     env_value = os.getenv(name)
     if env_value:
         return env_value
-
-    try:
-        import streamlit as st
-
-        if name in st.secrets:
-            value = st.secrets[name]
-            return str(value) if value is not None else default
-    except Exception:
-        pass
 
     return default
 
@@ -113,8 +104,14 @@ MODEL_COSTS: dict[str, dict[str, float]] = {
 LOG_LEVEL = _get_config_value("LOG_LEVEL", "INFO").upper()
 
 # Runtime / server settings
-STREAMLIT_HOST = _get_config_value("STREAMLIT_HOST", "0.0.0.0")
-STREAMLIT_PORT = int(_get_config_value("STREAMLIT_PORT", "8501"))
 API_HOST = _get_config_value("API_HOST", "127.0.0.1")
 API_PORT = int(_get_config_value("API_PORT", "8100"))
 API_BASE_URL = _get_config_value("API_BASE_URL", f"http://{API_HOST}:{API_PORT}")
+FRONTEND_ORIGINS = [
+    origin.strip()
+    for origin in _get_config_value(
+        "FRONTEND_ORIGINS",
+        "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001",
+    ).split(",")
+    if origin.strip()
+]
