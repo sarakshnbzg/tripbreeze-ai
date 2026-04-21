@@ -27,7 +27,15 @@ from infrastructure.logging_utils import get_logger
 
 logger = get_logger(__name__)
 
-OPENAI_MODELS = ["gpt-4o-mini", "gpt-4.1-mini", "gpt-4.1-nano", "gpt-3.5-turbo"]
+OPENAI_MODELS = [
+    "gpt-5-mini",
+    "gpt-5.2",
+    "gpt-5-nano",
+    "gpt-4o-mini",
+    "gpt-4.1-mini",
+    "gpt-4.1-nano",
+    "gpt-3.5-turbo",
+]
 GOOGLE_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
 
 
