@@ -548,6 +548,30 @@ class TestTripIntakeNode:
 
         assert mock_invoke.call_count == 1
 
+    def test_free_text_clarification_skips_interrupt_outside_langgraph(self):
+        mock_llm = MagicMock()
+        mock_response = MagicMock()
+        mock_response.tool_calls = [
+            {"args": {"origin": "Berlin", "destination": "Rome", "departure_date": _DEPARTURE}}
+        ]
+        mock_llm.bind_tools.return_value = MagicMock()
+
+        state = self._base_state(
+            user_profile={},
+            structured_fields={"destination": "Rome"},
+            free_text_query="Plan something for Rome.",
+        )
+
+        with patch("domain.nodes.trip_intake.create_chat_model", return_value=mock_llm):
+            with patch("domain.nodes.trip_intake.invoke_with_retry", return_value=mock_response):
+                with patch("domain.nodes.trip_intake.extract_token_usage", return_value=None):
+                    result = trip_intake(state)
+
+        assert result["current_step"] == "intake_complete"
+        assert result["trip_request"]["origin"] == "Berlin"
+        assert result["trip_request"]["destination"] == "Rome"
+        assert result["trip_request"]["departure_date"] == _DEPARTURE
+
     def test_free_text_duration_and_date_extracted_by_llm(self):
         """LLM extracts correct dates from natural language."""
         departure_date = str(date.today() + timedelta(days=2))

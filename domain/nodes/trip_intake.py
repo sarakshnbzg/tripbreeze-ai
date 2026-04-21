@@ -93,6 +93,23 @@ def _infer_stay_length_days(query: str) -> int | None:
     return count
 
 
+def _has_structured_trip_signal(structured_fields: dict[str, Any]) -> bool:
+    """Return True when form inputs clearly indicate a trip-planning request."""
+    if not structured_fields:
+        return False
+
+    trip_fields = (
+        "origin",
+        "destination",
+        "departure_date",
+        "return_date",
+        "check_out_date",
+        "is_one_way",
+        "multi_city_legs",
+    )
+    return any(structured_fields.get(field) not in (None, "", []) for field in trip_fields)
+
+
 def _classify_domain(llm, query: str, model: str) -> tuple[dict[str, Any], dict | None]:
     """Use LLM tool calling to classify whether a request belongs to the travel domain."""
     if not query.strip():
@@ -477,7 +494,9 @@ def trip_intake(state: dict) -> dict:
     # Start with structured fields as the base
     raw_trip_data = dict(revision_baseline or structured_fields)
 
-    if free_text_query.strip() and not revision_mode:
+    has_structured_trip_signal = _has_structured_trip_signal(structured_fields)
+
+    if free_text_query.strip() and not revision_mode and not has_structured_trip_signal:
         llm = create_chat_model(provider, model, temperature=temperature)
         domain_result, usage = _classify_domain(llm, free_text_query, model=model)
         if usage:
@@ -677,11 +696,19 @@ def trip_intake(state: dict) -> dict:
 
             question = _build_clarification_question(missing_fields, profile)
             logger.info("Missing fields %s — interrupting for clarification", missing_fields)
-            clarification_answer = interrupt({
-                "type": "clarification",
-                "question": question,
-                "missing_fields": missing_fields,
-            })
+            try:
+                clarification_answer = interrupt({
+                    "type": "clarification",
+                    "question": question,
+                    "missing_fields": missing_fields,
+                })
+            except RuntimeError as exc:
+                if "outside of a runnable context" not in str(exc):
+                    raise
+                logger.info(
+                    "Skipping clarification interrupt outside runnable context; proceeding with partial trip data"
+                )
+                break
             # On resume: parse the user's answer and merge into raw_trip_data
             if not clarification_answer:
                 break  # empty answer — proceed with what we have
