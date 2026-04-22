@@ -8,7 +8,6 @@ import {
 
 import {
   defaultForm,
-  selectedOption,
   type PlannerForm,
 } from "@/lib/planner";
 import type { TravelState, TripOption } from "@/lib/types";
@@ -23,19 +22,17 @@ import {
   FinalItineraryPanel,
   ReviewPanel,
   type ReviewWorkspaceActions,
-  type ReviewWorkspaceModel,
   type ReviewWorkspaceRefs,
 } from "@/components/tripbreeze-chat-app/workspace";
 import { useAuthSession } from "@/components/tripbreeze-chat-app/hooks/use-auth-session";
 import { useAuthController } from "@/components/tripbreeze-chat-app/hooks/use-auth-controller";
 import { useReferenceData } from "@/components/tripbreeze-chat-app/hooks/use-reference-data";
 import { useReviewEffects } from "@/components/tripbreeze-chat-app/hooks/use-review-effects";
+import { useReviewWorkspaceModel } from "@/components/tripbreeze-chat-app/hooks/use-review-workspace-model";
 import { useTripPlanner } from "@/components/tripbreeze-chat-app/hooks/use-trip-planner";
 import {
   ChatMessage,
   createDefaultSelection,
-  isMultiCitySelectionComplete,
-  latestAssistantMessage,
   renderMarkdownContent,
   summariseTokenUsage,
 } from "@/components/tripbreeze-chat-app/helpers";
@@ -114,129 +111,35 @@ export function TripBreezeChatApp() {
   const currencyCode = String(state?.trip_request?.currency ?? form.currency ?? "EUR");
   const availableModels = form.provider === "google" ? GOOGLE_MODELS : OPENAI_MODELS;
   const originalUserMessage = messages.find((message) => message.role === "user") ?? null;
-  const isRoundTrip = Boolean(state?.trip_request?.return_date);
   const currentTokenSummary = useMemo(() => summariseTokenUsage(state?.token_usage), [state?.token_usage]);
-
-  const hasOptionResults = useMemo(
-    () =>
-      Boolean(
-        state &&
-        (
-          state.flight_options?.length ||
-          state.hotel_options?.length ||
-          state.flight_options_by_leg?.length ||
-          state.hotel_options_by_leg?.length
-        ),
-      ),
-    [state],
-  );
-  const hasReviewWorkspace = useMemo(
-    () =>
-      Boolean(
-        state &&
-        state.current_step === "awaiting_review" &&
-        (
-          hasOptionResults ||
-          state.destination_info ||
-          state.budget ||
-          state.rag_sources?.length ||
-          latestAssistantMessage(state)
-        ),
-      ),
-    [hasOptionResults, state],
-  );
-  const canApprove = useMemo(() => {
-    if (!state) {
-      return false;
-    }
-    if (state.trip_legs?.length) {
-      return isMultiCitySelectionComplete(state, selection);
-    }
-    const hasSelectedFlight =
-      Boolean(state.flight_options?.length) &&
-      selection.flightIndex >= 0 &&
-      selection.flightIndex < (state.flight_options?.length ?? 0);
-    const hasSelectedHotel =
-      Boolean(state.hotel_options?.length) &&
-      selection.hotelIndex >= 0 &&
-      selection.hotelIndex < (state.hotel_options?.length ?? 0);
-    const hasReturn =
-      !isRoundTrip ||
-      selectedReturnIndex !== null ||
-      Boolean(
-        selection.flightIndex >= 0 ? state.flight_options?.[selection.flightIndex]?.return_details_available : false,
-      );
-    return hasSelectedFlight && hasSelectedHotel && hasReturn;
-  }, [isRoundTrip, selectedReturnIndex, selection, state]);
-  const hasSelectedSingleFlight =
-    !state?.trip_legs?.length &&
-    Boolean(state?.flight_options?.length) &&
-    selection.flightIndex >= 0 &&
-    selection.flightIndex < (state?.flight_options?.length ?? 0);
-  const hasSelectedSingleHotel =
-    !state?.trip_legs?.length &&
-    Boolean(state?.hotel_options?.length) &&
-    selection.hotelIndex >= 0 &&
-    selection.hotelIndex < (state?.hotel_options?.length ?? 0);
-  const hasSelectedSingleReturn =
-    !isRoundTrip ||
-    selectedReturnIndex !== null ||
-    Boolean(hasSelectedSingleFlight ? state?.flight_options?.[selection.flightIndex]?.return_details_available : false);
-  const showPersonalisationPanel = state?.trip_legs?.length ? canApprove : hasSelectedSingleFlight && hasSelectedSingleHotel && hasSelectedSingleReturn;
-  const selectedOutboundOption = hasSelectedSingleFlight ? selectedOption(state?.flight_options, selection.flightIndex) : {};
-  const selectedReturnOption = selectedReturnIndex !== null ? returnOptions[selectedReturnIndex] ?? {} : {};
-  const selectedHotelOption = hasSelectedSingleHotel ? selectedOption(state?.hotel_options, selection.hotelIndex) : {};
-  const completedMultiCityLegs = (state?.trip_legs ?? []).filter((leg, index) => {
-    const hasFlight = typeof selection.byLegFlights[index] === "number" && selection.byLegFlights[index] >= 0;
-    const needsHotel = Boolean(leg.needs_hotel);
-    const hasHotel = !needsHotel || (typeof selection.byLegHotels[index] === "number" && selection.byLegHotels[index] >= 0);
-    return hasFlight && hasHotel;
-  }).length;
   const itineraryView = useMemo(
     () => buildItineraryViewModel({ state, itinerary, currencyCode }),
     [currencyCode, itinerary, state],
   );
   const { finalItinerary } = itineraryView;
-  const latestStateAssistantMessage = latestAssistantMessage(state);
-  const clarificationTranscript = messages.slice(1).filter((message) => (
-    !(
-      (hasReviewWorkspace || itinerary) &&
-      message.role === "assistant" &&
-      latestStateAssistantMessage &&
-      message.content === latestStateAssistantMessage
-    )
-  ));
-  const recentPlanningUpdates = useMemo(() => {
-    const filtered = planningUpdates
-      .map((update) => String(update).trim())
-      .filter(Boolean)
-      .filter((update, index, items) => items.indexOf(update) === index);
-    return filtered.slice(-4);
-  }, [planningUpdates]);
-  const reviewWorkspaceModel: ReviewWorkspaceModel = {
-    hasReviewWorkspace,
-    finalItinerary,
-    state,
+  const {
     isRoundTrip,
-    completedMultiCityLegs,
-    hasSelectedSingleFlight,
-    hasSelectedSingleHotel,
-    selectedOutboundOption,
-    selectedReturnIndex,
-    selectedReturnOption,
-    selectedHotelOption,
     hasOptionResults,
+    hasReviewWorkspace,
+    showPersonalisationPanel,
+    clarificationTranscript,
+    recentPlanningUpdates,
+    reviewWorkspaceModel,
+  } = useReviewWorkspaceModel({
+    state,
+    itinerary,
     currencyCode,
     selection,
     returnOptions,
-    showPersonalisationPanel,
-    canApprove,
+    selectedReturnIndex,
     returnOptionsLoading,
     interests,
     pace,
     feedback,
     loading,
-  };
+    messages,
+    planningUpdates,
+  });
   const reviewWorkspaceRefs: ReviewWorkspaceRefs = {
     outboundSectionRef,
     returnSectionRef,
