@@ -308,7 +308,6 @@ tripbreeze-ai/
 ## Notes 📝
 
 - Rebuild retrieval indexes after knowledge-base changes with `uv run python scripts/rebuild_rag.py`.
-- Postgres-backed persistence is strongly recommended for restart-safe HITL review flows.
 - SMTP setup details live in [SMTP_SETUP.md](/Users/sarakashanibozorg/Documents/AI Engineering Course/tripbreeze-ai/SMTP_SETUP.md).
 - Entry requirements should still be verified against official sources before booking or departure.
 
@@ -323,5 +322,4 @@ tripbreeze-ai/
 
 - Expand visa and entry coverage with fresher, more passport-specific data.
 - Improve revision flows so users can adjust specific choices without restarting more of the plan.
-- Add clearer fallbacks when live search APIs return incomplete results.
 - Add user-facing profile management and stronger linking between users and past plans.
