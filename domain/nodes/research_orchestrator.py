@@ -19,6 +19,8 @@ from domain.nodes.research_orchestrator_helpers import (
     _maybe_use_precise_destination_info,
     _ordered_unique_destinations,
     _resolve_passport_country,
+    list_place_aliases,
+    resolve_destination_country,
 )
 from infrastructure.llms.model_factory import create_chat_model, extract_token_usage, invoke_with_retry
 from infrastructure.logging_utils import get_logger

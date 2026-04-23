@@ -1,19 +1,38 @@
 """Deterministic helper functions for the research orchestrator."""
 
 import re
+import sys
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 from config import KNOWLEDGE_BASE_DIR
-from infrastructure.apis.geocoding_client import resolve_destination_country
-from infrastructure.persistence.memory_store import list_place_aliases
+from infrastructure.apis.geocoding_client import resolve_destination_country as _geocoding_resolve_destination_country
+from infrastructure.persistence.memory_store import list_place_aliases as _memory_store_list_place_aliases
 
 DESTINATION_INFO_SECTIONS = (
     ("entry_requirements", "🛂 Entry Requirements"),
 )
 
 _VISA_REQUIREMENTS_PATH = KNOWLEDGE_BASE_DIR / "visa_requirements.md"
+
+
+def resolve_destination_country(destination: str) -> str:
+    """Compatibility wrapper kept patchable for tests and callers."""
+    orchestrator_module = sys.modules.get("domain.nodes.research_orchestrator")
+    orchestrator_override = getattr(orchestrator_module, "resolve_destination_country", None)
+    if orchestrator_override is not None and orchestrator_override is not resolve_destination_country:
+        return orchestrator_override(destination)
+    return _geocoding_resolve_destination_country(destination)
+
+
+def list_place_aliases() -> list[dict[str, Any]]:
+    """Compatibility wrapper kept patchable for tests and callers."""
+    orchestrator_module = sys.modules.get("domain.nodes.research_orchestrator")
+    orchestrator_override = getattr(orchestrator_module, "list_place_aliases", None)
+    if orchestrator_override is not None and orchestrator_override is not list_place_aliases:
+        return orchestrator_override()
+    return _memory_store_list_place_aliases()
 
 
 @lru_cache(maxsize=1)
