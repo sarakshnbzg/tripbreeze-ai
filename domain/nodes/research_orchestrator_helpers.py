@@ -6,7 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from config import KNOWLEDGE_BASE_DIR
+from settings import KNOWLEDGE_BASE_DIR
 from infrastructure.apis.geocoding_client import resolve_destination_country as _geocoding_resolve_destination_country
 from infrastructure.persistence.memory_store import list_place_aliases as _memory_store_list_place_aliases
 

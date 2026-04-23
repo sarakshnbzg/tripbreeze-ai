@@ -7,10 +7,12 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from config import (
+from model_catalog import (
     DEFAULT_LLM_MODEL,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_JUDGE_MODEL,
+)
+from settings import (
     RAG_EVAL_DATASET_PATH,
     RAG_EVAL_OUTPUT_DIR,
 )

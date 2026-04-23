@@ -23,6 +23,7 @@ dependencies = [
     "rank-bm25>=0.2.2",
     "python-dotenv>=1.0.0",
     "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
     "python-json-logger>=3.2.0",
     "psycopg[binary]>=3.2.0",
     "psycopg-pool>=3.2.0",
@@ -47,4 +48,4 @@ eval = [
 
 [tool.setuptools]
 packages = ["application", "domain", "infrastructure", "presentation"]
-py-modules = ["app", "config"]
+py-modules = ["app", "config", "settings", "model_catalog", "constants"]

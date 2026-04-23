@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from config import RAG_EVAL_DATASET_PATH
+from settings import RAG_EVAL_DATASET_PATH
 from infrastructure.llms.model_factory import create_chat_model, create_embeddings, invoke_with_retry
 from infrastructure.logging_utils import get_logger
 from infrastructure.rag.vectorstore import retrieve

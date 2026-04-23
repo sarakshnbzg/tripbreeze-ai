@@ -11,9 +11,7 @@ import json
 import re
 from functools import lru_cache
 
-from config import (
-    MEMORY_DATABASE_URL,
-)
+from settings import MEMORY_DATABASE_URL
 from infrastructure.logging_utils import get_logger
 from infrastructure.apis.country_state_city_client import fetch_all_city_names, fetch_countries
 from infrastructure.persistence.reference_seed_data import (

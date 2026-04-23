@@ -8,7 +8,7 @@ from typing import Any
 
 from pythonjsonlogger.json import JsonFormatter
 
-from config import LOG_LEVEL
+from settings import LOG_LEVEL
 
 _JSON_FIELDS = "%(asctime)s %(levelname)s %(name)s %(message)s"
 

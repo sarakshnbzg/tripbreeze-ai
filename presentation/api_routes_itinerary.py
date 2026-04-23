@@ -3,7 +3,7 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
-from config import (
+from settings import (
     SMTP_HOST,
     SMTP_PORT,
     SMTP_SENDER_EMAIL,

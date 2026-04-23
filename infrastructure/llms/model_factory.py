@@ -16,29 +16,17 @@ from tenacity import (
     before_sleep_log,
 )
 
-from config import (
+from model_catalog import (
     DEFAULT_LLM_MODEL,
     DEFAULT_LLM_PROVIDER,
-    EMBEDDING_MODELS,
-    GOOGLE_API_KEY,
+    GOOGLE_MODELS,
     MODEL_COSTS,
-    OPENAI_API_KEY,
+    OPENAI_MODELS,
 )
+from settings import EMBEDDING_MODELS, GOOGLE_API_KEY, OPENAI_API_KEY
 from infrastructure.logging_utils import get_logger
 
 logger = get_logger(__name__)
-
-OPENAI_MODELS = [
-    "gpt-5-mini",
-    "gpt-5.2",
-    "gpt-5-nano",
-    "gpt-4o-mini",
-    "gpt-4.1-mini",
-    "gpt-4.1-nano",
-    "gpt-3.5-turbo",
-]
-GOOGLE_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
-
 
 def get_available_models(provider: str) -> list[str]:
     """Return the supported model ids for a provider."""

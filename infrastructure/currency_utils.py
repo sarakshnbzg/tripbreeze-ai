@@ -1,6 +1,6 @@
 """Helpers for displaying currency values consistently across the app."""
 
-from config import DEFAULT_CURRENCY
+from settings import DEFAULT_CURRENCY
 
 _CURRENCY_PREFIXES = {
     "USD": "$",

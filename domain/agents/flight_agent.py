@@ -2,7 +2,7 @@
 
 import re
 
-from config import MAX_FLIGHT_RESULTS
+from settings import MAX_FLIGHT_RESULTS
 from infrastructure.apis.serpapi_client import search_flights as api_search_flights, search_return_flights as api_search_return_flights
 from infrastructure.logging_utils import get_logger
 

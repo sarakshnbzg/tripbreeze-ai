@@ -12,7 +12,7 @@ from urllib.parse import quote_plus
 
 from serpapi import GoogleSearch
 
-from config import SERPAPI_API_KEY, RAW_FLIGHT_CANDIDATES, MAX_FLIGHT_RESULTS, MAX_HOTEL_RESULTS
+from settings import SERPAPI_API_KEY, RAW_FLIGHT_CANDIDATES, MAX_FLIGHT_RESULTS, MAX_HOTEL_RESULTS
 from infrastructure.logging_utils import get_logger
 from infrastructure.persistence.memory_store import list_reference_values, lookup_airport_code
 

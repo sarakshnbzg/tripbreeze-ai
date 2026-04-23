@@ -135,7 +135,12 @@ SERPAPI_API_KEY=...
 DATABASE_URL=postgresql://username:password@host/database?sslmode=require
 ```
 
-TripBreeze reads runtime settings centrally from [`config.py`](config.py).
+TripBreeze reads runtime settings centrally from [`settings.py`](settings.py), with
+[`config.py`](config.py) kept as a compatibility shim for older imports.
+
+Useful optional tuning values in `.env` include `RAG_CHUNK_SIZE`, `RAG_CHUNK_OVERLAP`, `RAG_TOP_K`,
+`MAX_FLIGHT_RESULTS`, `RAW_FLIGHT_CANDIDATES`, `MAX_HOTEL_RESULTS`, `DEFAULT_CURRENCY`, and
+`DEFAULT_STAY_NIGHTS`.
 
 ## Local Development 💻
 
@@ -342,7 +347,8 @@ tripbreeze-ai/
 
 ## Notes 📝
 
-- [`config.py`](config.py) is the single source of truth for runtime settings.
+- [`settings.py`](settings.py) is the typed source of truth for runtime settings.
+- [`config.py`](config.py) re-exports settings for backward compatibility.
 - Postgres persistence is strongly recommended for human-in-the-loop review flows.
 - Rebuild retrieval indexes after knowledge-base changes with `uv run python scripts/rebuild_rag.py`.
 - SMTP setup details live in [`SMTP_SETUP.md`](SMTP_SETUP.md).

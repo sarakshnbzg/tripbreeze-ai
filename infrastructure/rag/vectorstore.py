@@ -12,9 +12,9 @@ from langchain_community.retrievers import BM25Retriever
 from langchain_chroma import Chroma
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from config import (
+from model_catalog import DEFAULT_LLM_PROVIDER
+from settings import (
     CHROMA_ROOT_DIR,
-    DEFAULT_LLM_PROVIDER,
     KNOWLEDGE_BASE_DIR,
     RAG_CHUNK_SIZE,
     RAG_CHUNK_OVERLAP,

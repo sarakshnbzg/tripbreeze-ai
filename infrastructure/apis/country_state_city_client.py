@@ -6,7 +6,7 @@ from collections.abc import Iterable
 
 import requests
 
-from config import CSC_API_KEY
+from settings import CSC_API_KEY
 from infrastructure.logging_utils import get_logger
 
 logger = get_logger(__name__)

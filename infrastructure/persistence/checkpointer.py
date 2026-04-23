@@ -8,7 +8,7 @@ allowed.
 
 import atexit
 
-from config import MEMORY_DATABASE_URL, REQUIRE_PERSISTENT_CHECKPOINTER
+from settings import MEMORY_DATABASE_URL, REQUIRE_PERSISTENT_CHECKPOINTER
 from infrastructure.logging_utils import get_logger
 
 logger = get_logger(__name__)

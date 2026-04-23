@@ -279,5 +279,6 @@ The trip intake's `structured_fields` payload may also carry `return_to_origin: 
 
 ## Configuration
 
-All model names, API keys, search limits, and file paths are centralised in `config.py`.
-Agents and nodes import settings from there — never from environment variables directly.
+All model names, API keys, search limits, and file paths are centralised in `settings.py`,
+`model_catalog.py`, and `constants.py`.
+Agents and nodes import settings from those modules — never from environment variables directly.

@@ -19,9 +19,9 @@ import uvicorn
 # Ensure project root is on the Python path so layered imports work.
 sys.path.insert(0, str(Path(__file__).parent))
 
-import config  # noqa: F401
 from infrastructure.logging_utils import configure_logging
 from presentation.api import app
+from settings import API_HOST, API_PORT
 
 configure_logging()
 
@@ -29,7 +29,7 @@ configure_logging()
 if __name__ == "__main__":
     uvicorn.run(
         "app:app",
-        host=config.API_HOST,
-        port=config.API_PORT,
+        host=API_HOST,
+        port=API_PORT,
         log_level="warning",
     )

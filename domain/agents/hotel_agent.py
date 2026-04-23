@@ -1,6 +1,6 @@
 """Hotel Agent — searches for hotels and formats results for the graph state."""
 
-from config import HOTEL_STARS
+from constants import HOTEL_STARS
 from infrastructure.apis.serpapi_client import search_hotels as api_search_hotels
 from infrastructure.logging_utils import get_logger
 

@@ -1,6 +1,6 @@
 """Budget Aggregator node — combines costs and checks against the budget limit."""
 
-from config import DEFAULT_DAILY_EXPENSE
+from settings import DEFAULT_DAILY_EXPENSE
 from domain.utils.dates import trip_duration_days
 from infrastructure.currency_utils import currency_prefix
 from infrastructure.logging_utils import get_logger

@@ -4,7 +4,7 @@ import re
 from datetime import date, timedelta
 from typing import Any
 
-from config import DEFAULT_STAY_NIGHTS
+from settings import DEFAULT_STAY_NIGHTS
 from domain.utils.dates import validate_future_date
 from infrastructure.currency_utils import format_currency
 from infrastructure.logging_utils import get_logger
