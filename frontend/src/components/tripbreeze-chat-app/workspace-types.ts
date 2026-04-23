@@ -2,6 +2,7 @@ import type { SelectionState } from "@/lib/planner";
 import type { ApproveRequest, TravelState, TripOption } from "@/lib/types";
 
 import type { PlannerLoadingState } from "./ui-types";
+import type { ItineraryViewModel } from "./view-models";
 
 export type ReviewWorkspaceModel = {
   hasReviewWorkspace: boolean;
@@ -42,4 +43,23 @@ export type ReviewWorkspaceRefs = {
   returnSectionRef: React.RefObject<HTMLDivElement | null>;
   hotelSectionRef: React.RefObject<HTMLDivElement | null>;
   personaliseSectionRef: React.RefObject<HTMLDivElement | null>;
+};
+
+export type ReviewPanelProps = {
+  model: ReviewWorkspaceModel;
+  actions: ReviewWorkspaceActions;
+  refs: ReviewWorkspaceRefs;
+};
+
+export type ItineraryShareState = {
+  loading: PlannerLoadingState;
+  emailAddress: string;
+  setEmailAddress: React.Dispatch<React.SetStateAction<string>>;
+  onDownloadPdf: () => Promise<void>;
+  onEmailItinerary: () => Promise<void>;
+};
+
+export type FinalItineraryPanelProps = {
+  viewModel: ItineraryViewModel;
+  shareState: ItineraryShareState;
 };

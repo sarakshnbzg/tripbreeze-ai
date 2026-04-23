@@ -1,48 +1,39 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import {
-  LoaderCircle,
-  Settings2,
-} from "lucide-react";
 
-import {
-  defaultForm,
-  type PlannerForm,
-} from "@/lib/planner";
+import { defaultForm, type PlannerForm, type SelectionState } from "@/lib/planner";
 import type { TravelState, TripOption } from "@/lib/types";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import type { SelectionState } from "@/lib/planner";
 import { AuthScreen } from "@/components/tripbreeze-chat-app/auth-screen";
-import { ModelSettingsPanel } from "@/components/tripbreeze-chat-app/model-settings-panel";
-import { PlannerComposer } from "@/components/tripbreeze-chat-app/planner-composer";
-import { AppSidebar } from "@/components/tripbreeze-chat-app/sidebar";
-import {
-  FinalItineraryPanel,
-  ReviewPanel,
-  type ReviewWorkspaceActions,
-  type ReviewWorkspaceRefs,
-} from "@/components/tripbreeze-chat-app/workspace";
-import { useAuthSession } from "@/components/tripbreeze-chat-app/hooks/use-auth-session";
-import { useAuthController } from "@/components/tripbreeze-chat-app/hooks/use-auth-controller";
-import { useReferenceData } from "@/components/tripbreeze-chat-app/hooks/use-reference-data";
-import { useReviewEffects } from "@/components/tripbreeze-chat-app/hooks/use-review-effects";
-import { useReviewWorkspaceModel } from "@/components/tripbreeze-chat-app/hooks/use-review-workspace-model";
-import { useTripPlanner } from "@/components/tripbreeze-chat-app/hooks/use-trip-planner";
-import {
-  ChatMessage,
-  createDefaultSelection,
-  renderMarkdownContent,
-  summariseTokenUsage,
-} from "@/components/tripbreeze-chat-app/helpers";
 import {
   GOOGLE_MODELS,
   OPENAI_MODELS,
   PACE_OPTIONS,
 } from "@/components/tripbreeze-chat-app/constants";
+import { useAuthController } from "@/components/tripbreeze-chat-app/hooks/use-auth-controller";
+import { useAuthSession } from "@/components/tripbreeze-chat-app/hooks/use-auth-session";
+import { useReferenceData } from "@/components/tripbreeze-chat-app/hooks/use-reference-data";
+import { useReviewEffects } from "@/components/tripbreeze-chat-app/hooks/use-review-effects";
+import { useReviewWorkspaceModel } from "@/components/tripbreeze-chat-app/hooks/use-review-workspace-model";
+import { useTripPlanner } from "@/components/tripbreeze-chat-app/hooks/use-trip-planner";
+import {
+  createDefaultSelection,
+  summariseTokenUsage,
+  type ChatMessage,
+} from "@/components/tripbreeze-chat-app/helpers";
+import { PlannerStage } from "@/components/tripbreeze-chat-app/planner-stage";
+import type {
+  PlannerStageControls,
+  PlannerStageDisplayState,
+  PlannerStageModels,
+} from "@/components/tripbreeze-chat-app/planner-stage-types";
+import { AppSidebar } from "@/components/tripbreeze-chat-app/sidebar";
 import type { PlannerLoadingState } from "@/components/tripbreeze-chat-app/ui-types";
 import { buildItineraryViewModel } from "@/components/tripbreeze-chat-app/view-models";
+import type {
+  ReviewWorkspaceActions,
+  ReviewWorkspaceRefs,
+} from "@/components/tripbreeze-chat-app/workspace";
 
 export function TripBreezeChatApp() {
   const [form, setForm] = useState<PlannerForm>(defaultForm);
@@ -116,7 +107,6 @@ export function TripBreezeChatApp() {
     () => buildItineraryViewModel({ state, itinerary, currencyCode }),
     [currencyCode, itinerary, state],
   );
-  const { finalItinerary } = itineraryView;
   const {
     isRoundTrip,
     hasOptionResults,
@@ -223,6 +213,48 @@ export function TripBreezeChatApp() {
     setFeedback,
     handleReview,
   };
+  const plannerStageControls: PlannerStageControls = {
+    resetTrip,
+    logout,
+    handleDownloadPdf,
+    handleEmailItinerary,
+    handleClarification,
+    handlePlanTrip,
+    handleVoiceInput: () => handleVoiceInput(recording, setRecording),
+  };
+  const plannerStageDisplayState: PlannerStageDisplayState = {
+    showModelSettings,
+    setShowModelSettings,
+    showComposer,
+    itinerary,
+    messages,
+    originalUserMessage,
+    hasReviewWorkspace,
+    clarificationTranscript,
+    recentPlanningUpdates,
+    showPlanningProgress,
+    setShowPlanningProgress,
+    loading,
+    clarificationQuestion,
+    clarificationAnswer,
+    setClarificationAnswer,
+    recording,
+    error,
+  };
+  const plannerStageModels: PlannerStageModels = {
+    availableModels,
+    reviewWorkspaceModel,
+    reviewWorkspaceActions,
+    reviewWorkspaceRefs,
+    itineraryView,
+    itineraryShareState: {
+      loading,
+      emailAddress,
+      setEmailAddress,
+      onDownloadPdf: handleDownloadPdf,
+      onEmailItinerary: handleEmailItinerary,
+    },
+  };
 
   if (!authenticatedUser) {
     return (
@@ -268,211 +300,13 @@ export function TripBreezeChatApp() {
         setError={setError}
       />
 
-      <main className="min-w-0 flex-1">
-        <Card className="p-6 sm:p-8">
-          <div className="flex flex-col gap-4 border-b border-ink/10 pb-5 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h1 className="font-display text-4xl text-ink">TripBreeze AI</h1>
-            </div>
-            <div className="flex gap-3">
-              <Button variant="secondary" onClick={() => setShowModelSettings((current) => !current)}>
-                <Settings2 className="mr-2 h-4 w-4" />
-                Settings
-              </Button>
-              <Button variant="secondary" onClick={resetTrip}>
-                New Trip
-              </Button>
-              <button type="button" onClick={logout} className="rounded-full border border-ink/10 px-4 py-3 text-sm font-semibold text-ink transition hover:bg-white lg:hidden">
-                Log Out
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-6 space-y-5">
-            {!showComposer && !itinerary ? (
-              <div className="rounded-[1.4rem] border border-ink/10 bg-mist/55 px-4 py-3 text-sm text-slate">
-                <span className="font-semibold text-ink">Ask planner to rework results</span> reruns planning from the current review with your notes.
-              </div>
-            ) : null}
-
-            {showModelSettings ? (
-              <ModelSettingsPanel
-                form={form}
-                setForm={setForm}
-                availableModels={availableModels}
-              />
-            ) : null}
-
-            {messages.length > 0 ? (
-              hasReviewWorkspace || itinerary ? null : (
-                <div className="space-y-3">
-                  {messages.map((message, index) => (
-                    <div
-                      key={`${message.role}-${index}`}
-                      className={`max-w-4xl rounded-[1.75rem] px-5 py-4 text-sm leading-7 shadow-sm ${
-                        message.role === "user"
-                          ? "ml-auto bg-ink text-white shadow-[0_16px_36px_rgba(16,33,43,0.18)]"
-                          : "border border-ink/8 bg-white text-ink"
-                      }`}
-                    >
-                      <div
-                        className={`mb-2 text-[11px] font-semibold uppercase tracking-[0.22em] ${
-                          message.role === "user" ? "text-white/60" : "text-slate"
-                        }`}
-                      >
-                        {message.role === "user" ? "You" : "TripBreeze"}
-                      </div>
-                      {message.role === "assistant" ? renderMarkdownContent(message.content) : message.content}
-                    </div>
-                  ))}
-                </div>
-              )
-            ) : null}
-
-            {(hasReviewWorkspace || itinerary) && originalUserMessage ? (
-              <div className="rounded-[1.75rem] border border-ink/10 bg-white/75 px-5 py-4 text-sm leading-7 text-ink shadow-sm">
-                <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate">
-                  Your request
-                </div>
-                {originalUserMessage.content}
-              </div>
-            ) : null}
-
-            {hasReviewWorkspace && clarificationTranscript.length > 0 ? (
-              <div className="rounded-[1.75rem] border border-ink/10 bg-white/75 px-5 py-4 text-sm leading-7 text-ink shadow-sm">
-                <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate">
-                  Clarifications
-                </div>
-                <div className="space-y-3">
-                  {clarificationTranscript.map((message, index) => (
-                    <div
-                      key={`${message.role}-transcript-${index}`}
-                      className={`max-w-4xl rounded-[1.4rem] px-4 py-3 text-sm leading-7 ${
-                        message.role === "user"
-                          ? "ml-auto bg-ink text-white"
-                          : "border border-ink/8 bg-white text-ink"
-                      }`}
-                    >
-                      <div
-                        className={`mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${
-                          message.role === "user" ? "text-white/60" : "text-slate"
-                        }`}
-                      >
-                        {message.role === "user" ? "You" : "TripBreeze"}
-                      </div>
-                      {message.role === "assistant" ? renderMarkdownContent(message.content) : message.content}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            {recentPlanningUpdates.length > 0 && !(hasReviewWorkspace || itinerary) ? (
-              <div className="rounded-[1.75rem] border border-ink/10 bg-gradient-to-r from-mist/90 to-white/80 p-5">
-                <button
-                  type="button"
-                  onClick={() => setShowPlanningProgress((current) => !current)}
-                  className="flex w-full items-center justify-between gap-3 text-left"
-                >
-                  <div className="flex items-center gap-2 text-sm font-semibold text-ink">
-                    <LoaderCircle className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-                    Planning progress
-                  </div>
-                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate">
-                    {showPlanningProgress ? "Hide" : "Show"}
-                  </span>
-                </button>
-                {showPlanningProgress ? (
-                  <div className="mt-3 space-y-2 text-sm text-slate">
-                    {recentPlanningUpdates.map((update, index) => (
-                      <div key={`${update}-${index}`} className="rounded-[1.1rem] border border-ink/8 bg-white/80 px-3 py-2">
-                        {update}
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-
-            {(hasReviewWorkspace || itinerary) && recentPlanningUpdates.length > 0 ? (
-              <div className="rounded-[1.6rem] border border-ink/10 bg-white/70 p-4 lg:hidden">
-                <button
-                  type="button"
-                  onClick={() => setShowPlanningProgress((current) => !current)}
-                  className="flex w-full items-center justify-between gap-3 text-left"
-                >
-                  <div>
-                    <div className="flex items-center gap-2 text-sm font-semibold text-ink">
-                      <LoaderCircle className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-                      Planning progress
-                    </div>
-                    <div className="mt-1 text-xs text-slate">Latest workflow milestones from the planner.</div>
-                  </div>
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate">
-                    {showPlanningProgress ? "Hide" : "Show"}
-                  </span>
-                </button>
-                {showPlanningProgress ? (
-                  <div className="mt-4 space-y-2">
-                    {recentPlanningUpdates.map((update, index) => (
-                      <div key={`mobile-${update}-${index}`} className="rounded-[1.1rem] border border-ink/8 bg-white/80 px-3 py-2 text-sm text-slate">
-                        {update}
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-
-            <ReviewPanel
-              model={reviewWorkspaceModel}
-              actions={reviewWorkspaceActions}
-              refs={reviewWorkspaceRefs}
-            />
-
-            <FinalItineraryPanel
-              viewModel={itineraryView}
-              shareState={{
-                loading,
-                emailAddress,
-                setEmailAddress,
-                onDownloadPdf: handleDownloadPdf,
-                onEmailItinerary: handleEmailItinerary,
-              }}
-            />
-          </div>
-
-          {clarificationQuestion ? (
-            <div className="mt-6 rounded-[1.75rem] border border-coral/30 bg-coral/10 p-5">
-              <div className="text-sm font-semibold text-coral">More information needed</div>
-              <div className="mt-2 text-sm text-slate">Answer this to continue planning your current trip.</div>
-              <textarea
-                className="mt-3 h-24 w-full rounded-3xl border border-white/80 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
-                value={clarificationAnswer}
-                onChange={(event) => setClarificationAnswer(event.target.value)}
-                placeholder="Type your answer here..."
-              />
-              <div className="mt-4">
-                <Button onClick={handleClarification} disabled={loading !== null || !clarificationAnswer.trim()}>
-                  {loading === "clarifying" ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Continue Planning
-                </Button>
-              </div>
-            </div>
-          ) : null}
-
-          <PlannerComposer
-            form={form}
-            setForm={setForm}
-            showComposer={showComposer}
-            loading={loading}
-            recording={recording}
-            error={error}
-            onPlanTrip={handlePlanTrip}
-            onVoiceInput={() => void handleVoiceInput(recording, setRecording)}
-          />
-        </Card>
-      </main>
+      <PlannerStage
+        form={form}
+        setForm={setForm}
+        controls={plannerStageControls}
+        displayState={plannerStageDisplayState}
+        models={plannerStageModels}
+      />
 
       <datalist id="cities">
         {cities.slice(0, 200).map((city) => (

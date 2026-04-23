@@ -9,24 +9,14 @@ import {
   readString,
   renderMarkdownContent,
 } from "./helpers";
-import type { PlannerLoadingState } from "./ui-types";
-import type { ItineraryViewModel } from "./view-models";
+import type { FinalItineraryPanelProps } from "./workspace-types";
 
 const ItineraryMap = dynamic(() => import("./itinerary-map"), { ssr: false });
 
 export function FinalItineraryPanel({
   viewModel,
   shareState,
-}: {
-  viewModel: ItineraryViewModel;
-  shareState: {
-    loading: PlannerLoadingState;
-    emailAddress: string;
-    setEmailAddress: React.Dispatch<React.SetStateAction<string>>;
-    onDownloadPdf: () => Promise<void>;
-    onEmailItinerary: () => Promise<void>;
-  };
-}) {
+}: FinalItineraryPanelProps) {
   const {
     finalItinerary,
     hasStructuredItinerary,

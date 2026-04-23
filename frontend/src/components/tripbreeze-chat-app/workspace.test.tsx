@@ -120,6 +120,36 @@ describe("workspace panels", () => {
     expect(setSelectedReturnIndex).toHaveBeenCalledWith(0);
   });
 
+  it("renders multi-city review progress and leg sections", () => {
+    renderReviewPanel({
+      state: {
+        trip_legs: [
+          { origin: "Berlin", destination: "Paris", departure_date: "2026-06-10", nights: 3, needs_hotel: true },
+          { origin: "Paris", destination: "Berlin", departure_date: "2026-06-13", nights: 0, needs_hotel: false },
+        ],
+        flight_options_by_leg: [
+          [{ airline: "Outbound Air", outbound_summary: "Berlin to Paris", total_price: 180 }],
+          [{ airline: "Return Air", outbound_summary: "Paris to Berlin", total_price: 170 }],
+        ],
+        hotel_options_by_leg: [
+          [{ name: "Paris Stay", total_price: 420 }],
+          [],
+        ],
+        flight_options: [],
+        hotel_options: [],
+      } as unknown as TravelState,
+      hasOptionResults: true,
+      completedMultiCityLegs: 1,
+      selection: buildSelection({ byLegFlights: [0, 0], byLegHotels: [0] }),
+    });
+
+    expect(screen.getByText(/Multi-city progress:/)).toBeInTheDocument();
+    expect(screen.getByText(/1 of 2 legs fully selected/)).toBeInTheDocument();
+    expect(screen.getByText(/Leg 1: Berlin to Paris/)).toBeInTheDocument();
+    expect(screen.getByText(/Leg 2: Paris to Berlin/)).toBeInTheDocument();
+    expect(screen.getByText("Paris Stay")).toBeInTheDocument();
+  });
+
   it("renders final itinerary snapshot, booking links, and day plan details", () => {
     render(
       <FinalItineraryPanel
