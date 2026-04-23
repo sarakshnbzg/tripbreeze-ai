@@ -63,10 +63,54 @@ INTENT_KEYWORDS: dict[str, tuple[str, ...]] = {
     "budget": ("budget", "cheap", "money-saving", "expensive", "value"),
     "safety": ("safety", "safe", "scam", "street smarts"),
     "packing": ("packing", "pack"),
-    "health": ("health", "vaccination", "altitude", "water safety"),
-    "flight_booking": ("flight-booking", "book flights", "flight strategy", "layover"),
+    "health": (
+        "health",
+        "vaccination",
+        "vaccinations",
+        "vaccine",
+        "vaccines",
+        "yellow fever",
+        "malaria",
+        "altitude",
+        "water safety",
+        "health insurance",
+    ),
+    "flight_booking": ("flight-booking", "book flights", "flight strategy"),
     "hotel_booking": ("hotel-booking", "hotel booking", "book hotels"),
     "etiquette": ("etiquette", "cultural", "dress code", "haggling"),
+    "customs": (
+        "customs",
+        "duty-free",
+        "duty free",
+        "declare",
+        "declaration",
+        "prohibited items",
+        "allowance",
+        "alcohol allowance",
+        "tobacco allowance",
+    ),
+    "currency": (
+        "currency",
+        "cash",
+        "atm",
+        "atms",
+        "exchange rate",
+        "tipping",
+        "card acceptance",
+        "credit card",
+        "debit card",
+    ),
+    "transit": (
+        "transit",
+        "layover",
+        "self-transfer",
+        "self transfer",
+        "airside",
+        "sterile area",
+        "transit visa",
+        "transit without visa",
+        "twov",
+    ),
 }
 
 PASSPORT_ENTITY_PATTERNS = (
@@ -85,12 +129,25 @@ def _extract_heading(page_content: str) -> str:
     return match.group(1).strip() if match else ""
 
 
+COUNTRY_KEYED_SOURCE_TYPES: tuple[str, ...] = (
+    "visa_requirements",
+    "health_requirements",
+    "customs_and_duty_free",
+    "currency_and_money",
+    "transit_rules",
+)
+
+
 def _detect_topics(page_content: str, source_type: str) -> list[str]:
     lowered = (page_content or "").lower()
     topics: set[str] = set()
 
     keyword_map = {
         "entry_requirements": ["visa-free", "visa required", "documents needed", "passport", "entry requirements", "esta", "eta", "etias"],
+        "health": ["vaccination", "vaccine", "yellow fever", "malaria", "altitude", "water safety", "health insurance"],
+        "customs": ["duty-free", "duty free", "customs", "declare", "declaration", "prohibited items", "allowance"],
+        "currency": ["currency", "cash", "atm", "tipping", "exchange rate", "card acceptance"],
+        "transit": ["transit", "layover", "self-transfer", "airside", "sterile area", "transit visa"],
     }
 
     for topic, keywords in keyword_map.items():
@@ -99,6 +156,14 @@ def _detect_topics(page_content: str, source_type: str) -> list[str]:
 
     if source_type == "visa_requirements":
         topics.add("entry_requirements")
+    if source_type == "health_requirements":
+        topics.add("health")
+    if source_type == "customs_and_duty_free":
+        topics.add("customs")
+    if source_type == "currency_and_money":
+        topics.add("currency")
+    if source_type == "transit_rules":
+        topics.add("transit")
 
     return sorted(topics)
 
@@ -110,7 +175,7 @@ def _extract_doc_metadata(source_path: str, page_content: str) -> dict[str, str 
     city = ""
     country = ""
 
-    if source_type == "visa_requirements" and heading:
+    if source_type in COUNTRY_KEYED_SOURCE_TYPES and heading:
         country = heading.split("(", 1)[0].strip()
 
     topics = _detect_topics(page_content, source_type)
@@ -129,15 +194,22 @@ def _extract_doc_metadata(source_path: str, page_content: str) -> dict[str, str 
 @lru_cache(maxsize=1)
 def _known_places() -> list[tuple[str, str, str]]:
     places: list[tuple[str, str, str]] = []
-    for path in (KNOWLEDGE_BASE_DIR / "visa_requirements.md",):
+    seen: set[tuple[str, str, str]] = set()
+    for path in sorted(KNOWLEDGE_BASE_DIR.glob("*.md")):
+        source_type = path.stem.replace(" ", "_")
+        if source_type not in COUNTRY_KEYED_SOURCE_TYPES:
+            continue
         text = path.read_text(encoding="utf-8")
-        source_type = path.stem
         for match in re.finditer(r"^##\s+(.+)$", text, flags=re.MULTILINE):
             heading = match.group(1).strip()
-            if source_type == "visa_requirements":
-                country = heading.split("(", 1)[0].strip()
-                if country:
-                    places.append((_normalise_text(country), "country", country))
+            country = heading.split("(", 1)[0].strip()
+            if not country:
+                continue
+            entry = (_normalise_text(country), "country", country)
+            if entry in seen:
+                continue
+            seen.add(entry)
+            places.append(entry)
     try:
         for alias in list_place_aliases():
             normalized_name = _normalise_text(alias.get("normalized_name", ""))
@@ -209,11 +281,32 @@ def _extract_passport_entities(query: str) -> list[str]:
     return entities
 
 
+INTENT_TO_SOURCE_TYPES: dict[str, list[str]] = {
+    "entry_requirements": ["visa_requirements"],
+    "health": ["health_requirements"],
+    "customs": ["customs_and_duty_free"],
+    "currency": ["currency_and_money"],
+    "transit": ["transit_rules"],
+}
+
+RETRIEVAL_INTENTS: frozenset[str] = frozenset(INTENT_TO_SOURCE_TYPES.keys())
+
+
 def _preferred_source_types(query_meta: dict[str, str | list[str]]) -> list[str]:
     query_intents = set(query_meta.get("intents", []) or [])
 
+    non_visa_specific = query_intents & {"customs", "currency", "transit", "health"}
+    if non_visa_specific:
+        preferred: list[str] = []
+        for intent in sorted(non_visa_specific):
+            for source_type in INTENT_TO_SOURCE_TYPES.get(intent, []):
+                if source_type not in preferred:
+                    preferred.append(source_type)
+        return preferred
+
     if "entry_requirements" in query_intents:
         return ["visa_requirements"]
+
     return []
 
 
@@ -556,7 +649,7 @@ def _load_and_split_docs() -> list:
 
     loader = DirectoryLoader(
         str(KNOWLEDGE_BASE_DIR),
-        glob="visa_requirements.md",
+        glob="*.md",
         loader_cls=TextLoader,
         loader_kwargs={"encoding": "utf-8"},
     )
@@ -648,9 +741,10 @@ def retrieve(
     chunks = _load_and_split_docs()
     logger.info("RAG chunks ready count=%s elapsed_ms=%.2f", len(chunks), (time.perf_counter() - chunks_started_at) * 1000)
     query_meta = _infer_query_metadata(query)
-    if "entry_requirements" not in set(query_meta.get("intents", []) or []):
+    query_intents = set(query_meta.get("intents", []) or [])
+    if not query_intents & RETRIEVAL_INTENTS:
         logger.info(
-            "Skipping RAG retrieval because query is outside visa scope total_elapsed_ms=%.2f",
+            "Skipping RAG retrieval because query is outside knowledge-base scope total_elapsed_ms=%.2f",
             (time.perf_counter() - started_at) * 1000,
         )
         return []
