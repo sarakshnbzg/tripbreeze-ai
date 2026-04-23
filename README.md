@@ -12,7 +12,7 @@ TripBreeze can:
 - support single-city and multi-city planning
 - accept voice input via Whisper transcription
 - search live flights and hotels with SerpAPI
-- retrieve grounded visa and entry information from a local RAG knowledge base
+- retrieve grounded visa and entry information from a local RAG knowledge base with metadata-aware retrieval and reranking
 - estimate budget fit before itinerary generation
 - pause for human review, revision, or cancellation
 - generate day-by-day itineraries with weather enrichment
@@ -56,6 +56,10 @@ Core entry points:
 - Graph: [`application/graph.py`](application/graph.py)
 - State schema: [`application/state.py`](application/state.py)
 - Detailed workflow docs: [`AGENTS.md`](AGENTS.md)
+
+The entry-requirements retriever uses provider-specific Chroma indexes plus BM25 retrieval,
+metadata-aware place filtering, broader entry-intent detection, and score-based reranking to
+prioritize the most relevant grounded context for each destination and passport combination.
 
 ## Workflow 🔄
 
@@ -255,6 +259,18 @@ Golden itinerary judging:
 ```bash
 RUN_LLM_JUDGE_GOLDENS=1 uv run pytest tests/test_golden_prompts.py -k finaliser
 ```
+
+## Evaluation Results 📈
+
+Recent OpenAI-based RAG evaluation runs show strong grounded performance:
+
+- automatic metrics: context precision `0.72`, context recall `0.75`, faithfulness up to `0.87`, answer relevancy up to `0.82`
+- LLM-judge evaluation (`17` samples, `gpt-4.1-mini`): `100%` pass rate
+- average judge scores: faithfulness `5.0/5`, correctness `5.0/5`, groundedness `5.0/5`, completeness `4.24/5`, overall `4.94/5`
+
+In practice, this means TripBreeze retrieves relevant entry information reliably and answers with high accuracy while staying grounded in the retrieved context.
+
+The latest evaluation artifacts are stored in [`evals/results/`](evals/results/)
 
 ## Ethics & Privacy 🛡️
 

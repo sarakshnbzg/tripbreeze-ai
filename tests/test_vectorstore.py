@@ -8,6 +8,8 @@ from infrastructure.rag.vectorstore import (
     _extract_doc_metadata,
     _infer_query_metadata,
     _preferred_source_types,
+    _rank_scored_docs,
+    _score_doc,
     retrieve,
 )
 
@@ -151,6 +153,11 @@ class TestMetadataAwareRetrieval:
         assert result["country"] == "Ireland"
         assert result["intents"] == ["entry_requirements"]
 
+    def test_detects_document_questions_as_entry_requirements(self):
+        result = _infer_query_metadata("What documents are needed to enter Japan for tourism?")
+
+        assert "entry_requirements" in result["intents"]
+
     def test_entry_requirements_prefer_visa_sources(self):
         result = _preferred_source_types(
             {"intents": ["entry_requirements"], "city": "Paris", "country": "France"}
@@ -179,3 +186,55 @@ class TestMetadataAwareRetrieval:
             allowed_source_types=["visa_requirements"],
             require_place_match=True,
         ) is True
+
+    def test_ranking_boosts_exact_destination_and_passport_matches(self):
+        class FakeDoc:
+            def __init__(self, page_content, source, **metadata):
+                self.page_content = page_content
+                self.metadata = {"source": source, **metadata}
+
+        query_meta = _infer_query_metadata(
+            "What are the entry requirements for a US passport holder visiting Paris?"
+        )
+        exact_doc = FakeDoc(
+            "## France (Schengen Area)\n- **US citizens:** Visa-free for up to 90 days.\n- **Documents needed:** Passport valid 3+ months beyond stay.",
+            "knowledge_base/visa_requirements.md",
+            source_type="visa_requirements",
+            country="France",
+            heading="France (Schengen Area)",
+        )
+        noisy_doc = FakeDoc(
+            "## Vietnam\n- **US citizens:** Visa required.\n- **Documents needed:** Passport valid 6+ months.",
+            "knowledge_base/visa_requirements.md",
+            source_type="visa_requirements",
+            country="Vietnam",
+            heading="Vietnam",
+        )
+
+        ranked = _rank_scored_docs(
+            [
+                (
+                    _score_doc(
+                        noisy_doc,
+                        query_meta=query_meta,
+                        allowed_source_types=["visa_requirements"],
+                        retrieval_mode="vector",
+                    ),
+                    0,
+                    noisy_doc,
+                ),
+                (
+                    _score_doc(
+                        exact_doc,
+                        query_meta=query_meta,
+                        allowed_source_types=["visa_requirements"],
+                        retrieval_mode="bm25",
+                    ),
+                    1,
+                    exact_doc,
+                ),
+            ],
+            k=2,
+        )
+
+        assert ranked[0] is exact_doc

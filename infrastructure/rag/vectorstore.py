@@ -6,6 +6,7 @@ import re
 import shutil
 import time
 from functools import lru_cache
+from typing import Any
 
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
 from langchain_community.retrievers import BM25Retriever
@@ -19,6 +20,8 @@ from settings import (
     RAG_CHUNK_SIZE,
     RAG_CHUNK_OVERLAP,
     RAG_TOP_K,
+    RAG_VECTOR_WEIGHT,
+    RAG_BM25_WEIGHT,
     RAG_EMBEDDING_BATCH_SIZE,
     RAG_EMBEDDING_MAX_RETRIES,
     RAG_GOOGLE_EMBEDDING_BATCH_DELAY_SECONDS,
@@ -32,6 +35,46 @@ logger = get_logger(__name__)
 # Module-level caches
 _cached_chunks: list | None = None
 _cached_vectorstores: dict[str, Chroma] = {}
+
+INTENT_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "entry_requirements": (
+        "visa",
+        "entry requirement",
+        "entry requirements",
+        "passport",
+        "passport validity",
+        "documents needed",
+        "required documents",
+        "travel documents",
+        "supporting documents",
+        "proof of funds",
+        "proof of accommodation",
+        "return ticket",
+        "onward ticket",
+        "entry rules",
+        "tourist visa",
+        "tourism entry",
+        "enter",
+        "etias",
+        "eta",
+        "visa on arrival",
+    ),
+    "transport": ("transport", "get around", "metro", "tram", "subway", "bus", "bike"),
+    "budget": ("budget", "cheap", "money-saving", "expensive", "value"),
+    "safety": ("safety", "safe", "scam", "street smarts"),
+    "packing": ("packing", "pack"),
+    "health": ("health", "vaccination", "altitude", "water safety"),
+    "flight_booking": ("flight-booking", "book flights", "flight strategy", "layover"),
+    "hotel_booking": ("hotel-booking", "hotel booking", "book hotels"),
+    "etiquette": ("etiquette", "cultural", "dress code", "haggling"),
+}
+
+PASSPORT_ENTITY_PATTERNS = (
+    r"\b([a-z][a-z\s\-]{1,40})\s+passport holders?\b",
+    r"\b([a-z][a-z\s\-]{1,40})\s+passport\b",
+    r"\b([a-z][a-z\s\-]{1,40})\s+citizens?\b",
+    r"\btravelers with a passport from\s+([a-z][a-z\s\-]{1,40})\b",
+)
 
 def _normalise_text(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", (value or "").lower()).strip()
@@ -130,22 +173,40 @@ def _infer_query_metadata(query: str) -> dict[str, str | list[str]]:
             logger.warning("Unable to resolve city-to-country mapping from place aliases")
 
     intents: list[str] = []
-    intent_patterns = {
-        "entry_requirements": ["visa", "entry requirement", "passport", "etias"],
-        "transport": ["transport", "get around", "metro", "tram", "subway", "bus", "bike"],
-        "budget": ["budget", "cheap", "money-saving", "expensive", "value"],
-        "safety": ["safety", "safe", "scam", "street smarts"],
-        "packing": ["packing", "pack"],
-        "health": ["health", "vaccination", "altitude", "water safety"],
-        "flight_booking": ["flight-booking", "book flights", "flight strategy", "layover"],
-        "hotel_booking": ["hotel-booking", "hotel booking", "book hotels"],
-        "etiquette": ["etiquette", "cultural", "dress code", "haggling"],
-    }
-    for intent, keywords in intent_patterns.items():
+    for intent, keywords in INTENT_KEYWORDS.items():
         if any(keyword in lowered for keyword in keywords):
             intents.append(intent)
 
-    return {"city": city, "country": country, "intents": intents, "query": lowered}
+    return {
+        "city": city,
+        "country": country,
+        "intents": intents,
+        "passport_entities": _extract_passport_entities(query),
+        "query": lowered,
+    }
+
+
+def _extract_passport_entities(query: str) -> list[str]:
+    lowered = _normalise_text(query)
+    entities: list[str] = []
+    seen: set[str] = set()
+
+    for pattern in PASSPORT_ENTITY_PATTERNS:
+        for match in re.finditer(pattern, lowered, flags=re.IGNORECASE):
+            candidate = _normalise_text(match.group(1))
+            if not candidate:
+                continue
+            candidate = re.sub(
+                r"\b(holder|holders|traveler|travelers|visitor|visitors|from)\b",
+                "",
+                candidate,
+            ).strip()
+            if not candidate or candidate in seen:
+                continue
+            seen.add(candidate)
+            entities.append(candidate)
+
+    return entities
 
 
 def _preferred_source_types(query_meta: dict[str, str | list[str]]) -> list[str]:
@@ -343,6 +404,78 @@ def _dedupe_docs(docs: list, k: int) -> list:
     return deduped
 
 
+def _doc_identity(doc: Any) -> tuple[str, str]:
+    metadata = getattr(doc, "metadata", {}) or {}
+    return (
+        str(metadata.get("source", "")),
+        getattr(doc, "page_content", "") or "",
+    )
+
+
+def _score_doc(
+    doc: Any,
+    *,
+    query_meta: dict[str, str | list[str]],
+    allowed_source_types: list[str] | None,
+    retrieval_mode: str,
+) -> float:
+    metadata = getattr(doc, "metadata", {}) or {}
+    content = _normalise_text(getattr(doc, "page_content", "") or "")
+    heading = _normalise_text(str(metadata.get("heading", "")))
+    doc_city = _normalise_text(str(metadata.get("city", "")))
+    doc_country = _normalise_text(str(metadata.get("country", "")))
+    query_city = _normalise_text(str(query_meta.get("city", "")))
+    query_country = _normalise_text(str(query_meta.get("country", "")))
+    passport_entities = [
+        _normalise_text(str(value))
+        for value in (query_meta.get("passport_entities", []) or [])
+        if str(value).strip()
+    ]
+
+    score = RAG_VECTOR_WEIGHT if retrieval_mode == "vector" else RAG_BM25_WEIGHT
+
+    if allowed_source_types and str(metadata.get("source_type", "")) in allowed_source_types:
+        score += 1.0
+
+    if query_country and doc_country == query_country:
+        score += 3.0
+    elif query_country and query_country in heading:
+        score += 1.5
+
+    if query_city and doc_city == query_city:
+        score += 4.0
+    elif query_city and query_city in heading:
+        score += 2.0
+
+    if query_city and query_country and doc_country and doc_country != query_country:
+        score -= 1.5
+
+    for entity in passport_entities:
+        if re.search(rf"\b{re.escape(entity)}\s+citizens?\b", content):
+            score += 2.5
+            break
+        if re.search(rf"\b{re.escape(entity)}\b", content):
+            score += 1.0
+            break
+
+    if "documents needed" in content:
+        score += 0.5
+
+    return score
+
+
+def _rank_scored_docs(scored_docs: list[tuple[float, int, Any]], k: int) -> list:
+    best_docs: dict[tuple[str, str], tuple[float, int, Any]] = {}
+    for score, order, doc in scored_docs:
+        key = _doc_identity(doc)
+        existing = best_docs.get(key)
+        if existing is None or score > existing[0] or (score == existing[0] and order < existing[1]):
+            best_docs[key] = (score, order, doc)
+
+    ranked = sorted(best_docs.values(), key=lambda item: (-item[0], item[1]))
+    return [doc for _, _, doc in ranked[:k]]
+
+
 def _batched(items: list, batch_size: int):
     """Yield non-empty batches from a list."""
     safe_batch_size = max(1, batch_size)
@@ -523,7 +656,8 @@ def retrieve(
         return []
     candidate_k = max(k * 3, 8)
 
-    docs: list = []
+    scored_docs: list[tuple[float, int, Any]] = []
+    next_order = 0
     for plan_index, plan in enumerate(_iter_retrieval_plans(query_meta), start=1):
         plan_started_at = time.perf_counter()
         allowed_source_types = plan["allowed_source_types"]
@@ -546,17 +680,39 @@ def retrieve(
             require_place_match=require_place_match,
         )
 
-        # Interleave the two retrieval modes so we keep both semantic and keyword hits.
         merged_plan_docs: list = []
-        max_len = max(len(vector_docs), len(bm25_docs))
-        for index in range(max_len):
-            if index < len(vector_docs):
-                merged_plan_docs.append(vector_docs[index])
-            if index < len(bm25_docs):
-                merged_plan_docs.append(bm25_docs[index])
+        for doc in vector_docs:
+            merged_plan_docs.append(doc)
+            scored_docs.append(
+                (
+                    _score_doc(
+                        doc,
+                        query_meta=query_meta,
+                        allowed_source_types=allowed_source_types,
+                        retrieval_mode="vector",
+                    ),
+                    next_order,
+                    doc,
+                )
+            )
+            next_order += 1
+        for doc in bm25_docs:
+            merged_plan_docs.append(doc)
+            scored_docs.append(
+                (
+                    _score_doc(
+                        doc,
+                        query_meta=query_meta,
+                        allowed_source_types=allowed_source_types,
+                        retrieval_mode="bm25",
+                    ),
+                    next_order,
+                    doc,
+                )
+            )
+            next_order += 1
 
-        docs.extend(merged_plan_docs)
-        docs = _dedupe_docs(docs, candidate_k)
+        docs = _rank_scored_docs(scored_docs, candidate_k)
         logger.info(
             "RAG retrieval plan completed plan=%s require_place_match=%s allowed_source_types=%s merged_docs=%s deduped_docs=%s elapsed_ms=%.2f",
             plan_index,
@@ -569,7 +725,7 @@ def retrieve(
         if len(docs) >= k:
             break
 
-    docs = _dedupe_docs(docs, k)
+    docs = _rank_scored_docs(scored_docs, k)
     logger.info(
         "RAG retrieval returned %s documents after metadata-aware retrieval total_elapsed_ms=%.2f",
         len(docs),

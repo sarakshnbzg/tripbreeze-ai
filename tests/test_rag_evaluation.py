@@ -9,6 +9,7 @@ from infrastructure.rag.evaluation import (
     evaluate_itinerary_with_llm_judge,
     evaluate_with_llm_judge,
     evaluate_with_ragas,
+    generate_answers,
     record_rag_event,
 )
 
@@ -104,6 +105,43 @@ class TestEvaluateWithRagas:
         assert calls["metrics_count"] == 4
         assert calls["llm"] == ("wrapped_llm", "llm")
         assert calls["embeddings"] == ("wrapped_embeddings", "embeddings")
+
+
+class TestGenerateAnswers:
+    def test_prompt_requests_complete_grounded_details(self, monkeypatch):
+        captured = {}
+
+        class FakeResponse:
+            content = "Grounded answer"
+
+        monkeypatch.setattr(
+            "infrastructure.rag.evaluation.create_chat_model",
+            lambda provider, model, temperature=0: "answer-llm",
+        )
+
+        def fake_invoke(llm, prompt):
+            captured["llm"] = llm
+            captured["prompt"] = prompt
+            return FakeResponse()
+
+        monkeypatch.setattr("infrastructure.rag.evaluation.invoke_with_retry", fake_invoke)
+
+        rows = generate_answers(
+            [
+                {
+                    "user_input": "What are the entry requirements for a US passport holder visiting Paris?",
+                    "retrieved_contexts": ["France visa-free for US citizens. Documents needed: passport valid 3+ months."],
+                }
+            ],
+            provider="openai",
+            model="gpt-4.1-mini",
+        )
+
+        assert rows[0]["response"] == "Grounded answer"
+        assert captured["llm"] == "answer-llm"
+        assert "passport validity requirements" in captured["prompt"]
+        assert "required or supporting documents" in captured["prompt"]
+        assert "Do not invent missing details" in captured["prompt"]
 
 
 class TestJudgeJsonExtraction:

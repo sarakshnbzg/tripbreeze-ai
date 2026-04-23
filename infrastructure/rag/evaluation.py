@@ -182,7 +182,16 @@ def generate_answers(
         contexts = row.get("retrieved_contexts") or []
         prompt = (
             "Answer the travel question using only the provided context.\n"
-            "If the context is insufficient, say so clearly.\n\n"
+            "If the context is insufficient, say so clearly.\n"
+            "Be concise, but do not omit relevant details that are explicitly present in the context.\n"
+            "When available in the context, include the most important applicable details such as:\n"
+            "- visa status or entry permission\n"
+            "- allowed stay duration\n"
+            "- passport validity requirements\n"
+            "- required or supporting documents\n"
+            "- visa fees or costs\n"
+            "- ETIAS, ETA, visa-on-arrival, or similar advance authorization notes\n"
+            "Do not invent missing details or combine rules from unrelated destinations or nationalities.\n\n"
             f"Question: {row['user_input']}\n\n"
             "Context:\n"
             + "\n\n".join(f"[{idx}] {context}" for idx, context in enumerate(contexts, start=1))
