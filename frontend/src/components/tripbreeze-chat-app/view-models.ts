@@ -165,6 +165,29 @@ function toFiniteNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function isGenericLogisticsActivity(label: string): boolean {
+  const normalized = label.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  const genericPhrases = [
+    "airport transfer",
+    "transfer to airport",
+    "station transfer",
+    "transfer to station",
+    "baggage storage",
+    "luggage storage",
+    "check out",
+    "checkout",
+    "hotel checkout",
+    "departure",
+    "depart ",
+  ];
+
+  return genericPhrases.some((phrase) => normalized.includes(phrase));
+}
+
 function buildPointKey(point: ItineraryMapPoint): string {
   return [
     point.kind,
@@ -234,6 +257,9 @@ function buildMapPoints({
       }
 
       const name = readString(activity.name) || `Activity ${activityIndex + 1}`;
+      if (isGenericLogisticsActivity(name)) {
+        return;
+      }
       const detailParts = [
         readString(activity.time_of_day),
         readString(activity.address),

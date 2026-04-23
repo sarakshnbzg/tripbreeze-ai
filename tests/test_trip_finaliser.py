@@ -9,6 +9,7 @@ from domain.nodes.trip_finaliser import (
     _backfill_activity_coordinates,
     _apply_activity_location_metadata,
     _finaliser_success_response,
+    _strip_generic_logistics_coordinates,
     _single_city_plan_context,
     render_itinerary_markdown,
     Itinerary,
@@ -236,6 +237,45 @@ class TestActivityLocationMetadata:
         assert plans[0].activities[0].longitude is None
         assert plans[0].activities[1].latitude is None
         assert plans[0].activities[1].longitude is None
+
+    def test_strips_existing_coordinates_from_generic_logistics_activities(self):
+        plans = [
+            DayPlan(
+                day_number=3,
+                date="2026-06-13",
+                theme="Departure day",
+                activities=[
+                    Activity(
+                        name="Baggage storage",
+                        time_of_day="morning",
+                        notes="Store bags before departure",
+                        latitude=-3.119,
+                        longitude=11.887,
+                        maps_url="https://www.google.com/maps/search/?api=1&query=Baggage+storage",
+                    ),
+                    Activity(
+                        name="Trevi Fountain",
+                        time_of_day="afternoon",
+                        notes="Classic Rome stop",
+                        latitude=41.9009,
+                        longitude=12.4833,
+                        maps_url="https://www.google.com/maps/search/?api=1&query=Trevi+Fountain",
+                    ),
+                ],
+            )
+        ]
+
+        _strip_generic_logistics_coordinates(plans)
+
+        baggage = plans[0].activities[0]
+        assert baggage.latitude is None
+        assert baggage.longitude is None
+        assert baggage.maps_url == ""
+
+        landmark = plans[0].activities[1]
+        assert landmark.latitude == 41.9009
+        assert landmark.longitude == 12.4833
+        assert "Trevi+Fountain" in landmark.maps_url
 
 
 class TestSelectedFlightContext:

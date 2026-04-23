@@ -407,4 +407,40 @@ describe("workspace panels", () => {
         "The planner returned malformed itinerary data, so TripBreeze recovered this itinerary from your approved trip details.",
     });
   });
+
+  it("omits generic travel logistics from trip map points", () => {
+    const viewModel = buildItineraryViewModel({
+      state: {
+        itinerary_data: {
+          daily_plans: [
+            {
+              day_number: 3,
+              activities: [
+                {
+                  name: "Baggage storage",
+                  latitude: -3.119,
+                  longitude: 11.887,
+                },
+                {
+                  name: "Trevi Fountain",
+                  latitude: 41.9009,
+                  longitude: 12.4833,
+                },
+              ],
+            },
+          ],
+        },
+      } as unknown as TravelState,
+      itinerary: "Trip ready",
+      currencyCode: "EUR",
+    });
+
+    expect(viewModel.mapPoints).toEqual([
+      expect.objectContaining({
+        label: "Trevi Fountain",
+        latitude: 41.9009,
+        longitude: 12.4833,
+      }),
+    ]);
+  });
 });

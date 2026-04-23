@@ -31,6 +31,7 @@ from domain.nodes.trip_finaliser_support import (
     _render_markdown_with_live_stream,
     _render_daily_plans,
     _run_finaliser_react_loop,
+    _strip_generic_logistics_coordinates,
     _weather_destination_by_date,
     render_itinerary_markdown,
     render_multi_city_itinerary_markdown,
@@ -332,6 +333,7 @@ def _finalise_multi_city(state: dict) -> dict:
             destination_by_date,
             geocode_fn=geocode_address,
         )
+        _strip_generic_logistics_coordinates(itinerary.daily_plans)
         for hotel, leg in zip(selected_hotels, trip_legs):
             _enrich_hotel_coordinates(
                 hotel or {},
@@ -405,6 +407,7 @@ def _finalise_multi_city(state: dict) -> dict:
         destination_by_date,
         geocode_fn=geocode_address,
     )
+    _strip_generic_logistics_coordinates(itinerary.daily_plans)
     for hotel, leg in zip(selected_hotels, trip_legs):
         _enrich_hotel_coordinates(
             hotel or {},
@@ -515,6 +518,7 @@ def _finalise_single_city(state: dict) -> dict:
         itinerary = _build_single_city_fallback_itinerary(state, fallback_reason)
         _apply_activity_location_metadata(itinerary.daily_plans, attraction_candidates)
         _backfill_activity_coordinates(itinerary.daily_plans, geocode_fn=geocode_address)
+        _strip_generic_logistics_coordinates(itinerary.daily_plans)
         _enrich_hotel_coordinates(
             selected_hotel,
             destination_hint=destination,
@@ -589,6 +593,7 @@ def _finalise_single_city(state: dict) -> dict:
 
     _apply_activity_location_metadata(itinerary.daily_plans, attraction_candidates)
     _backfill_activity_coordinates(itinerary.daily_plans, geocode_fn=geocode_address)
+    _strip_generic_logistics_coordinates(itinerary.daily_plans)
     _enrich_hotel_coordinates(
         selected_hotel,
         destination_hint=destination,

@@ -221,6 +221,24 @@ def _backfill_activity_coordinates(
                 activity.latitude, activity.longitude = coords
 
 
+def _strip_generic_logistics_coordinates(daily_plans: list) -> None:
+    """Remove map metadata from generic logistics activities.
+
+    These items can be useful in the itinerary text, but they should not produce
+    pins because model- or geocoder-supplied coordinates are often misleading.
+    """
+    if not daily_plans:
+        return
+
+    for day in daily_plans:
+        for activity in getattr(day, "activities", []) or []:
+            if not _is_generic_logistics_activity(getattr(activity, "name", "")):
+                continue
+            activity.latitude = None
+            activity.longitude = None
+            activity.maps_url = ""
+
+
 def _rescue_malformed_itinerary(raw: dict) -> dict:
     """Attempt to fix common malformed Itinerary output from LLMs."""
     fixed = dict(raw)
