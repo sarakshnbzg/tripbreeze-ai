@@ -1,6 +1,8 @@
 """Trip Intake node — builds trip request from structured form fields
 and/or a free-text query, using LLM tool calling to parse user input."""
 
+import html
+import re
 from datetime import date, timedelta
 from typing import Any
 
@@ -43,16 +45,48 @@ from infrastructure.logging_utils import get_logger, log_event
 
 logger = get_logger(__name__)
 
+_PROMPT_INJECTION_PATTERNS = (
+    re.compile(r"^\s*(system|assistant|developer|tool)\s*:", re.IGNORECASE),
+    re.compile(r"^\s*ignore\s+(all\s+)?previous\s+instructions\b", re.IGNORECASE),
+    re.compile(r"^\s*disregard\s+(all\s+)?previous\s+instructions\b", re.IGNORECASE),
+    re.compile(r"^\s*forget\s+(all\s+)?previous\s+instructions\b", re.IGNORECASE),
+    re.compile(r"^\s*you\s+are\s+now\b", re.IGNORECASE),
+    re.compile(r"^\s*act\s+as\b", re.IGNORECASE),
+)
+
+
+def _sanitise_untrusted_user_text(text: str) -> str:
+    """Neutralise prompt-like directives before interpolating user text into prompts."""
+    if not text:
+        return ""
+
+    retained_lines: list[str] = []
+    stripped_lines = 0
+    for line in text.replace("\r\n", "\n").split("\n"):
+        if any(pattern.search(line) for pattern in _PROMPT_INJECTION_PATTERNS):
+            stripped_lines += 1
+            continue
+        retained_lines.append(line)
+
+    sanitised = html.escape("\n".join(retained_lines).strip(), quote=False)
+    if stripped_lines:
+        logger.info(
+            "Trip intake removed suspicious prompt-like lines from free-text input count=%s",
+            stripped_lines,
+        )
+    return sanitised
+
 def _classify_domain(llm, query: str, model: str) -> tuple[dict[str, Any], dict | None]:
     """Use LLM tool calling to classify whether a request belongs to the travel domain."""
     if not query.strip():
         return {"in_domain": True, "reason": ""}, None
 
-    logger.info("Classifying request domain via LLM: %s", query)
+    sanitised_query = _sanitise_untrusted_user_text(query)
+    logger.info("Classifying request domain via LLM: %s", sanitised_query)
     llm_with_tools = llm.bind_tools([EvaluateDomain])
     response = invoke_with_retry(
         llm_with_tools,
-        f"{DOMAIN_GUARDRAIL_PROMPT}\n\n<user_query>\n{query}\n</user_query>",
+        f"{DOMAIN_GUARDRAIL_PROMPT}\n\n<user_query>\n{sanitised_query}\n</user_query>",
     )
 
     usage = extract_token_usage(response, model=model, node="domain_guardrail")
@@ -75,12 +109,13 @@ def _parse_free_text(llm, query: str, model: str) -> tuple[dict[str, Any], bool,
     if not query.strip():
         return {}, False, None
 
-    logger.info("Parsing free-text query via LLM: %s", query)
+    sanitised_query = _sanitise_untrusted_user_text(query)
+    logger.info("Parsing free-text query via LLM: %s", sanitised_query)
     llm_with_tools = llm.bind_tools([ExtractTripDetails, ExtractMultiCityTrip])
     prompt = FREE_TEXT_PROMPT.format(today=date.today().isoformat())
     response = invoke_with_retry(
         llm_with_tools,
-        f"{prompt}\n\n<user_query>\n{query}\n</user_query>",
+        f"{prompt}\n\n<user_query>\n{sanitised_query}\n</user_query>",
     )
 
     usage = extract_token_usage(response, model=model, node="trip_intake")
@@ -116,21 +151,23 @@ def _parse_clarification(
     if not answer.strip():
         return {}, False, None
 
+    sanitised_answer = _sanitise_untrusted_user_text(answer)
+    sanitised_original_query = _sanitise_untrusted_user_text(original_query)
     logger.info(
         "Parsing clarification via LLM: fields=%s multi_city=%s answer=%s",
         missing_fields,
         prefer_multi_city,
-        answer,
+        sanitised_answer,
     )
     llm_with_tools = llm.bind_tools([ExtractTripDetails, ExtractMultiCityTrip])
     prompt = (
         f"{CLARIFICATION_PROMPT.format(today=date.today().isoformat())}\n\n"
         f"<trip_mode>\n{'multi_city' if prefer_multi_city else 'single_destination'}\n</trip_mode>\n"
-        f"<original_request>\n{original_query}\n</original_request>\n"
+        f"<original_request>\n{sanitised_original_query}\n</original_request>\n"
         f"<current_trip_state>\n{raw_trip_data}\n</current_trip_state>\n"
         f"<clarification_question>\n{question}\n</clarification_question>\n"
         f"<target_fields>\n{', '.join(missing_fields)}\n</target_fields>\n"
-        f"<user_answer>\n{answer}\n</user_answer>"
+        f"<user_answer>\n{sanitised_answer}\n</user_answer>"
     )
     response = invoke_with_retry(llm_with_tools, prompt)
 
@@ -161,11 +198,12 @@ def _parse_preferences(llm, preferences: str, model: str) -> tuple[dict[str, Any
     if not preferences.strip():
         return {}, None
 
-    logger.info("Parsing preferences via LLM: %s", preferences)
+    sanitised_preferences = _sanitise_untrusted_user_text(preferences)
+    logger.info("Parsing preferences via LLM: %s", sanitised_preferences)
     llm_with_tools = llm.bind_tools([ExtractPreferences])
     response = invoke_with_retry(
         llm_with_tools,
-        f"{PREFERENCES_PROMPT}\n\n<user_preferences>\n{preferences}\n</user_preferences>",
+        f"{PREFERENCES_PROMPT}\n\n<user_preferences>\n{sanitised_preferences}\n</user_preferences>",
     )
 
     usage = extract_token_usage(response, model=model, node="trip_intake")

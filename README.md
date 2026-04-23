@@ -231,9 +231,11 @@ Recent OpenAI-based RAG evaluations have shown strong grounded performance, incl
 
 ## Ethics & Privacy 🛡️
 
-TripBreeze is designed to assist with travel planning, not replace official airline, border-control, or government guidance. Entry requirements can change, so travelers should confirm critical details with official sources before booking or departure.
+TripBreeze is designed to assist with travel planning, not replace official airline, border-control, health, or government guidance. Entry requirements can change, so travelers should confirm critical details with official sources before booking or departure.
 
-The workflow is designed to reduce unreliable output by grounding entry guidance in a local knowledge base, checking budgets before finalisation, and requiring human review before the itinerary is approved. In production, profile storage should be paired with clear consent, secure credential handling, and a sensible retention policy.
+The workflow reduces unreliable output by grounding entry guidance in a local knowledge base, checking budgets before finalisation, requiring human review before approval, and treating free-text intake as untrusted input. The intake layer strips obvious prompt-injection patterns before user text is inserted into prompts.
+
+Known risk areas include third-party ranking bias from live search providers, uneven knowledge-base coverage across passports and destinations, and model bias in geographic or cultural recommendations. Profile data is stored in Postgres, passwords are bcrypt-hashed, and trip history is capped to the latest 10 trips. A fuller write-up lives in [docs/ethics.md](/Users/sarakashanibozorg/Documents/AI Engineering Course/tripbreeze-ai/docs/ethics.md).
 
 ## Docker 🐳
 
