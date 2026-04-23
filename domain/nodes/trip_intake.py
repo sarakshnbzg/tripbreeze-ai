@@ -32,7 +32,7 @@ from domain.nodes.trip_intake_helpers import (
 )
 from infrastructure.currency_utils import format_currency
 from infrastructure.llms.model_factory import create_chat_model, extract_token_usage, invoke_with_retry
-from infrastructure.logging_utils import get_logger
+from infrastructure.logging_utils import get_logger, log_event
 
 logger = get_logger(__name__)
 
@@ -197,6 +197,11 @@ def trip_intake(state: dict) -> dict:
             logger.info(
                 "Trip intake stopped because LLM classified request as out of domain: %s",
                 domain_result.get("reason", ""),
+            )
+            log_event(
+                logger,
+                "workflow.intake_blocked_out_of_domain",
+                reason=domain_result.get("reason", ""),
             )
             return {
                 "error": "Out-of-domain request.",
@@ -420,6 +425,12 @@ def trip_intake(state: dict) -> dict:
 
             question = _build_clarification_question(missing_fields, profile)
             logger.info("Missing fields %s — interrupting for clarification", missing_fields)
+            log_event(
+                logger,
+                "workflow.intake_clarification_requested",
+                missing_fields=missing_fields,
+                is_multi_city=bool(trip_legs),
+            )
             try:
                 clarification_answer = interrupt({
                     "type": "clarification",
@@ -526,6 +537,7 @@ def trip_intake(state: dict) -> dict:
         trip_data = _normalise_trip_data(raw_trip_data, profile)
     except ValueError as exc:
         logger.warning("Trip intake validation error: %s", exc)
+        log_event(logger, "workflow.intake_failed", reason="validation_error", error=str(exc))
         return {
             "error": str(exc),
             "current_step": "intake_error",
@@ -533,6 +545,7 @@ def trip_intake(state: dict) -> dict:
         }
     except Exception as exc:
         logger.exception("Trip intake failed during normalisation")
+        log_event(logger, "workflow.intake_failed", reason="normalisation_exception", error=str(exc))
         return {
             "error": "Something went wrong while processing your trip details. Please try again.",
             "current_step": "intake_error",
@@ -547,6 +560,17 @@ def trip_intake(state: dict) -> dict:
         trip_data.get("return_date"),
         trip_data.get("num_travelers"),
         bool(trip_legs),
+    )
+    log_event(
+        logger,
+        "workflow.intake_completed",
+        origin=trip_data.get("origin"),
+        destination=trip_data.get("destination"),
+        departure_date=trip_data.get("departure_date"),
+        has_return_date=bool(trip_data.get("return_date")),
+        traveler_count=trip_data.get("num_travelers"),
+        is_multi_city=bool(trip_legs),
+        trip_leg_count=len(trip_legs),
     )
 
     # Build confirmation message

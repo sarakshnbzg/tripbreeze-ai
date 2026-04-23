@@ -250,6 +250,16 @@ def budget_aggregator(state: dict) -> dict:
             "Hotels fit the selected budget, but flight options do not. "
             "Try increasing the budget, shortening the trip, or changing the dates."
         )
+    elif filtered_flights and not filtered_hotels:
+        notes = (
+            "Hotel options are currently unavailable, so a complete trip total is not available yet. "
+            "You can revise the search to try different dates, budget, or destination."
+        )
+    elif filtered_hotels and not filtered_flights:
+        notes = (
+            "Flight options are currently unavailable, so a complete trip total is not available yet. "
+            "You can revise the search to try different dates, budget, or destination."
+        )
     elif budget_limit > 0 and not within_budget:
         over = total - budget_limit
         notes = (

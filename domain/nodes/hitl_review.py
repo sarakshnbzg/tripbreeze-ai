@@ -1,7 +1,7 @@
 """HITL Review node — formats research results for human inspection."""
 
 from domain.utils.dates import trip_duration_display
-from infrastructure.logging_utils import get_logger
+from infrastructure.logging_utils import get_logger, log_event
 
 logger = get_logger(__name__)
 
@@ -98,6 +98,16 @@ def hitl_review(state: dict) -> dict:
         bool(dest_info),
         is_multi_city,
         len(trip_legs) if is_multi_city else 0,
+    )
+    log_event(
+        logger,
+        "workflow.review_ready",
+        flight_option_count=len(flights),
+        hotel_option_count=len(hotels),
+        has_budget=bool(budget),
+        has_destination_info=bool(dest_info),
+        is_multi_city=is_multi_city,
+        trip_leg_count=len(trip_legs) if is_multi_city else 0,
     )
 
     parts = []

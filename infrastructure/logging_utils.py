@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import sys
+from typing import Any
 
 from pythonjsonlogger.json import JsonFormatter
 
@@ -35,3 +36,8 @@ def get_logger(name: str) -> logging.Logger:
     """Return a module logger after ensuring logging is configured."""
     configure_logging()
     return logging.getLogger(name)
+
+
+def log_event(logger: logging.Logger, event: str, **fields: Any) -> None:
+    """Emit a structured log entry with a stable event name and optional fields."""
+    logger.info(event, extra={"event": event, **fields})

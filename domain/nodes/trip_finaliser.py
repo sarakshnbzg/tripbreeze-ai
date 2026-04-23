@@ -47,7 +47,7 @@ from infrastructure.llms.model_factory import (
     invoke_with_retry,
     stream_with_retry,
 )
-from infrastructure.logging_utils import get_logger
+from infrastructure.logging_utils import get_logger, log_event
 from infrastructure.streaming import get_token_emitter
 logger = get_logger(__name__)
 # ── Prompt ────────────────────────────────────────────────────────────
@@ -727,6 +727,14 @@ def _finalise_multi_city(state: dict) -> dict:
         _enrich_multi_city_weather(itinerary, trip_legs)
         finaliser_metadata["used_fallback"] = True
         finaliser_metadata["fallback_reason"] = fallback_reason or "missing_final_tool"
+        log_event(
+            logger,
+            "workflow.finaliser_fallback_used",
+            mode="multi_city",
+            provider=state.get("llm_provider", ""),
+            model=state.get("llm_model", ""),
+            reason=finaliser_metadata["fallback_reason"],
+        )
         return _finaliser_success_response(
             itinerary=itinerary,
             render_markdown=render_multi_city_itinerary_markdown,
@@ -753,6 +761,14 @@ def _finalise_multi_city(state: dict) -> dict:
         itinerary = _build_multi_city_fallback_itinerary(state, "structured_parse_failed")
         finaliser_metadata["used_fallback"] = True
         finaliser_metadata["fallback_reason"] = "structured_parse_failed"
+        log_event(
+            logger,
+            "workflow.finaliser_fallback_used",
+            mode="multi_city",
+            provider=state.get("llm_provider", ""),
+            model=state.get("llm_model", ""),
+            reason="structured_parse_failed",
+        )
 
     destination_by_date = _weather_destination_by_date(trip_legs)
     _apply_activity_location_metadata(
@@ -765,6 +781,15 @@ def _finalise_multi_city(state: dict) -> dict:
         _enrich_hotel_coordinates(hotel or {}, destination_hint=str(leg.get("destination", "") or ""))
     _enrich_multi_city_weather(itinerary, trip_legs)
     logger.info("Multi-city finaliser completed via LLM itinerary generation")
+    log_event(
+        logger,
+        "workflow.finaliser_completed",
+        mode="multi_city",
+        provider=state.get("llm_provider", ""),
+        model=state.get("llm_model", ""),
+        used_fallback=bool(finaliser_metadata.get("used_fallback")),
+        itinerary_day_count=len(itinerary.daily_plans),
+    )
     return _finaliser_success_response(
         itinerary=itinerary,
         render_markdown=render_multi_city_itinerary_markdown,
@@ -845,6 +870,14 @@ def _finalise_single_city(state: dict) -> dict:
         _enrich_single_city_weather(itinerary, destination)
         finaliser_metadata["used_fallback"] = True
         finaliser_metadata["fallback_reason"] = fallback_reason or "missing_final_tool"
+        log_event(
+            logger,
+            "workflow.finaliser_fallback_used",
+            mode="single_city",
+            provider=state.get("llm_provider", ""),
+            model=state.get("llm_model", ""),
+            reason=finaliser_metadata["fallback_reason"],
+        )
         return _finaliser_success_response(
             itinerary=itinerary,
             render_markdown=render_itinerary_markdown,
@@ -871,8 +904,25 @@ def _finalise_single_city(state: dict) -> dict:
         itinerary = _build_single_city_fallback_itinerary(state, "structured_parse_failed")
         finaliser_metadata["used_fallback"] = True
         finaliser_metadata["fallback_reason"] = "structured_parse_failed"
+        log_event(
+            logger,
+            "workflow.finaliser_fallback_used",
+            mode="single_city",
+            provider=state.get("llm_provider", ""),
+            model=state.get("llm_model", ""),
+            reason="structured_parse_failed",
+        )
 
     logger.info("Finaliser completed itinerary generation")
+    log_event(
+        logger,
+        "workflow.finaliser_completed",
+        mode="single_city",
+        provider=state.get("llm_provider", ""),
+        model=state.get("llm_model", ""),
+        used_fallback=bool(finaliser_metadata.get("used_fallback")),
+        itinerary_day_count=len(itinerary.daily_plans),
+    )
 
     _apply_activity_location_metadata(itinerary.daily_plans, attraction_candidates)
     _backfill_activity_coordinates(itinerary.daily_plans)

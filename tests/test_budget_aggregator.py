@@ -149,6 +149,7 @@ class TestBudgetAggregatorNode:
         assert result["flight_options"] == []
         assert result["hotel_options"] == [{"total_price": 400}]
         assert "Hotel options are ready" in result["budget"]["partial_results_note"]
+        assert "Flight options are currently unavailable" in result["budget"]["budget_notes"]
 
     def test_partial_flight_results_are_preserved_when_hotels_missing(self):
         result = budget_aggregator(self._base_state(
@@ -159,6 +160,7 @@ class TestBudgetAggregatorNode:
         assert result["flight_options"] == [{"price": 300}]
         assert result["hotel_options"] == []
         assert "Flight options are ready" in result["budget"]["partial_results_note"]
+        assert "Hotel options are currently unavailable" in result["budget"]["budget_notes"]
 
     def test_multi_city_partial_leg_notes_are_preserved(self):
         state = {

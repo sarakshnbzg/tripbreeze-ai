@@ -238,6 +238,81 @@ The backend allows local browser access from:
 
 To customize this list, set `FRONTEND_ORIGINS` in `.env` as a comma-separated list.
 
+## Operations And Observability 🔎
+
+TripBreeze emits JSON logs to stderr using [`infrastructure/logging_utils.py`](infrastructure/logging_utils.py). Each log line includes the standard timestamp, logger name, and level, and key workflow transitions now also emit a stable `event` field with structured metadata.
+
+High-signal workflow events to watch:
+
+- `workflow.graph_build_started`
+- `workflow.graph_build_completed`
+- `workflow.profile_loaded`
+- `workflow.intake_completed`
+- `workflow.intake_clarification_requested`
+- `workflow.intake_blocked_out_of_domain`
+- `workflow.intake_failed`
+- `workflow.research_completed`
+- `workflow.review_ready`
+- `workflow.review_decision_received`
+- `workflow.route_after_review`
+- `workflow.finaliser_completed`
+- `workflow.finaliser_fallback_used`
+- `workflow.memory_updated`
+
+What these events help you monitor:
+
+- search throughput and funnel progress from intake to review
+- how often clarification is required before planning can continue
+- out-of-domain or validation failures during intake
+- whether research completed with flights, hotels, destination briefing, and RAG sources
+- how often users revise versus approve at the review step
+- whether itinerary generation completed normally or fell back to a recovery path
+- whether memory persistence ran after successful finalisation
+
+Important graceful-degradation signals:
+
+- `workflow.finaliser_fallback_used`: the itinerary was recovered from approved trip data after the finaliser failed or returned malformed output
+- `budget.partial_results_note` in graph state: only flights or only hotels were available for the current search
+- `budget.per_leg_breakdown[*].partial_results_note` in multi-city searches: a specific leg has only partial results
+
+Recommended things to monitor in production-like environments:
+
+- rate of `workflow.intake_failed`
+- rate of `workflow.finaliser_fallback_used`
+- counts of searches that reach `workflow.review_ready` but not `workflow.memory_updated`
+- high frequency of partial-result notes, which can indicate external provider instability
+
+## Deployment Notes 🛠️
+
+Required external services for the full experience:
+
+- one LLM provider: `OPENAI_API_KEY` or `GOOGLE_API_KEY`
+- `SERPAPI_API_KEY` for live flight and hotel search
+- `DATABASE_URL` for persistent memory and LangGraph checkpoints
+
+Optional services:
+
+- `CSC_API_KEY` for syncing reference data
+- SMTP settings for itinerary email delivery
+- LangSmith credentials for trace collection
+
+Operational behavior to expect:
+
+- if SerpAPI flight or hotel search fails, the workflow should still continue to review with partial or empty results instead of crashing
+- if the finaliser fails to emit valid structured output, the app will generate a fallback itinerary and surface that recovery in the UI
+- if RAG retrieval is thin, destination guidance may be sparse, but the workflow should still complete
+
+Useful local commands:
+
+```bash
+uv run python app.py
+npm install --prefix frontend
+uv run python scripts/dev.py
+uv run pytest
+npm run test --prefix frontend
+npm run test:e2e --prefix frontend
+```
+
 ## Testing 🧪
 
 Run the full test suite:

@@ -5,7 +5,7 @@ from datetime import date, timedelta
 
 from langgraph.types import interrupt
 
-from infrastructure.logging_utils import get_logger
+from infrastructure.logging_utils import get_logger, log_event
 
 logger = get_logger(__name__)
 
@@ -116,6 +116,12 @@ def review_router(state: dict) -> dict:
         "review_router received feedback_type=%s user_approved=%s",
         feedback_type,
         bool(decision.get("user_approved", state.get("user_approved"))),
+    )
+    log_event(
+        logger,
+        "workflow.review_decision_received",
+        feedback_type=feedback_type or "rewrite_itinerary",
+        user_approved=bool(decision.get("user_approved", state.get("user_approved"))),
     )
 
     if not is_revision:

@@ -533,10 +533,9 @@ class TestSerpAPIFailure:
 
         # Pipeline should not crash — flight_agent catches the exception
         assert result["current_step"] == "awaiting_review"
-        # Budget aggregator filters out all options when flights are empty
-        # (no viable combination exists), so both lists end up empty
         assert result["budget"]["flights_before_budget_filter"] == 0
-        assert "No flight and hotel combinations" in result["budget"]["budget_notes"]
+        assert "Hotel options are ready" in result["budget"]["partial_results_note"]
+        assert "Flight options are currently unavailable" in result["budget"]["budget_notes"]
 
     def test_hotel_search_failure_continues(self):
         with _patch_all() as mocks:
@@ -546,7 +545,8 @@ class TestSerpAPIFailure:
 
         assert result["current_step"] == "awaiting_review"
         assert result["budget"]["hotels_before_budget_filter"] == 0
-        assert "No flight and hotel combinations" in result["budget"]["budget_notes"]
+        assert "Flight options are ready" in result["budget"]["partial_results_note"]
+        assert "Hotel options are currently unavailable" in result["budget"]["budget_notes"]
 
 
 class TestBudgetFiltering:

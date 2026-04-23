@@ -17,7 +17,7 @@ from domain.nodes.review_router import review_router
 from domain.nodes.trip_finaliser import trip_finaliser
 from domain.nodes.memory_updater import memory_updater
 from domain.nodes.research_orchestrator import research_orchestrator
-from infrastructure.logging_utils import get_logger
+from infrastructure.logging_utils import get_logger, log_event
 
 logger = get_logger(__name__)
 
@@ -27,6 +27,7 @@ logger = get_logger(__name__)
 def _route_after_intake(state: dict) -> str:
     current_step = state.get("current_step")
     logger.info("Routing after intake: current_step=%s", current_step)
+    log_event(logger, "workflow.route_after_intake", current_step=current_step or "")
     if current_step == "intake_complete":
         return "continue"
     return "stop"
@@ -38,6 +39,12 @@ def _route_after_review_router(state: dict) -> str:
         "Routing after review router: feedback_type=%s user_approved=%s",
         feedback_type,
         bool(state.get("user_approved")),
+    )
+    log_event(
+        logger,
+        "workflow.route_after_review",
+        feedback_type=feedback_type or "",
+        user_approved=bool(state.get("user_approved")),
     )
     if feedback_type == "revise_plan":
         return "revise"
@@ -51,6 +58,7 @@ def _route_after_review_router(state: dict) -> str:
 def build_graph() -> StateGraph:
     """Construct the LangGraph travel-planning workflow."""
     logger.info("Building travel planning graph")
+    log_event(logger, "workflow.graph_build_started")
     graph = StateGraph(TravelState)
 
     # Nodes
@@ -107,4 +115,5 @@ def compile_graph():
     otherwise.
     """
     logger.info("Compiling travel planning graph")
+    log_event(logger, "workflow.graph_build_completed")
     return build_graph().compile(checkpointer=get_checkpointer())

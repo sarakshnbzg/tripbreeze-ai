@@ -1,7 +1,7 @@
 """Profile Loader node — loads user preferences from long-term memory."""
 
 from infrastructure.persistence.memory_store import load_profile
-from infrastructure.logging_utils import get_logger
+from infrastructure.logging_utils import get_logger, log_event
 
 logger = get_logger(__name__)
 
@@ -16,6 +16,13 @@ def profile_loader(state: dict) -> dict:
         user_id,
         bool(profile.get("home_city")),
         len(profile.get("past_trips", [])),
+    )
+    log_event(
+        logger,
+        "workflow.profile_loaded",
+        user_id=user_id,
+        has_home_city=bool(profile.get("home_city")),
+        past_trip_count=len(profile.get("past_trips", [])),
     )
 
     return {

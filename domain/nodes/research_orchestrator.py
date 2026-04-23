@@ -23,7 +23,7 @@ from domain.nodes.research_orchestrator_helpers import (
     resolve_destination_country,
 )
 from infrastructure.llms.model_factory import create_chat_model, extract_token_usage, invoke_with_retry
-from infrastructure.logging_utils import get_logger
+from infrastructure.logging_utils import get_logger, log_event
 from infrastructure.rag.evaluation import record_rag_event
 from infrastructure.rag.vectorstore import retrieve
 
@@ -226,6 +226,16 @@ def research_orchestrator(state: dict) -> dict:
         multi_city_result["rag_trace"] = rag_trace
         multi_city_result["token_usage"] = []  # No LLM calls for multi-city flight/hotel search
         multi_city_result["current_step"] = "research_complete"
+        log_event(
+            logger,
+            "workflow.research_completed",
+            is_multi_city=True,
+            trip_leg_count=len(trip_legs),
+            flight_option_count=sum(len(options) for options in (multi_city_result.get("flight_options_by_leg") or [])),
+            hotel_option_count=sum(len(options) for options in (multi_city_result.get("hotel_options_by_leg") or [])),
+            has_destination_info=bool(multi_city_result.get("destination_info")),
+            rag_source_count=len(rag_sources),
+        )
         logger.info(
             "Research orchestrator multi-city completed destinations=%s rag_elapsed_ms=%.2f total_elapsed_ms=%.2f",
             len(unique_destinations),
@@ -421,6 +431,15 @@ def research_orchestrator(state: dict) -> dict:
         len(collected.get("hotel_options") or []),
         bool(collected.get("destination_info")),
         (time.perf_counter() - overall_started_at) * 1000,
+    )
+    log_event(
+        logger,
+        "workflow.research_completed",
+        is_multi_city=False,
+        flight_option_count=len(collected.get("flight_options") or []),
+        hotel_option_count=len(collected.get("hotel_options") or []),
+        has_destination_info=bool(collected.get("destination_info")),
+        rag_source_count=len(collected.get("rag_sources") or []),
     )
 
     return {
