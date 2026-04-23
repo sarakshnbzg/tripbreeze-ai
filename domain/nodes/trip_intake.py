@@ -22,15 +22,22 @@ from domain.nodes.trip_intake_helpers import (
     _apply_profile_defaults,
     _build_clarification_question,
     _build_trip_legs,
+    _build_trip_legs_from_form,
+    _build_trip_intake_message,
+    _fill_origin_from_profile_if_only_gap,
+    _finalise_inferred_multi_city_trip,
     _has_structured_trip_signal,
     _infer_multi_city_data,
     _infer_stay_length_days,
-    _merge_has_value,
+    _infer_missing_dates_from_query,
+    _merge_clarification_answer,
+    _merge_single_city_parsed_query,
+    _missing_required_fields,
     _normalise_hotel_stars,
     _normalise_trip_data,
     _repair_invalid_duration_dates,
+    _recover_multi_city_trip,
 )
-from infrastructure.currency_utils import format_currency
 from infrastructure.llms.model_factory import create_chat_model, extract_token_usage, invoke_with_retry
 from infrastructure.logging_utils import get_logger, log_event
 
@@ -225,54 +232,14 @@ def trip_intake(state: dict) -> dict:
 
     # Check for multi-city from structured form fields first
     if structured_fields.get("multi_city_legs"):
-        form_legs = structured_fields["multi_city_legs"]
-        origin = structured_fields.get("origin") or profile.get("home_city") or ""
-        departure_date_str = structured_fields.get("departure_date", "")
-        return_to_origin = structured_fields.get("return_to_origin", True)
-
-        if origin and departure_date_str and form_legs:
-            try:
-                current_date = date.fromisoformat(departure_date_str)
-                current_city = origin
-                for leg_data in form_legs:
-                    dest = leg_data.get("destination", "")
-                    nights = leg_data.get("nights", 0)
-                    if not dest:
-                        continue
-                    check_out = (current_date + timedelta(days=nights)).isoformat() if nights > 0 else None
-                    trip_legs.append({
-                        "leg_index": len(trip_legs),
-                        "origin": current_city,
-                        "destination": dest,
-                        "departure_date": current_date.isoformat(),
-                        "nights": nights,
-                        "needs_hotel": nights > 0,
-                        "check_out_date": check_out,
-                    })
-                    current_city = dest
-                    current_date = current_date + timedelta(days=nights)
-
-                # Add return leg (skip for open-jaw / one-way multi-city)
-                if return_to_origin and current_city != origin:
-                    trip_legs.append({
-                        "leg_index": len(trip_legs),
-                        "origin": current_city,
-                        "destination": origin,
-                        "departure_date": current_date.isoformat(),
-                        "nights": 0,
-                        "needs_hotel": False,
-                        "check_out_date": None,
-                    })
-
-                if trip_legs:
-                    is_multi_city = True
-                    raw_trip_data["origin"] = trip_legs[0]["origin"]
-                    raw_trip_data["destination"] = trip_legs[0]["destination"]
-                    raw_trip_data["departure_date"] = trip_legs[0]["departure_date"]
-                    raw_trip_data["return_date"] = trip_legs[-1]["departure_date"]
-                    logger.info("Multi-city trip from form with %d legs", len(trip_legs))
-            except (ValueError, TypeError) as exc:
-                logger.warning("Failed to build trip legs from form: %s", exc)
+        try:
+            trip_legs, trip_updates = _build_trip_legs_from_form(structured_fields, profile)
+            if trip_legs:
+                is_multi_city = True
+                raw_trip_data.update(trip_updates)
+                logger.info("Multi-city trip from form with %d legs", len(trip_legs))
+        except (ValueError, TypeError) as exc:
+            logger.warning("Failed to build trip legs from form: %s", exc)
 
     # If there's a free-text query and no multi-city from form, extract trip details
     if free_text_query.strip() and not trip_legs:
@@ -305,71 +272,22 @@ def trip_intake(state: dict) -> dict:
                 raw_trip_data["return_date"] = trip_legs[-1]["departure_date"]
                 logger.info("Multi-city trip with %d legs detected", len(trip_legs))
         else:
-            # Single-destination: merge parsed values into raw_trip_data
-            for key, value in parsed_query.items():
-                not_empty = value is not None and value != "" and value != [] and (value != 0 or key == "stops")
-                already_set = raw_trip_data.get(key) not in (None, "", []) if key != "stops" else raw_trip_data.get(key) is not None
-                if not_empty and (revision_mode or not already_set):
-                    raw_trip_data[key] = value
-
-            # If the free-text query had extra preferences, append to existing
-            if parsed_query.get("preferences"):
-                existing_prefs = raw_trip_data.get("preferences", "")
-                ft_prefs = parsed_query["preferences"]
-                if existing_prefs and ft_prefs not in existing_prefs:
-                    raw_trip_data["preferences"] = f"{existing_prefs}, {ft_prefs}"
-                elif not existing_prefs:
-                    raw_trip_data["preferences"] = ft_prefs
-
-            inferred_multi_city_data = _infer_multi_city_data(free_text_query)
-            if inferred_multi_city_data:
-                logger.info(
-                    "Recovered multi-city structure from free text fallback with %d legs",
-                    len(inferred_multi_city_data.get("legs", [])),
-                )
-                if not raw_trip_data.get("destination") and inferred_multi_city_data.get("legs"):
-                    raw_trip_data["destination"] = inferred_multi_city_data["legs"][0]["destination"]
-                for key in ("num_travelers", "budget_limit", "currency"):
-                    if not _merge_has_value(key, raw_trip_data.get(key)) and _merge_has_value(key, inferred_multi_city_data.get(key)):
-                        raw_trip_data[key] = inferred_multi_city_data[key]
-                if raw_trip_data.get("departure_date"):
-                    multi_city_seed = {
-                        **inferred_multi_city_data,
-                        "origin": raw_trip_data.get("origin") or "",
-                        "departure_date": raw_trip_data.get("departure_date") or "",
-                        "return_to_origin": False if raw_trip_data.get("is_one_way") else inferred_multi_city_data.get("return_to_origin", True),
-                    }
-                    built_legs = _build_trip_legs(multi_city_seed, raw_trip_data.get("origin", ""), profile)
-                    if built_legs:
-                        trip_legs = built_legs
-                        is_multi_city = True
-                        raw_trip_data["origin"] = trip_legs[0]["origin"]
-                        raw_trip_data["destination"] = trip_legs[0]["destination"]
-                        raw_trip_data["departure_date"] = trip_legs[0]["departure_date"]
-                        raw_trip_data["return_date"] = trip_legs[-1]["departure_date"]
+            _merge_single_city_parsed_query(
+                raw_trip_data,
+                parsed_query,
+                revision_mode=revision_mode,
+            )
+            trip_legs, inferred_multi_city_data = _recover_multi_city_trip(
+                raw_trip_data,
+                free_text_query,
+                profile,
+            )
+            if trip_legs:
+                is_multi_city = True
     else:
         logger.info("Trip intake using structured fields only")
 
-    if (
-        free_text_query.strip()
-        and raw_trip_data.get("departure_date")
-        and not raw_trip_data.get("return_date")
-        and not raw_trip_data.get("check_out_date")
-    ):
-        inferred_days = _infer_stay_length_days(free_text_query)
-        if inferred_days:
-            inferred_check_out = (
-                date.fromisoformat(raw_trip_data["departure_date"]) + timedelta(days=inferred_days)
-            ).isoformat()
-            raw_trip_data["check_out_date"] = inferred_check_out
-            if not raw_trip_data.get("is_one_way"):
-                raw_trip_data["return_date"] = inferred_check_out
-            logger.info(
-                "Inferred stay length from free text: %s day(s), check_out_date=%s return_date=%s",
-                inferred_days,
-                inferred_check_out,
-                raw_trip_data.get("return_date", ""),
-            )
+    _infer_missing_dates_from_query(raw_trip_data, free_text_query)
 
     if (
         raw_trip_data.get("departure_date")
@@ -382,18 +300,7 @@ def trip_intake(state: dict) -> dict:
     # If the saved home city is the only remaining gap, use it directly.
     # When other required fields are also missing, prefer asking the user so
     # they can confirm origin and dates together in the clarification step.
-    if (
-        not raw_trip_data.get("origin")
-        and profile.get("home_city")
-        and raw_trip_data.get("destination")
-        and raw_trip_data.get("departure_date")
-        and (
-            raw_trip_data.get("return_date")
-            or raw_trip_data.get("check_out_date")
-            or raw_trip_data.get("is_one_way")
-        )
-    ):
-        raw_trip_data["origin"] = profile["home_city"]
+    _fill_origin_from_profile_if_only_gap(raw_trip_data, profile)
 
     # ── Check for missing required fields and ask the user ──
     # Ask for clarification whenever a free-text search still lacks required trip
@@ -406,19 +313,7 @@ def trip_intake(state: dict) -> dict:
     # interrupt() returns the previously supplied answer automatically.
     if free_text_query.strip() and not revision_mode:
         while True:
-            missing_fields: list[str] = []
-            if not raw_trip_data.get("destination"):
-                missing_fields.append("destination")
-            if not raw_trip_data.get("origin"):
-                missing_fields.append("origin")
-            if not raw_trip_data.get("departure_date"):
-                missing_fields.append("departure_date")
-            if (
-                not raw_trip_data.get("return_date")
-                and not raw_trip_data.get("check_out_date")
-                and not raw_trip_data.get("is_one_way")
-            ):
-                missing_fields.append("return_date")
+            missing_fields = _missing_required_fields(raw_trip_data)
 
             if not missing_fields:
                 break
@@ -473,22 +368,12 @@ def trip_intake(state: dict) -> dict:
             if usage:
                 token_usage.append(usage)
             if clarification_is_multi_city:
-                if inferred_multi_city_data is None:
-                    inferred_multi_city_data = {}
-                if parsed_answer.get("legs"):
-                    inferred_multi_city_data["legs"] = parsed_answer["legs"]
-                    if not raw_trip_data.get("destination"):
-                        raw_trip_data["destination"] = parsed_answer["legs"][0].get("destination", "")
-                if "return_to_origin" in parsed_answer:
-                    inferred_multi_city_data["return_to_origin"] = parsed_answer["return_to_origin"]
-                    if parsed_answer["return_to_origin"] is False:
-                        raw_trip_data["is_one_way"] = True
-                        raw_trip_data["return_date"] = ""
-            for key, value in parsed_answer.items():
-                not_empty = _merge_has_value(key, value) or (key == "return_date" and value == "")
-                already_set = _merge_has_value(key, raw_trip_data.get(key))
-                if not_empty and not already_set:
-                    raw_trip_data[key] = value
+                inferred_multi_city_data = inferred_multi_city_data or {}
+            inferred_multi_city_data = _merge_clarification_answer(
+                raw_trip_data,
+                parsed_answer,
+                inferred_multi_city_data,
+            )
             _repair_invalid_duration_dates(
                 raw_trip_data,
                 free_text_query,
@@ -497,19 +382,9 @@ def trip_intake(state: dict) -> dict:
             )
 
     if inferred_multi_city_data and not trip_legs and raw_trip_data.get("departure_date"):
-        multi_city_seed = {
-            **inferred_multi_city_data,
-            "origin": raw_trip_data.get("origin") or "",
-            "departure_date": raw_trip_data.get("departure_date") or "",
-            "return_to_origin": False if raw_trip_data.get("is_one_way") else inferred_multi_city_data.get("return_to_origin", True),
-        }
-        trip_legs = _build_trip_legs(multi_city_seed, raw_trip_data.get("origin", ""), profile)
+        trip_legs = _finalise_inferred_multi_city_trip(raw_trip_data, inferred_multi_city_data, profile)
         if trip_legs:
             is_multi_city = True
-            raw_trip_data["origin"] = trip_legs[0]["origin"]
-            raw_trip_data["destination"] = trip_legs[0]["destination"]
-            raw_trip_data["departure_date"] = trip_legs[0]["departure_date"]
-            raw_trip_data["return_date"] = trip_legs[-1]["departure_date"]
 
     _apply_profile_defaults(raw_trip_data, profile)
 
@@ -573,34 +448,10 @@ def trip_intake(state: dict) -> dict:
         trip_leg_count=len(trip_legs),
     )
 
-    # Build confirmation message
-    if trip_legs:
-        # Multi-city trip message
-        legs_summary = " → ".join(leg["destination"] for leg in trip_legs)
-        message_content = (
-            f"Got it! Planning a multi-city trip:\n"
-            f"📍 {trip_data.get('origin', '?')} → {legs_summary}\n"
-            f"📅 {trip_data.get('departure_date', '?')} to {trip_data.get('return_date', '?')}\n"
-            f"👥 {trip_data.get('num_travelers', 1)} traveler(s)\n"
-            f"💰 Budget: {format_currency(trip_data.get('budget_limit'), trip_data.get('currency')) if trip_data.get('budget_limit') else 'flexible'}\n\n"
-            "Searching for flights, hotels, and destination info for each leg..."
-        )
-    else:
-        # Single-destination trip message
-        message_content = (
-            f"Got it! Planning a trip:\n"
-            f"📍 {trip_data.get('origin', '?')} → {trip_data.get('destination', '?')}\n"
-            f"📅 {trip_data.get('departure_date', '?')}"
-            f"{' to ' + trip_data['return_date'] if trip_data.get('return_date') else ' (one-way)'}\n"
-            f"👥 {trip_data.get('num_travelers', 1)} traveler(s)\n"
-            f"💰 Budget: {format_currency(trip_data.get('budget_limit'), trip_data.get('currency')) if trip_data.get('budget_limit') else 'flexible'}\n\n"
-            "Searching for flights, hotels, and destination info..."
-        )
-
     return {
         "trip_request": trip_data,
         "trip_legs": trip_legs,
         "token_usage": token_usage,
-        "messages": [{"role": "assistant", "content": message_content}],
+        "messages": [{"role": "assistant", "content": _build_trip_intake_message(trip_data, trip_legs)}],
         "current_step": "intake_complete",
     }

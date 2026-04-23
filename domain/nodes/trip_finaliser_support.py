@@ -1,12 +1,28 @@
 """Support models and deterministic rendering helpers for the trip finaliser."""
 
+import json
 import re
 from datetime import datetime, timedelta
+from typing import Any
 
-from pydantic import BaseModel, Field
+from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
+from pydantic import BaseModel, Field, ValidationError
 
+from infrastructure.apis.geocoding_client import geocode_address
+from infrastructure.apis.serpapi_client import fetch_hotel_address
+from infrastructure.apis.weather_client import fetch_weather_for_trip
+from infrastructure.llms.model_factory import (
+    create_chat_model,
+    extract_token_usage,
+    invoke_with_retry,
+    stream_with_retry,
+)
 from domain.utils.dates import trip_duration_with_dates
 from infrastructure.currency_utils import format_currency
+from infrastructure.logging_utils import get_logger
+from infrastructure.streaming import get_token_emitter
+
+logger = get_logger(__name__)
 
 
 class Source(BaseModel):
@@ -102,6 +118,426 @@ class MultiCityItinerary(BaseModel):
     visa_entry_info: str = Field(description="Visa and entry requirements for all destinations")
     packing_tips: str = Field(description="Packing tips considering all destinations and weather")
     sources: list[Source] = Field(default_factory=list, description="Knowledge-base documents referenced.")
+
+
+def _enrich_hotel_address(
+    selected_hotel: dict,
+    trip_request: dict,
+    *,
+    fetch_hotel_address_fn=fetch_hotel_address,
+) -> None:
+    """Resolve the selected hotel's street address via SerpAPI (in-place)."""
+    if not selected_hotel or selected_hotel.get("address"):
+        return
+    property_token = selected_hotel.get("property_token")
+    if not property_token:
+        return
+    address = fetch_hotel_address_fn(
+        property_token=property_token,
+        check_in=selected_hotel.get("check_in", trip_request.get("departure_date", "")),
+        check_out=selected_hotel.get("check_out", trip_request.get("return_date", "")),
+        adults=trip_request.get("num_travelers", 1),
+        currency=selected_hotel.get("currency", trip_request.get("currency", "EUR")),
+    )
+    if address:
+        selected_hotel["address"] = address
+        logger.info("Resolved hotel address via property_token")
+
+
+def _enrich_hotel_coordinates(
+    selected_hotel: dict,
+    destination_hint: str = "",
+    *,
+    geocode_fn=geocode_address,
+) -> None:
+    """Geocode the hotel's address into latitude/longitude (in-place)."""
+    if not selected_hotel:
+        return
+    if selected_hotel.get("latitude") is not None and selected_hotel.get("longitude") is not None:
+        return
+    address = str(selected_hotel.get("address", "") or "").strip()
+    if not address:
+        return
+    query = address
+    hint = (destination_hint or "").strip()
+    if hint and hint.lower() not in address.lower():
+        query = f"{address}, {hint}"
+    coords = geocode_fn(query)
+    if coords:
+        selected_hotel["latitude"], selected_hotel["longitude"] = coords
+        logger.info("Geocoded hotel '%s' to (%.5f, %.5f)", selected_hotel.get("name", "?"), *coords)
+
+
+def _is_generic_logistics_activity(name: str | None) -> bool:
+    """Return True for generic transfer/check-out activities that should not be geocoded by name alone."""
+    text = (name or "").strip().lower()
+    if not text:
+        return False
+
+    generic_phrases = (
+        "airport transfer",
+        "transfer to airport",
+        "airport",
+        "check out",
+        "checkout",
+        "hotel checkout",
+        "baggage storage",
+        "luggage storage",
+        "depart",
+        "departure",
+        "station transfer",
+        "transfer to station",
+    )
+    return any(phrase in text for phrase in generic_phrases)
+
+
+def _backfill_activity_coordinates(
+    daily_plans: list,
+    destination_by_date: dict[str, str] | None = None,
+    *,
+    geocode_fn=geocode_address,
+) -> None:
+    """Geocode any activity that has an address but no coordinates (in-place)."""
+    if not daily_plans:
+        return
+    for day in daily_plans:
+        day_hint = ""
+        if destination_by_date and getattr(day, "date", None):
+            day_hint = destination_by_date.get(day.date, "") or ""
+        for activity in getattr(day, "activities", []) or []:
+            if activity.latitude is not None and activity.longitude is not None:
+                continue
+            address = (activity.address or "").strip()
+            fallback_hint = day_hint or (activity.destination or "")
+            if not address and not activity.name:
+                continue
+            if not address and _is_generic_logistics_activity(activity.name):
+                continue
+            query_parts = [part for part in [activity.name, address, fallback_hint] if part]
+            if not query_parts:
+                continue
+            coords = geocode_fn(", ".join(query_parts))
+            if coords:
+                activity.latitude, activity.longitude = coords
+
+
+def _rescue_malformed_itinerary(raw: dict) -> dict:
+    """Attempt to fix common malformed Itinerary output from LLMs."""
+    fixed = dict(raw)
+    daily_plans = fixed.get("daily_plans", [])
+
+    valid_plans = []
+    string_fragments = []
+    for item in daily_plans:
+        if isinstance(item, dict) and "day_number" in item:
+            valid_plans.append(item)
+        elif isinstance(item, str):
+            string_fragments.append(item)
+
+    fixed["daily_plans"] = valid_plans
+
+    for fragment in string_fragments:
+        for field in ("budget_breakdown", "visa_entry_info", "packing_tips"):
+            if not fixed.get(field):
+                for pattern in [f"{field}':", f'"{field}":', f"{field}:"]:
+                    if pattern in fragment:
+                        idx = fragment.find(pattern)
+                        value = fragment[idx + len(pattern):].strip().strip("'\"")
+                        if value:
+                            fixed[field] = value
+                            break
+
+    if not fixed.get("budget_breakdown"):
+        fixed["budget_breakdown"] = "Budget information unavailable."
+    if not fixed.get("visa_entry_info"):
+        fixed["visa_entry_info"] = "Please check visa requirements for your nationality."
+    if not fixed.get("packing_tips"):
+        fixed["packing_tips"] = "Pack according to weather and planned activities."
+
+    return fixed
+
+
+def _run_finaliser_react_loop(
+    *,
+    state: dict,
+    prompt: str,
+    final_tool_model,
+    final_tool_name: str,
+    initial_user_message: str,
+    retrieve_knowledge_tool=None,
+    token_node_name: str,
+    completion_log_name: str,
+    create_chat_model_fn=create_chat_model,
+    extract_token_usage_fn=extract_token_usage,
+    invoke_with_retry_fn=invoke_with_retry,
+) -> tuple[dict, list[dict], list[dict], dict]:
+    model = state.get("llm_model")
+    llm = create_chat_model_fn(
+        state.get("llm_provider"),
+        model,
+        temperature=float(state.get("llm_temperature", 0.5)),
+    )
+    tools = [final_tool_model]
+    tools_by_name = {}
+    if retrieve_knowledge_tool is not None:
+        tools.insert(0, retrieve_knowledge_tool)
+        tools_by_name["retrieve_knowledge"] = retrieve_knowledge_tool
+
+    llm_with_tools = llm.bind_tools(tools)
+
+    messages = [
+        SystemMessage(content=prompt),
+        HumanMessage(content=initial_user_message),
+    ]
+
+    token_usage: list[dict] = []
+    final_result: dict = {}
+    diagnostics = {
+        "iterations": 0,
+        "termination_reason": "unknown",
+        "final_tool_emitted": False,
+        "tool_calls": [],
+        "unknown_tool_calls": [],
+        "tool_errors": [],
+    }
+
+    for iteration in range(4):
+        diagnostics["iterations"] = iteration + 1
+        response = invoke_with_retry_fn(llm_with_tools, messages)
+        messages.append(response)
+        token_usage.append(extract_token_usage_fn(response, model=model, node=token_node_name))
+
+        if not getattr(response, "tool_calls", None):
+            logger.info("%s completed without further tool calls", completion_log_name)
+            diagnostics["termination_reason"] = "no_tool_calls"
+            break
+
+        for tool_call in response.tool_calls:
+            tool_name = tool_call["name"]
+            diagnostics["tool_calls"].append(tool_name)
+            logger.info("%s received tool call %s", completion_log_name, tool_name)
+
+            if tool_name == final_tool_name:
+                final_result = tool_call.get("args", {})
+                diagnostics["final_tool_emitted"] = True
+                diagnostics["termination_reason"] = "final_tool"
+                messages.append(ToolMessage(
+                    content=f"{final_tool_name} received.",
+                    tool_call_id=tool_call["id"],
+                ))
+                logger.info("%s received final itinerary", completion_log_name)
+                break
+
+            if tool_name not in tools_by_name:
+                logger.warning("%s received unknown tool call: %s", completion_log_name, tool_name)
+                diagnostics["unknown_tool_calls"].append(tool_name)
+                messages.append(ToolMessage(
+                    content=f"Error: unknown tool '{tool_name}'.",
+                    tool_call_id=tool_call["id"],
+                ))
+                continue
+
+            try:
+                tool_result = tools_by_name[tool_name].invoke(tool_call.get("args", {}))
+            except Exception as exc:
+                logger.exception("%s tool %s failed", completion_log_name, tool_name)
+                diagnostics["tool_errors"].append({"tool": tool_name, "error": str(exc)})
+                tool_result = json.dumps({"error": str(exc)})
+            messages.append(ToolMessage(content=tool_result, tool_call_id=tool_call["id"]))
+
+        if final_result:
+            break
+    else:
+        logger.warning("%s exhausted all %s iterations without a final result", completion_log_name, 4)
+        diagnostics["termination_reason"] = "max_iterations"
+
+    if diagnostics["termination_reason"] in ("", "unknown"):
+        diagnostics["termination_reason"] = "completed_without_final_tool"
+
+    return final_result, token_usage, messages, diagnostics
+
+
+def _parse_structured_itinerary(
+    *,
+    final_result: dict,
+    model_class,
+    rescue_log_name: str,
+):
+    try:
+        return model_class(**final_result)
+    except ValidationError as exc:
+        logger.warning("%s validation failed, attempting rescue: %s", rescue_log_name, exc)
+        rescued = _rescue_malformed_itinerary(final_result)
+        try:
+            return model_class(**rescued)
+        except ValidationError:
+            logger.exception("%s rescue failed", rescue_log_name)
+            return None
+
+
+def _enrich_single_city_weather(
+    itinerary: Itinerary,
+    destination: str,
+    *,
+    fetch_weather_for_trip_fn=fetch_weather_for_trip,
+) -> None:
+    day_dates = [day.date for day in itinerary.daily_plans if day.date]
+    if not destination or not day_dates:
+        return
+
+    weather_data = fetch_weather_for_trip_fn(destination, day_dates)
+    for day in itinerary.daily_plans:
+        if day.date and day.date in weather_data:
+            w = weather_data[day.date]
+            day.weather = DayWeatherInfo(
+                temp_min=w.temp_min,
+                temp_max=w.temp_max,
+                condition=w.condition,
+                precipitation_chance=w.precipitation_chance,
+                is_historical=w.is_historical,
+            )
+    logger.info("Enriched %d daily plans with weather data", len(weather_data))
+
+
+def _enrich_multi_city_weather(
+    itinerary: MultiCityItinerary,
+    trip_legs: list[dict],
+    *,
+    fetch_weather_for_trip_fn=fetch_weather_for_trip,
+) -> None:
+    date_to_destination = _weather_destination_by_date(trip_legs)
+    weather_requests: dict[str, list[str]] = {}
+    for day in itinerary.daily_plans:
+        if day.date and day.date in date_to_destination:
+            destination = date_to_destination[day.date]
+            weather_requests.setdefault(destination, []).append(day.date)
+
+    for destination, dates in weather_requests.items():
+        weather_data = fetch_weather_for_trip_fn(destination, sorted(set(dates)))
+        for day in itinerary.daily_plans:
+            if day.date and day.date in weather_data and date_to_destination.get(day.date) == destination:
+                w = weather_data[day.date]
+                day.weather = DayWeatherInfo(
+                    temp_min=w.temp_min,
+                    temp_max=w.temp_max,
+                    condition=w.condition,
+                    precipitation_chance=w.precipitation_chance,
+                    is_historical=w.is_historical,
+                )
+
+
+def _chunk_text(chunk: Any) -> str:
+    """Extract plain text from a LangChain streaming chunk."""
+    content = getattr(chunk, "content", "")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text = item.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "".join(parts)
+    return str(content or "")
+
+
+def _render_markdown_with_live_stream(
+    state: dict,
+    itinerary,
+    fallback_markdown: str,
+    *,
+    render_prompt: str,
+    create_chat_model_fn=create_chat_model,
+    stream_with_retry_fn=stream_with_retry,
+    get_token_emitter_fn=get_token_emitter,
+) -> str:
+    """Render the user-facing markdown with true model streaming when an emitter is active."""
+    token_emitter = get_token_emitter_fn()
+    if token_emitter is None:
+        return fallback_markdown
+
+    model = state.get("llm_model")
+    llm = create_chat_model_fn(
+        state.get("llm_provider"),
+        model,
+        temperature=0,
+    )
+    prompt = render_prompt.format(
+        itinerary_json=json.dumps(itinerary.model_dump(), indent=2, ensure_ascii=True),
+    )
+
+    rendered_parts: list[str] = []
+    try:
+        for chunk in stream_with_retry_fn(llm, prompt):
+            text = _chunk_text(chunk)
+            if not text:
+                continue
+            rendered_parts.append(text)
+            token_emitter(text)
+    except Exception:
+        logger.exception("Live markdown rendering failed; falling back to deterministic renderer")
+        return fallback_markdown
+
+    rendered_markdown = "".join(rendered_parts).strip()
+    return rendered_markdown or fallback_markdown
+
+
+def _normalise_place_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", (value or "").lower())
+
+
+def _candidate_lookup(candidates: list[dict]) -> dict[str, list[dict]]:
+    lookup: dict[str, list[dict]] = {}
+    for candidate in candidates:
+        key = _normalise_place_key(str(candidate.get("name", "")))
+        if key:
+            lookup.setdefault(key, []).append(candidate)
+    return lookup
+
+
+def _apply_activity_location_metadata(
+    daily_plans: list[DayPlan],
+    candidates: list[dict],
+    *,
+    destination_by_date: dict[str, str] | None = None,
+) -> None:
+    """Backfill map fields from the canonical attraction candidates by name."""
+    if not daily_plans or not candidates:
+        return
+
+    lookup = _candidate_lookup(candidates)
+    for day in daily_plans:
+        day_destination = ""
+        if destination_by_date and day.date:
+            day_destination = str(destination_by_date.get(day.date, "")).strip().lower()
+        for activity in day.activities:
+            key = _normalise_place_key(activity.name)
+            matches = lookup.get(key, [])
+            if not matches:
+                continue
+            candidate = matches[0]
+            if day_destination:
+                for match in matches:
+                    candidate_destination = str(match.get("destination", "")).strip().lower()
+                    if candidate_destination == day_destination:
+                        candidate = match
+                        break
+
+            if not activity.category:
+                activity.category = str(candidate.get("category", "") or "")
+            if not activity.address:
+                activity.address = str(candidate.get("address", "") or "")
+            if activity.latitude is None:
+                activity.latitude = candidate.get("latitude")
+            if activity.longitude is None:
+                activity.longitude = candidate.get("longitude")
+            if not activity.maps_url:
+                activity.maps_url = str(candidate.get("maps_url", "") or "")
+            if not activity.destination:
+                activity.destination = str(candidate.get("destination", "") or "")
 
 
 def _looks_like_structured_markdown(body: str) -> bool:
