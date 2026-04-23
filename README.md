@@ -362,4 +362,9 @@ tripbreeze-ai/
 
 ## Future Work 🔭
 
+- [ ] Expand RAG visa information with more countries, clearer passport-specific rules, and source freshness checks.
+- [ ] Improve the review step so users can revise specific flight, hotel, or itinerary preferences without restarting the whole workflow.
+- [ ] Add clearer fallback behavior when live search APIs return incomplete or unavailable results.
+- [ ] Add user profile management so travellers can view and update saved preferences directly.
+- [ ] Add links from each user profile to previously generated travel plans.
 - [ ] Replace remaining bootstrap reference data with managed sources so defaults do not require code changes.
