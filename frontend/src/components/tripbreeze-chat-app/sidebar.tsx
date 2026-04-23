@@ -55,13 +55,13 @@ export function AppSidebar({
 }) {
   return (
     <aside className="hidden w-80 shrink-0 lg:block">
-      <Card className="p-6">
+      <Card className="border-white/70 bg-white/76 p-6">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm uppercase tracking-[0.25em] text-slate">Account</p>
             <h2 className="mt-2 font-display text-2xl text-ink">{authenticatedUser}</h2>
           </div>
-          <button type="button" onClick={onLogout} className="rounded-full border border-ink/10 p-2 text-slate transition hover:bg-white">
+          <button type="button" onClick={onLogout} className="rounded-full border border-line/80 bg-white/70 p-2 text-slate transition hover:bg-white">
             <LogOut className="h-4 w-4" />
           </button>
         </div>
@@ -71,7 +71,7 @@ export function AppSidebar({
             <button
               type="button"
               onClick={() => setShowProfilePreferences((current) => !current)}
-              className="flex w-full items-center justify-between rounded-2xl border border-ink/10 bg-white/70 px-4 py-3 text-left transition hover:bg-white"
+              className="flex w-full items-center justify-between rounded-2xl border border-line/80 bg-paper/75 px-4 py-3 text-left transition hover:bg-white"
             >
               <span className="flex items-center gap-2 text-sm font-semibold text-ink">
                 <UserRound className="h-4 w-4" />
@@ -171,7 +171,7 @@ export function AppSidebar({
               <div className="mb-3 text-sm font-semibold text-ink">Past Trips</div>
               <div className="space-y-2">
                 {profile.past_trips.slice(-5).reverse().map((trip, index) => (
-                  <div key={`${trip.destination ?? "trip"}-${index}`} className="rounded-2xl bg-white/80 p-3 text-sm">
+                  <div key={`${trip.destination ?? "trip"}-${index}`} className="rounded-2xl border border-line/60 bg-white/82 p-3 text-sm">
                     <div className="font-medium text-ink">{String(trip.destination ?? "Trip")}</div>
                     <div className="text-slate">{String(trip.dates ?? "")}</div>
                     {trip.final_itinerary ? (
@@ -210,7 +210,7 @@ export function AppSidebar({
               <button
                 type="button"
                 onClick={() => setShowTokenUsage((current) => !current)}
-                className="flex w-full items-center justify-between rounded-2xl border border-ink/10 bg-white/70 px-4 py-3 text-left transition hover:bg-white"
+                className="flex w-full items-center justify-between rounded-2xl border border-line/80 bg-paper/75 px-4 py-3 text-left transition hover:bg-white"
               >
                 <span className="text-sm font-semibold text-ink">Token Usage</span>
                 <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate">
@@ -219,7 +219,7 @@ export function AppSidebar({
               </button>
               {showTokenUsage ? (
                 <>
-                  <div className="mt-3 rounded-2xl bg-white/80 p-3 text-sm text-slate">
+                  <div className="mt-3 rounded-2xl border border-line/60 bg-white/82 p-3 text-sm text-slate">
                     <div>Current cost: ${currentTokenSummary.cost.toFixed(4)}</div>
                     <div>Input: {currentTokenSummary.input_tokens.toLocaleString()}</div>
                     <div>Output: {currentTokenSummary.output_tokens.toLocaleString()}</div>
@@ -227,7 +227,7 @@ export function AppSidebar({
                   {tokenUsageHistory.length ? (
                     <div className="mt-2 space-y-2">
                       {tokenUsageHistory.map((item) => (
-                        <div key={`${item.label}-${item.cost}`} className="rounded-2xl bg-white/60 p-3 text-xs text-slate">
+                        <div key={`${item.label}-${item.cost}`} className="rounded-2xl border border-line/50 bg-white/65 p-3 text-xs text-slate">
                           <div className="font-semibold text-ink">{item.label}</div>
                           <div>${item.cost.toFixed(4)}</div>
                         </div>

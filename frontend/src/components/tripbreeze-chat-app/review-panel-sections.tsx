@@ -15,7 +15,7 @@ export function DestinationBriefingPanel({ destinationInfo }: { destinationInfo:
   }
 
   return (
-    <div className="rounded-[1.75rem] border border-ink/10 bg-white/80 p-5">
+    <div className="rounded-[1.75rem] border border-line/70 bg-paper/88 p-5">
       <div className="mb-3 text-lg font-semibold text-ink">Destination briefing</div>
       <div className="text-sm leading-7 text-ink">
         {renderMarkdownContent(String(destinationInfo)) ?? String(destinationInfo)}
@@ -49,27 +49,35 @@ export function ReviewWorkspaceHeader({ model }: { model: ReviewWorkspaceModel }
 
   return (
     <>
-      <div className="mb-5 flex items-center gap-2 text-lg font-semibold text-ink">
-        <Plane className="h-5 w-5 text-coral" />
-        Review your trip
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 text-lg font-semibold text-ink">
+            <Plane className="h-5 w-5 text-coral" />
+            Review your trip
+          </div>
+          <div className="mt-1 text-sm text-muted">Pick the right options first, then personalise the itinerary details.</div>
+        </div>
+        <div className="rounded-full border border-pine/15 bg-pine/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-pine">
+          Decision workspace
+        </div>
       </div>
       <div className="mb-5 flex flex-wrap gap-2">
         {steps.map((step) => (
           <div
             key={step}
-            className="rounded-full border border-ink/10 bg-white/75 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate sm:text-xs sm:tracking-[0.14em]"
+            className="rounded-full border border-line/70 bg-white/82 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate sm:text-xs sm:tracking-[0.14em]"
           >
             {step}
           </div>
         ))}
       </div>
       {state.trip_legs?.length ? (
-        <div className="mb-5 rounded-[1.4rem] border border-ink/10 bg-white/70 px-4 py-3 text-sm text-slate">
+        <div className="mb-5 rounded-[1.4rem] border border-pine/12 bg-pine/8 px-4 py-3 text-sm text-slate">
           <span className="font-semibold text-ink">Multi-city progress:</span>{" "}
           {completedMultiCityLegs} of {state.trip_legs.length} legs fully selected
         </div>
       ) : (
-        <div className="mb-5 rounded-[1.4rem] border border-ink/10 bg-white/70 px-4 py-3 text-sm text-slate">
+        <div className="mb-5 rounded-[1.4rem] border border-pine/12 bg-pine/8 px-4 py-3 text-sm text-slate">
           <span className="font-semibold text-ink">Selected so far:</span>{" "}
           {hasSelectedSingleFlight ? selectionLabel(selectedOutboundOption, "Flight selected") : "No flight yet"}
           {isRoundTrip
@@ -84,7 +92,7 @@ export function ReviewWorkspaceHeader({ model }: { model: ReviewWorkspaceModel }
 
 export function EmptyOptionsPanel() {
   return (
-    <div className="rounded-[1.6rem] border border-dashed border-ink/15 bg-white/75 p-5 text-sm text-slate">
+    <div className="rounded-[1.6rem] border border-dashed border-line bg-paper/85 p-5 text-sm text-slate">
       <div className="font-semibold text-ink">No bookable options are ready yet</div>
       <div className="mt-2 leading-7">
         The planner finished this search without flight or hotel results you can choose from here.
@@ -124,7 +132,7 @@ export function PersonalisationPanel({
   return (
     <div
       ref={personaliseSectionRef}
-      className="mt-5 rounded-[1.8rem] border border-ink/10 bg-gradient-to-br from-mist/90 to-white p-5"
+      className="mt-5 rounded-[1.8rem] border border-pine/12 bg-gradient-to-br from-paper via-mist/90 to-white p-5"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
@@ -133,7 +141,7 @@ export function PersonalisationPanel({
             Shape the trip around what you want to do and how full you want the days to feel.
           </div>
         </div>
-        <div className="rounded-[1.2rem] bg-white/85 px-3 py-2 text-xs text-slate">
+        <div className="rounded-[1.2rem] border border-line/60 bg-white/88 px-3 py-2 text-xs text-slate">
           <span className="font-semibold text-ink">Selected:</span>{" "}
           {interests.length ? interests.map(sentenceLabel).join(", ") : "No interests yet"} • {sentenceLabel(pace)} pace
         </div>
@@ -155,8 +163,8 @@ export function PersonalisationPanel({
                 }
                 className={`rounded-[1.2rem] border px-4 py-3 text-left text-sm transition ${
                   active
-                    ? "border-ink bg-ink text-white shadow-[0_14px_30px_rgba(16,33,43,0.16)]"
-                    : "border-ink/10 bg-white text-slate hover:border-coral/40 hover:bg-white"
+                    ? "border-pine bg-pine text-white shadow-[0_14px_30px_rgba(24,77,71,0.18)]"
+                    : "border-line/70 bg-white text-slate hover:border-pine/35 hover:bg-white"
                 }`}
               >
                 <div className="font-semibold">{sentenceLabel(interest)}</div>
@@ -180,7 +188,7 @@ export function PersonalisationPanel({
               className={`rounded-[1.2rem] border px-4 py-3 text-left text-sm transition ${
                 pace === paceOption
                   ? "border-coral bg-coral text-white shadow-[0_14px_30px_rgba(215,108,78,0.18)]"
-                  : "border-ink/10 bg-white text-slate hover:border-coral/40"
+                  : "border-line/70 bg-white text-slate hover:border-coral/40"
               }`}
             >
               <div className="font-semibold">{sentenceLabel(paceOption)}</div>

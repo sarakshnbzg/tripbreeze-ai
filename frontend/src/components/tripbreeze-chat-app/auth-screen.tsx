@@ -1,4 +1,4 @@
-import { LoaderCircle, WandSparkles } from "lucide-react";
+import { LoaderCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -44,26 +44,34 @@ export function AuthScreen({
   return (
     <div className="mx-auto flex min-h-screen max-w-6xl items-center px-4 py-10">
       <div className="grid w-full gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-        <Card className="section-grid p-8 sm:p-10">
-          <div className="inline-flex items-center gap-2 rounded-full border border-ink/10 bg-white/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.25em] text-slate">
-            <WandSparkles className="h-4 w-4" />
-            New frontend, familiar flow
-          </div>
+        <Card className="section-grid overflow-hidden border-white/80 bg-[linear-gradient(180deg,rgba(255,250,244,0.94),rgba(244,239,231,0.8))] p-8 sm:p-10">
           <h1 className="mt-5 font-display text-5xl leading-tight text-ink">TripBreeze AI</h1>
           <p className="mt-5 max-w-xl text-base leading-7 text-slate">
-            Log in or register, set your travel preferences, then plan your trip in a simple chat-style workspace with voice input, trip form refinement, review, and itinerary generation.
+            Log in, set your preferences, and plan trips in a simpler chat-style workspace.
           </p>
+          <div className="mt-8 grid gap-3 sm:grid-cols-3">
+            {[
+              { label: "Plan", detail: "Search flights and hotels." },
+              { label: "Review", detail: "Compare and choose." },
+              { label: "Finalize", detail: "Build a shareable itinerary." },
+            ].map((item) => (
+              <div key={item.label} className="rounded-[1.4rem] border border-white/75 bg-white/70 p-4">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-pine">{item.label}</div>
+                <div className="mt-2 text-sm leading-6 text-muted">{item.detail}</div>
+              </div>
+            ))}
+          </div>
         </Card>
 
-        <Card className="p-6 sm:p-8">
-          <div className="mb-5 flex gap-2 rounded-full bg-white/80 p-1">
+        <Card className="border-white/85 bg-white/92 p-6 shadow-shell sm:p-8">
+          <div className="mb-5 flex gap-2 rounded-full border border-line/70 bg-paper/90 p-1">
             {(["login", "register"] as const).map((mode) => (
               <button
                 key={mode}
                 type="button"
                 onClick={() => setAuthMode(mode)}
                 className={`flex-1 rounded-full px-4 py-3 text-sm font-semibold transition ${
-                  authMode === mode ? "bg-ink text-white" : "text-slate"
+                  authMode === mode ? "bg-pine text-white shadow-focus" : "text-slate"
                 }`}
               >
                 {mode === "login" ? "Log In" : "Register"}

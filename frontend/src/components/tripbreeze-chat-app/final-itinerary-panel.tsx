@@ -78,7 +78,7 @@ export function FinalItineraryPanel({
           <div className="text-lg font-semibold text-ink">Final itinerary</div>
           <div className="text-sm text-slate">Your approved trip plan is ready to read, download, or email.</div>
         </div>
-        <div className="rounded-[1.5rem] border border-ink/10 bg-white/85 p-4 xl:min-w-[24rem]">
+        <div className="rounded-[1.5rem] border border-line/70 bg-white/88 p-4 xl:min-w-[24rem]">
           <div className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate">Save or share</div>
           <div className="flex flex-wrap gap-3">
             <Button variant="secondary" onClick={() => void onDownloadPdf()} disabled={loading !== null}>

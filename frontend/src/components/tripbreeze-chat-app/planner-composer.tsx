@@ -32,15 +32,15 @@ export function PlannerComposer({
   }
 
   return (
-    <div className="mt-6 rounded-[1.75rem] border border-ink/10 bg-mist/70 p-5">
+    <div className="mt-6 rounded-[1.9rem] border border-pine/12 bg-[linear-gradient(180deg,rgba(255,250,244,0.96),rgba(244,239,231,0.82))] p-5 shadow-focus">
       <textarea
-        className="h-28 w-full rounded-3xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
+        className="h-28 w-full rounded-3xl border border-line/80 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral focus:shadow-[0_0_0_4px_rgba(215,108,78,0.12)]"
         placeholder="Describe your trip..."
         value={form.freeText}
         onChange={(event) => setForm((current) => ({ ...current, freeText: event.target.value }))}
       />
 
-      <details className="mt-4 rounded-3xl bg-white/70 p-4">
+      <details className="mt-4 rounded-3xl border border-white/70 bg-white/74 p-4">
         <summary className="cursor-pointer text-sm font-semibold text-ink">Refine your search (optional)</summary>
         <div className="mt-4 space-y-4">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -299,7 +299,7 @@ export function PlannerComposer({
       </details>
 
       <div className="mt-4 flex flex-wrap gap-3">
-        <Button onClick={onPlanTrip} disabled={loading !== null}>
+        <Button onClick={onPlanTrip} disabled={loading !== null} className="min-w-[10rem]">
           {loading === "planning" ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
           Search Trip
         </Button>

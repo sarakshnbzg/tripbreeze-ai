@@ -20,8 +20,8 @@ export function MessageFeed({ messages }: { messages: ChatMessage[] }) {
           key={`${message.role}-${index}`}
           className={`max-w-4xl rounded-[1.75rem] px-5 py-4 text-sm leading-7 shadow-sm ${
             message.role === "user"
-              ? "ml-auto bg-ink text-white shadow-[0_16px_36px_rgba(16,33,43,0.18)]"
-              : "border border-ink/8 bg-white text-ink"
+              ? "ml-auto bg-pine text-white shadow-[0_16px_36px_rgba(24,77,71,0.20)]"
+              : "border border-line/70 bg-paper/90 text-ink"
           }`}
         >
           <div
@@ -44,14 +44,14 @@ export function TranscriptPanel({ title, messages }: { title: string; messages: 
   }
 
   return (
-    <div className="rounded-[1.75rem] border border-ink/10 bg-white/75 px-5 py-4 text-sm leading-7 text-ink shadow-sm">
+    <div className="rounded-[1.75rem] border border-line/70 bg-paper/88 px-5 py-4 text-sm leading-7 text-ink shadow-sm">
       <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate">{title}</div>
       <div className="space-y-3">
         {messages.map((message, index) => (
           <div
             key={`${message.role}-transcript-${index}`}
             className={`max-w-4xl rounded-[1.4rem] px-4 py-3 text-sm leading-7 ${
-              message.role === "user" ? "ml-auto bg-ink text-white" : "border border-ink/8 bg-white text-ink"
+              message.role === "user" ? "ml-auto bg-pine text-white" : "border border-line/60 bg-white text-ink"
             }`}
           >
             <div
@@ -88,7 +88,7 @@ export function PlanningProgressPanel({
 
   if (compact) {
     return (
-      <div className="rounded-[1.6rem] border border-ink/10 bg-white/70 p-4 lg:hidden">
+      <div className="rounded-[1.6rem] border border-line/70 bg-paper/82 p-4 lg:hidden">
         <button
           type="button"
           onClick={() => setShowPlanningProgress((current) => !current)}
@@ -110,7 +110,7 @@ export function PlanningProgressPanel({
             {recentPlanningUpdates.map((update, index) => (
               <div
                 key={`mobile-${update}-${index}`}
-                className="rounded-[1.1rem] border border-ink/8 bg-white/80 px-3 py-2 text-sm text-slate"
+                className="rounded-[1.1rem] border border-line/60 bg-white/85 px-3 py-2 text-sm text-slate"
               >
                 {update}
               </div>
@@ -122,7 +122,7 @@ export function PlanningProgressPanel({
   }
 
   return (
-    <div className="rounded-[1.75rem] border border-ink/10 bg-gradient-to-r from-mist/90 to-white/80 p-5">
+    <div className="rounded-[1.75rem] border border-line/70 bg-gradient-to-r from-paper/95 via-mist/90 to-white/88 p-5">
       <button
         type="button"
         onClick={() => setShowPlanningProgress((current) => !current)}
@@ -139,7 +139,7 @@ export function PlanningProgressPanel({
       {showPlanningProgress ? (
         <div className="mt-3 space-y-2 text-sm text-slate">
           {recentPlanningUpdates.map((update, index) => (
-            <div key={`${update}-${index}`} className="rounded-[1.1rem] border border-ink/8 bg-white/80 px-3 py-2">
+            <div key={`${update}-${index}`} className="rounded-[1.1rem] border border-line/60 bg-white/85 px-3 py-2">
               {update}
             </div>
           ))}
@@ -167,7 +167,7 @@ export function ClarificationPanel({
   }
 
   return (
-    <div className="mt-6 rounded-[1.75rem] border border-coral/30 bg-coral/10 p-5">
+    <div className="mt-6 rounded-[1.75rem] border border-coral/30 bg-[linear-gradient(180deg,rgba(215,108,78,0.12),rgba(255,250,244,0.95))] p-5">
       <div className="text-sm font-semibold text-coral">More information needed</div>
       <div className="mt-2 text-sm text-slate">Answer this to continue planning your current trip.</div>
       <textarea

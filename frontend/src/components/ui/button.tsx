@@ -12,9 +12,9 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        primary: "bg-ink px-5 py-3 text-white hover:bg-pine",
-        secondary: "border border-ink/10 bg-white/80 px-5 py-3 text-ink hover:bg-white",
-        ghost: "px-4 py-2 text-slate hover:bg-white/60",
+        primary: "bg-coral px-5 py-3 text-white shadow-[0_16px_36px_rgba(215,108,78,0.28)] hover:bg-[#c45d40]",
+        secondary: "border border-line/80 bg-white/88 px-5 py-3 text-ink hover:border-pine/30 hover:bg-white",
+        ghost: "px-4 py-2 text-slate hover:bg-white/60 hover:text-ink",
       },
       size: {
         default: "",

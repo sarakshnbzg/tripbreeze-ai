@@ -63,10 +63,15 @@ export function PlannerStage({
 
   return (
     <main className="min-w-0 flex-1">
-      <Card className="p-6 sm:p-8">
-        <div className="flex flex-col gap-4 border-b border-ink/10 pb-5 sm:flex-row sm:items-center sm:justify-between">
+      <Card className="relative overflow-hidden border-white/85 bg-white/88 p-6 shadow-shell sm:p-8">
+        <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-r from-sun/12 via-white/0 to-pine/10" />
+        <div className="relative flex flex-col gap-4 border-b border-line/70 pb-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="font-display text-4xl text-ink">TripBreeze AI</h1>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate">Travel planning workspace</div>
+            <h1 className="mt-2 font-display text-4xl text-ink">TripBreeze AI</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+              Search, compare, and refine a trip plan before turning it into a polished itinerary.
+            </p>
           </div>
           <div className="flex gap-3">
             <Button variant="secondary" onClick={() => setShowModelSettings((current) => !current)}>
@@ -86,9 +91,9 @@ export function PlannerStage({
           </div>
         </div>
 
-        <div className="mt-6 space-y-5">
+        <div className="relative mt-6 space-y-5">
           {!showComposer && !itinerary ? (
-            <div className="rounded-[1.4rem] border border-ink/10 bg-mist/55 px-4 py-3 text-sm text-slate">
+            <div className="rounded-[1.4rem] border border-pine/15 bg-pine/8 px-4 py-3 text-sm text-slate">
               <span className="font-semibold text-ink">Ask planner to rework results</span> reruns planning from the current review with your notes.
             </div>
           ) : null}
@@ -100,7 +105,7 @@ export function PlannerStage({
           {shouldShowMessageFeed ? <MessageFeed messages={messages} /> : null}
 
           {shouldShowRequestSummary ? (
-            <div className="rounded-[1.75rem] border border-ink/10 bg-white/75 px-5 py-4 text-sm leading-7 text-ink shadow-sm">
+            <div className="rounded-[1.75rem] border border-line/80 bg-paper/92 px-5 py-4 text-sm leading-7 text-ink shadow-sm">
               <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate">Your request</div>
               {originalUserMessage?.content}
             </div>

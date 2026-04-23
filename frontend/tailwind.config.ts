@@ -6,15 +6,20 @@ const config: Config = {
     extend: {
       colors: {
         ink: "#10212b",
+        paper: "#fffaf4",
         mist: "#f4efe7",
         sand: "#dcc7a1",
         pine: "#184d47",
         coral: "#d76c4e",
         sun: "#f1b24a",
         slate: "#577180",
+        muted: "#6b7d86",
+        line: "#d9d1c4",
       },
       boxShadow: {
-        card: "0 20px 60px rgba(16, 33, 43, 0.12)",
+        card: "0 22px 70px rgba(16, 33, 43, 0.10)",
+        shell: "0 30px 90px rgba(16, 33, 43, 0.14)",
+        focus: "0 16px 40px rgba(24, 77, 71, 0.14)",
       },
       borderRadius: {
         xl2: "1.5rem",

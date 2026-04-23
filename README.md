@@ -4,6 +4,17 @@ TripBreeze AI is an AI travel planner that turns a trip request into researched 
 
 It uses a `FastAPI` backend with a LangGraph workflow and a `Next.js` frontend.
 
+## Product Screenshots
+
+<p align="center">
+  <img src="docs/images/auth-screen.png" alt="TripBreeze AI authentication screen" width="48%" />
+  <img src="docs/images/planner-workspace.png" alt="TripBreeze AI planning workspace" width="48%" />
+</p>
+
+<p align="center">
+  <em>Left: streamlined login experience. Right: planning workspace with preferences, trip history, and guided trip search.</em>
+</p>
+
 ## What It Does ✨
 
 - parses free-text and structured trip requests

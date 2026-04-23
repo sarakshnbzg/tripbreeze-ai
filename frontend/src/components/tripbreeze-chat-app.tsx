@@ -277,7 +277,7 @@ export function TripBreezeChatApp() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-7xl gap-6 px-4 py-6">
+    <div className="mx-auto flex min-h-screen max-w-7xl gap-6 px-4 py-6 xl:px-6">
       <AppSidebar
         authenticatedUser={authenticatedUser}
         profile={profile}
@@ -300,13 +300,15 @@ export function TripBreezeChatApp() {
         setError={setError}
       />
 
-      <PlannerStage
-        form={form}
-        setForm={setForm}
-        controls={plannerStageControls}
-        displayState={plannerStageDisplayState}
-        models={plannerStageModels}
-      />
+      <div className="planner-shell min-w-0 flex-1">
+        <PlannerStage
+          form={form}
+          setForm={setForm}
+          controls={plannerStageControls}
+          displayState={plannerStageDisplayState}
+          models={plannerStageModels}
+        />
+      </div>
 
       <datalist id="cities">
         {cities.slice(0, 200).map((city) => (
