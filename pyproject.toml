@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "tripbreeze-ai"
 version = "0.1.0"
-description = "AI-powered single-trip planning assistant"
+description = "AI-powered travel planning assistant for single-city and multi-city trips"
 requires-python = ">=3.13"
 dependencies = [
     "langchain>=0.3.0",

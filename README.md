@@ -256,6 +256,26 @@ Golden itinerary judging:
 RUN_LLM_JUDGE_GOLDENS=1 uv run pytest tests/test_golden_prompts.py -k finaliser
 ```
 
+## Ethics & Privacy 🛡️
+
+TripBreeze is designed to support travel planning, not to replace official government,
+airline, or border-control guidance. Entry requirements can change, so the app keeps
+visa and entry notes grounded in the local knowledge base and surfaces them during
+review, but travelers should still confirm critical details with official sources before
+booking or departure.
+
+The workflow includes several safeguards to reduce unreliable output:
+
+- entry guidance is retrieved from a local RAG knowledge base instead of generated from memory alone
+- LLM prompts treat trip fields and profile data as untrusted input to reduce prompt-injection risk
+- budget checks, review summaries, and human approval happen before the final itinerary is generated
+- when grounded information is limited, the system is expected to say so instead of inventing facts
+
+TripBreeze also stores profile preferences and recent trip history to improve future planning.
+In production, this should be paired with clear user consent, secure credential management,
+database protection, and a retention policy that keeps only the minimum data needed for the
+experience.
+
 ## Docker 🐳
 
 Build:
