@@ -9,6 +9,8 @@ from infrastructure.llms.model_factory import (
     normalise_llm_selection,
     get_provider_status,
     extract_token_usage,
+    invoke_with_retry,
+    stream_with_retry,
     OPENAI_MODELS,
     GOOGLE_MODELS,
 )
@@ -114,3 +116,84 @@ class TestExtractTokenUsage:
         response.usage_metadata = {"input_tokens": 100, "output_tokens": 50}
         result = extract_token_usage(response, model="unknown-model", node="test")
         assert result["cost"] == 0
+
+    def test_exposes_cost_usd_alias(self):
+        response = MagicMock()
+        response.usage_metadata = {"input_tokens": 100, "output_tokens": 50}
+        result = extract_token_usage(response, model="gpt-4o-mini", node="test")
+        assert result["cost_usd"] == result["cost"]
+
+
+class TestInvokeWithRetry:
+    def test_logs_completed_call_with_usage_and_latency(self, monkeypatch):
+        class FakeOpenAIModel:
+            model_name = "gpt-4o-mini"
+
+            def invoke(self, prompt):
+                return MagicMock(usage_metadata={"input_tokens": 12, "output_tokens": 3})
+
+        llm = FakeOpenAIModel()
+
+        events = []
+        monkeypatch.setattr(
+            "infrastructure.llms.model_factory.log_event",
+            lambda logger, event, **fields: events.append((event, fields)),
+        )
+
+        invoke_with_retry(llm, "hello")
+
+        assert events
+        event, fields = events[-1]
+        assert event == "llm.call_completed"
+        assert fields["provider"] == "openai"
+        assert fields["model"] == "gpt-4o-mini"
+        assert fields["input_tokens"] == 12
+        assert fields["output_tokens"] == 3
+        assert "latency_ms" in fields
+
+    def test_logs_failed_call(self, monkeypatch):
+        class FakeOpenAIModel:
+            model_name = "gpt-4o-mini"
+
+            def invoke(self, prompt):
+                raise TimeoutError("boom")
+
+        llm = FakeOpenAIModel()
+
+        events = []
+        monkeypatch.setattr(
+            "infrastructure.llms.model_factory.log_event",
+            lambda logger, event, **fields: events.append((event, fields)),
+        )
+
+        with pytest.raises(TimeoutError):
+            invoke_with_retry(llm, "hello", max_attempts=1)
+
+        assert events[-1][0] == "llm.call_failed"
+        assert events[-1][1]["error_type"] == "TimeoutError"
+
+
+class TestStreamWithRetry:
+    def test_logs_completed_stream(self, monkeypatch):
+        final_chunk = MagicMock(usage_metadata={"input_tokens": 7, "output_tokens": 2})
+
+        class FakeOpenAIModel:
+            model_name = "gpt-4o-mini"
+
+            def stream(self, prompt):
+                return iter([MagicMock(), final_chunk])
+
+        llm = FakeOpenAIModel()
+
+        events = []
+        monkeypatch.setattr(
+            "infrastructure.llms.model_factory.log_event",
+            lambda logger, event, **fields: events.append((event, fields)),
+        )
+
+        chunks = list(stream_with_retry(llm, "hello"))
+
+        assert len(chunks) == 2
+        assert events[-1][0] == "llm.stream_completed"
+        assert events[-1][1]["input_tokens"] == 7
+        assert events[-1][1]["output_tokens"] == 2
