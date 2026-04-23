@@ -162,17 +162,35 @@ class TestPreciseDestinationBriefing:
         assert "Italy (Schengen Area)" not in result["destination_info"]
 
     @patch("domain.nodes.research_orchestrator.retrieve")
-    @patch("domain.nodes.research_orchestrator.search_leg_hotels")
-    @patch("domain.nodes.research_orchestrator.search_leg_flights")
+    @patch("domain.nodes.research_orchestrator.search_hotels")
+    @patch("domain.nodes.research_orchestrator.search_flights")
+    @patch("domain.nodes.research_orchestrator.create_chat_model")
     def test_multi_city_briefing_uses_exact_city_sections_not_noisy_rag_fallback(
-        self, mock_leg_flights, mock_leg_hotels, mock_retrieve
+        self, mock_create, mock_sf, mock_sh, mock_retrieve
     ):
-        mock_leg_flights.return_value = []
-        mock_leg_hotels.return_value = []
-        mock_retrieve.side_effect = [
-            [{"content": "## Iran\n- **US citizens:** Tourist visa required.", "source": "Visa Requirements"}],
-            [{"content": "Wrong Barcelona visa", "source": "Visa Requirements"}],
-        ]
+        """Multi-city now runs one ReAct loop per leg; the precise lookup should
+        still override any noisy entry_requirements the LLM submits."""
+        mock_sf.return_value = {"flight_options": [], "messages": [{"role": "assistant", "content": "No flights."}]}
+        mock_sh.return_value = {"hotel_options": [], "messages": [{"role": "assistant", "content": "No hotels."}]}
+        mock_retrieve.return_value = []
+
+        def submit_with_noisy_entry() -> MagicMock:
+            return _make_ai_message(
+                tool_calls=[{
+                    "name": "SubmitResearchResult",
+                    "args": {
+                        "summary": "Leg done.",
+                        "entry_requirements": "## Iran\n- **US citizens:** Tourist visa required.",
+                    },
+                    "id": "submit_leg",
+                }]
+            )
+
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+        # One SubmitResearchResult response per leg.
+        mock_llm.invoke.side_effect = [submit_with_noisy_entry() for _ in range(2)]
+        mock_create.return_value = mock_llm
 
         result = research_orchestrator(
             {
@@ -190,6 +208,7 @@ class TestPreciseDestinationBriefing:
                         "departure_date": "2025-06-11",
                         "nights": 3,
                         "needs_hotel": True,
+                        "check_out_date": "2025-06-14",
                     },
                     {
                         "leg_index": 1,
@@ -198,6 +217,7 @@ class TestPreciseDestinationBriefing:
                         "departure_date": "2025-06-14",
                         "nights": 2,
                         "needs_hotel": True,
+                        "check_out_date": "2025-06-16",
                     },
                 ],
                 "user_profile": {"passport_country": "US"},
@@ -209,8 +229,68 @@ class TestPreciseDestinationBriefing:
         assert result["current_step"] == "research_complete"
         assert result["destination_info"].index("### Barcelona") < result["destination_info"].index("### Madrid")
         assert "### Spain (Schengen Area)" in result["destination_info"]
-        assert "Marrakech" not in result["destination_info"]
         assert "Iran" not in result["destination_info"]
+        # The LLM ran once per leg.
+        assert mock_llm.invoke.call_count == 2
+
+    @patch("domain.nodes.research_orchestrator.retrieve")
+    @patch("domain.nodes.research_orchestrator.search_hotels")
+    @patch("domain.nodes.research_orchestrator.search_flights")
+    @patch("domain.nodes.research_orchestrator.create_chat_model")
+    def test_multi_city_return_leg_ignores_hotel_tool_calls(
+        self, mock_create, mock_sf, mock_sh, mock_retrieve
+    ):
+        """Even if the model asks for hotels, return/transit legs should skip them."""
+        mock_sf.return_value = {
+            "flight_options": [{"airline": "Iberia", "total_price": 120}],
+            "messages": [{"role": "assistant", "content": "Found 1 flight."}],
+        }
+        mock_retrieve.return_value = []
+
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+        mock_llm.invoke.side_effect = [
+            _make_ai_message(tool_calls=[
+                {"name": "search_flights", "args": {}, "id": "call_flight"},
+                {"name": "search_hotels", "args": {}, "id": "call_hotel"},
+            ]),
+            _make_ai_message(tool_calls=[{
+                "name": "SubmitResearchResult",
+                "args": {"summary": "Return leg researched."},
+                "id": "submit_leg",
+            }]),
+        ]
+        mock_create.return_value = mock_llm
+
+        result = research_orchestrator(
+            {
+                "trip_request": {
+                    "origin": "Berlin",
+                    "destination": "Berlin",
+                    "departure_date": "2025-06-16",
+                    "num_travelers": 2,
+                },
+                "trip_legs": [
+                    {
+                        "leg_index": 2,
+                        "origin": "Madrid",
+                        "destination": "Berlin",
+                        "departure_date": "2025-06-16",
+                        "nights": 0,
+                        "needs_hotel": False,
+                    },
+                ],
+                "user_profile": {"passport_country": "US"},
+                "llm_provider": "openai",
+                "llm_model": "gpt-4o-mini",
+            }
+        )
+
+        assert result["current_step"] == "research_complete"
+        assert result["hotel_options_by_leg"] == [[]]
+        assert result["destination_info"] == ""
+        mock_sf.assert_called_once()
+        mock_sh.assert_not_called()
 
 
 class TestRagTrace:
