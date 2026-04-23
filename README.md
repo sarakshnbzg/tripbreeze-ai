@@ -1,32 +1,28 @@
 # TripBreeze AI
 
-TripBreeze AI is an AI-powered travel planning assistant that combines trip intake, live travel research, budget checks, entry guidance, and itinerary generation in one workflow.
+TripBreeze AI is an AI travel planner that turns a trip request into researched options, budget checks, entry guidance, and a polished itinerary.
 
-It uses a `FastAPI` backend for the LangGraph workflow and a standalone `Next.js` frontend for the browser experience.
+It uses a `FastAPI` backend with a LangGraph workflow and a `Next.js` frontend.
 
-## Highlights ✨
+## What It Does ✨
 
-TripBreeze can:
-
-- parse free-text trip requests
-- support single-city and multi-city planning
-- accept voice input via Whisper transcription
-- search live flights and hotels with SerpAPI
-- retrieve grounded visa and entry information from a local RAG knowledge base with metadata-aware retrieval and reranking
-- estimate budget fit before itinerary generation
-- pause for human review, revision, or cancellation
-- generate day-by-day itineraries with weather enrichment
-- export itineraries as PDF and optionally email them
-- remember user preferences and trip history in Postgres
+- parses free-text and structured trip requests
+- supports single-city and multi-city planning
+- searches live flights and hotels with SerpAPI
+- retrieves grounded visa and entry information from a local RAG knowledge base
+- estimates whether a trip fits the user's budget
+- pauses for human review before finalising
+- generates day-by-day itineraries with weather enrichment
+- stores user preferences and recent trip history in Postgres
 
 ## Architecture 🏗️
 
 ```text
-Next.js frontend (frontend/, port 3000)
+Next.js frontend
     |
     | HTTP + SSE
     v
-FastAPI backend (port 8100)
+FastAPI backend
     |
     +-- LangGraph workflow
     |     load_profile
@@ -40,26 +36,15 @@ FastAPI backend (port 8100)
     |        -> update_memory
     |
     +-- Services
-    |     OpenAI / Gemini
-    |     SerpAPI
-    |     Open-Meteo
-    |     SMTP
-    |
-    +-- Data
-          ChromaDB indexes
-          Postgres memory + checkpoints
+          OpenAI / Gemini / SerpAPI / Open-Meteo / SMTP
 ```
 
-Core entry points:
+Core files:
 
-- Backend API: [`presentation/api.py`](presentation/api.py)
-- Graph: [`application/graph.py`](application/graph.py)
-- State schema: [`application/state.py`](application/state.py)
-- Detailed workflow docs: [`AGENTS.md`](AGENTS.md)
-
-The entry-requirements retriever uses provider-specific Chroma indexes plus BM25 retrieval,
-metadata-aware place filtering, broader entry-intent detection, and score-based reranking to
-prioritize the most relevant grounded context for each destination and passport combination.
+- Backend API: [presentation/api.py](/Users/sarakashanibozorg/Documents/AI Engineering Course/tripbreeze-ai/presentation/api.py)
+- Graph: [application/graph.py](/Users/sarakashanibozorg/Documents/AI Engineering Course/tripbreeze-ai/application/graph.py)
+- State schema: [application/state.py](/Users/sarakashanibozorg/Documents/AI Engineering Course/tripbreeze-ai/application/state.py)
+- Workflow documentation: [AGENTS.md](/Users/sarakashanibozorg/Documents/AI Engineering Course/tripbreeze-ai/AGENTS.md)
 
 ## Workflow 🔄
 
@@ -80,32 +65,22 @@ Profile Loader
 
 Review actions:
 
-- `rewrite_itinerary`: keep the approved trip, rewrite the final itinerary
+- `rewrite_itinerary`: keep the approved trip and rewrite the itinerary
 - `revise_plan`: patch the trip request and rerun planning
 - `cancel`: stop the workflow
 
 ## Tech Stack 🧰
 
 - `Python 3.13`
-- `FastAPI`, `uvicorn`, `sse-starlette`
-- `LangGraph`, `LangChain`
+- `FastAPI`, `LangGraph`, `LangChain`
 - `OpenAI`, `Google Gemini`, `Whisper`
-- `SerpAPI`
+- `SerpAPI`, `Open-Meteo`
 - `ChromaDB`, `BM25`
-- `Open-Meteo`
-- `Postgres`, `psycopg`, `langgraph-checkpoint-postgres`
+- `Postgres`
 - `Next.js 15`, `React 19`, `Tailwind CSS`
-- `ReportLab`
 - `Docker`
-- `LangSmith`
 
 ## Quick Start 🚀
-
-Choose one:
-
-- Backend only
-- Full stack
-- Docker
 
 ### Prerequisites ✅
 
@@ -119,18 +94,17 @@ Required:
 
 Optional:
 
-- `CSC_API_KEY` for country/city sync
+- `Node.js` and `npm` for the frontend
 - SMTP credentials for email delivery
 - LangSmith credentials for tracing
-- `Node.js` and `npm` for the frontend
 
-### Environment Setup ⚙️
+### Environment ⚙️
 
 ```bash
 cp .env.example .env
 ```
 
-Minimum recommended `.env` values:
+Minimum recommended values:
 
 ```env
 OPENAI_API_KEY=...
@@ -139,12 +113,7 @@ SERPAPI_API_KEY=...
 DATABASE_URL=postgresql://username:password@host/database?sslmode=require
 ```
 
-TripBreeze reads runtime settings centrally from [`settings.py`](settings.py), with
-[`config.py`](config.py) kept as a compatibility shim for older imports.
-
-Useful optional tuning values in `.env` include `RAG_CHUNK_SIZE`, `RAG_CHUNK_OVERLAP`, `RAG_TOP_K`,
-`MAX_FLIGHT_RESULTS`, `RAW_FLIGHT_CANDIDATES`, `MAX_HOTEL_RESULTS`, `DEFAULT_CURRENCY`, and
-`DEFAULT_STAY_NIGHTS`.
+Runtime settings are centralised in [settings.py](/Users/sarakashanibozorg/Documents/AI Engineering Course/tripbreeze-ai/settings.py). [config.py](/Users/sarakashanibozorg/Documents/AI Engineering Course/tripbreeze-ai/config.py) remains as a compatibility shim for older imports.
 
 ## Local Development 💻
 
@@ -153,11 +122,10 @@ Useful optional tuning values in `.env` include `RAG_CHUNK_SIZE`, `RAG_CHUNK_OVE
 Install dependencies:
 
 ```bash
-pip install uv
 uv sync
 ```
 
-Optional reference data sync:
+Optional reference sync:
 
 ```bash
 uv run python scripts/sync_reference_data.py
@@ -167,13 +135,6 @@ Build or refresh the RAG index:
 
 ```bash
 uv run python scripts/rebuild_rag.py
-```
-
-Provider-specific rebuilds:
-
-```bash
-uv run python scripts/rebuild_rag.py openai
-uv run python scripts/rebuild_rag.py google
 ```
 
 Start the API:
@@ -193,7 +154,6 @@ Useful endpoints:
 - `GET /api/search/{thread_id}/state`
 - `POST /api/search/{thread_id}/clarify`
 - `POST /api/search/{thread_id}/approve`
-- `POST /api/search/{thread_id}/return-flights`
 
 ### Full Stack
 
@@ -208,23 +168,17 @@ Defaults:
 - Frontend: `http://127.0.0.1:3000`
 - Backend: `http://127.0.0.1:8100`
 
-Override the frontend API target with `NEXT_PUBLIC_API_BASE_URL`.
+Set `NEXT_PUBLIC_API_BASE_URL` if the frontend should target a different backend URL.
 
 ## Testing 🧪
 
-Run all backend tests:
+Backend:
 
 ```bash
 uv run pytest -q
 ```
 
-Run one file:
-
-```bash
-uv run pytest -q tests/test_trip_intake.py
-```
-
-Frontend tests:
+Frontend:
 
 ```bash
 npm run test --prefix frontend
@@ -262,35 +216,13 @@ RUN_LLM_JUDGE_GOLDENS=1 uv run pytest tests/test_golden_prompts.py -k finaliser
 
 ## Evaluation Results 📈
 
-Recent OpenAI-based RAG evaluation runs show strong grounded performance:
-
-- automatic metrics: context precision `0.72`, context recall `0.75`, faithfulness up to `0.87`, answer relevancy up to `0.82`
-- LLM-judge evaluation (`17` samples, `gpt-4.1-mini`): `100%` pass rate
-- average judge scores: faithfulness `5.0/5`, correctness `5.0/5`, groundedness `5.0/5`, completeness `4.24/5`, overall `4.94/5`
-
-In practice, this means TripBreeze retrieves relevant entry information reliably and answers with high accuracy while staying grounded in the retrieved context.
-
-The latest evaluation artifacts are stored in [`evals/results/`](evals/results/)
+Recent OpenAI-based RAG evaluations have shown strong grounded performance, including solid context precision and recall, high faithfulness, and a perfect pass rate in a small LLM-judge run. The latest artifacts live in `evals/results/`.
 
 ## Ethics & Privacy 🛡️
 
-TripBreeze is designed to support travel planning, not to replace official government,
-airline, or border-control guidance. Entry requirements can change, so the app keeps
-visa and entry notes grounded in the local knowledge base and surfaces them during
-review, but travelers should still confirm critical details with official sources before
-booking or departure.
+TripBreeze is designed to assist with travel planning, not replace official airline, border-control, or government guidance. Entry requirements can change, so travelers should confirm critical details with official sources before booking or departure.
 
-The workflow includes several safeguards to reduce unreliable output:
-
-- entry guidance is retrieved from a local RAG knowledge base instead of generated from memory alone
-- LLM prompts treat trip fields and profile data as untrusted input to reduce prompt-injection risk
-- budget checks, review summaries, and human approval happen before the final itinerary is generated
-- when grounded information is limited, the system is expected to say so instead of inventing facts
-
-TripBreeze also stores profile preferences and recent trip history to improve future planning.
-In production, this should be paired with clear user consent, secure credential management,
-database protection, and a retention policy that keeps only the minimum data needed for the
-experience.
+The workflow is designed to reduce unreliable output by grounding entry guidance in a local knowledge base, checking budgets before finalisation, and requiring human review before the itinerary is approved. In production, profile storage should be paired with clear consent, secure credential handling, and a sensible retention policy.
 
 ## Docker 🐳
 
@@ -322,31 +254,25 @@ docker run --rm -p 8100:8100 --env-file .env \
 
 ## Operations 🔎
 
-TripBreeze emits structured JSON logs via [`infrastructure/logging_utils.py`](infrastructure/logging_utils.py).
+TripBreeze emits structured JSON logs via `infrastructure/logging_utils.py`.
 
 High-signal workflow events:
 
 - `workflow.graph_build_started`
-- `workflow.graph_build_completed`
-- `workflow.profile_loaded`
 - `workflow.intake_completed`
-- `workflow.intake_clarification_requested`
-- `workflow.intake_blocked_out_of_domain`
-- `workflow.intake_failed`
 - `workflow.research_completed`
 - `workflow.review_ready`
 - `workflow.review_decision_received`
-- `workflow.route_after_review`
 - `workflow.finaliser_completed`
 - `workflow.finaliser_fallback_used`
 - `workflow.memory_updated`
 
 Useful production checks:
 
-- rising `workflow.intake_failed`
-- rising `workflow.finaliser_fallback_used`
+- rising intake failures
+- frequent finaliser fallbacks
 - searches reaching review but not memory update
-- frequent partial flight or hotel results
+- repeated partial flight or hotel results
 
 ## Example Prompts 💬
 
@@ -367,7 +293,6 @@ Business class, exclude Ryanair, and keep the flight under 10 hours.
 ```text
 tripbreeze-ai/
 ├── app.py
-├── config.py
 ├── application/
 ├── domain/
 ├── infrastructure/
@@ -376,31 +301,27 @@ tripbreeze-ai/
 ├── knowledge_base/
 ├── scripts/
 ├── tests/
-├── evals/
-├── SMTP_SETUP.md
-└── AGENTS.md
+├── AGENTS.md
+└── settings.py
 ```
 
 ## Notes 📝
 
-- [`settings.py`](settings.py) is the typed source of truth for runtime settings.
-- [`config.py`](config.py) re-exports settings for backward compatibility.
-- Postgres persistence is strongly recommended for human-in-the-loop review flows.
 - Rebuild retrieval indexes after knowledge-base changes with `uv run python scripts/rebuild_rag.py`.
-- SMTP setup details live in [`SMTP_SETUP.md`](SMTP_SETUP.md).
+- Postgres-backed persistence is strongly recommended for restart-safe HITL review flows.
+- SMTP setup details live in [SMTP_SETUP.md](/Users/sarakashanibozorg/Documents/AI Engineering Course/tripbreeze-ai/SMTP_SETUP.md).
+- Entry requirements should still be verified against official sources before booking or departure.
 
 ## Limitations ⚠️
 
-- Restart-safe HITL review depends on persistent Postgres-backed checkpointing.
-- Live flight and hotel search availability depends on SerpAPI quotas, latency, and cost.
+- Restart-safe HITL review depends on Postgres-backed checkpointing.
+- Live flight and hotel search quality depends on SerpAPI quotas, latency, and source coverage.
 - LLM-based research and finalisation can still be imperfect when source data is sparse or ambiguous.
 - Authentication is intentionally lightweight and not production-grade.
 
 ## Future Work 🔭
 
-- [ ] Expand RAG visa information with more countries, clearer passport-specific rules, and source freshness checks.
-- [ ] Improve the review step so users can revise specific flight, hotel, or itinerary preferences without restarting the whole workflow.
-- [ ] Add clearer fallback behavior when live search APIs return incomplete or unavailable results.
-- [ ] Add user profile management so travellers can view and update saved preferences directly.
-- [ ] Add links from each user profile to previously generated travel plans.
-- [ ] Replace remaining bootstrap reference data with managed sources so defaults do not require code changes.
+- Expand visa and entry coverage with fresher, more passport-specific data.
+- Improve revision flows so users can adjust specific choices without restarting more of the plan.
+- Add clearer fallbacks when live search APIs return incomplete results.
+- Add user-facing profile management and stronger linking between users and past plans.
