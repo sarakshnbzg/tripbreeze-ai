@@ -172,26 +172,36 @@ def _make_config() -> dict:
 
 
 def _research_llm_mock(flights: list[dict], hotels: list[dict]) -> MagicMock:
-    """Build a mock LLM that simulates the ReAct loop:
-    1st call → search_flights + search_hotels
-    2nd call → SubmitResearchResult
+    """Build a mock LLM that simulates the ReAct loop, cycling a fresh
+    `call_tools → SubmitResearchResult` pair for every leg so multi-city
+    planning (one loop per leg) keeps producing responses.
     """
-    call_tools = _make_ai_message(tool_calls=[
-        {"name": "search_flights", "args": {}, "id": "c1"},
-        {"name": "search_hotels", "args": {}, "id": "c2"},
-    ])
-    submit = _make_ai_message(tool_calls=[{
-        "name": "SubmitResearchResult",
-        "args": {
-            "summary": f"Found {len(flights)} flights and {len(hotels)} hotels.",
-            "destination_overview": "Paris is the capital of France.",
-        },
-        "id": "c3",
-    }])
+    def _call_tools() -> MagicMock:
+        return _make_ai_message(tool_calls=[
+            {"name": "search_flights", "args": {}, "id": "c1"},
+            {"name": "search_hotels", "args": {}, "id": "c2"},
+        ])
+
+    def _submit() -> MagicMock:
+        return _make_ai_message(tool_calls=[{
+            "name": "SubmitResearchResult",
+            "args": {
+                "summary": f"Found {len(flights)} flights and {len(hotels)} hotels.",
+                "destination_overview": "Paris is the capital of France.",
+            },
+            "id": "c3",
+        }])
+
+    turn = {"index": 0}
+
+    def _invoke(_messages):
+        response = _call_tools() if turn["index"] % 2 == 0 else _submit()
+        turn["index"] += 1
+        return response
 
     mock_llm = MagicMock()
     mock_llm.bind_tools.return_value = mock_llm
-    mock_llm.invoke.side_effect = [call_tools, submit]
+    mock_llm.invoke.side_effect = _invoke
     return mock_llm
 
 

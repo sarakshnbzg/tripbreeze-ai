@@ -105,8 +105,6 @@ def test_research_orchestrator_golden(case, mock_llm_responses):
     if retrieve_side_effect and isinstance(retrieve_side_effect, list) and retrieve_side_effect:
         if isinstance(retrieve_side_effect[0], dict):
             retrieve_side_effect = [retrieve_side_effect]
-    search_leg_flights_side_effect = tool_results.get("search_leg_flights")
-    search_leg_hotels_side_effect = tool_results.get("search_leg_hotels")
 
     with (
         mock_llm_responses("domain.nodes.research_orchestrator", case.get("responses", [])),
@@ -117,14 +115,6 @@ def test_research_orchestrator_golden(case, mock_llm_responses):
         patch(
             "domain.nodes.research_orchestrator.search_hotels",
             return_value=tool_results.get("search_hotels"),
-        ),
-        patch(
-            "domain.nodes.research_orchestrator.search_leg_flights",
-            side_effect=search_leg_flights_side_effect,
-        ),
-        patch(
-            "domain.nodes.research_orchestrator.search_leg_hotels",
-            side_effect=search_leg_hotels_side_effect,
         ),
         patch(
             "domain.nodes.research_orchestrator.retrieve",

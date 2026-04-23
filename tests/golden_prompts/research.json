@@ -161,41 +161,98 @@
       "llm_provider": "openai",
       "llm_model": "gpt-4o-mini"
     },
+    "responses": [
+      {
+        "expect_prompt_contains": [
+          "\"leg_index\": 0",
+          "\"destination\": \"Paris\""
+        ],
+        "tool_calls": [
+          {"id": "l0_flights", "name": "search_flights", "args": {}},
+          {"id": "l0_hotels", "name": "search_hotels", "args": {}},
+          {"id": "l0_rag", "name": "retrieve_knowledge", "args": {"query": "France entry requirements"}}
+        ]
+      },
+      {
+        "expect_prompt_contains": ["\"flight_count\": 1", "\"hotel_count\": 1"],
+        "tool_calls": [
+          {
+            "id": "l0_submit",
+            "name": "SubmitResearchResult",
+            "args": {
+              "summary": "Leg 0 research done for Paris.",
+              "entry_requirements": "France allows visa-free stays for US citizens.",
+              "destination_briefing": ""
+            }
+          }
+        ]
+      },
+      {
+        "expect_prompt_contains": [
+          "\"leg_index\": 1",
+          "\"destination\": \"Barcelona\""
+        ],
+        "tool_calls": [
+          {"id": "l1_flights", "name": "search_flights", "args": {}},
+          {"id": "l1_hotels", "name": "search_hotels", "args": {}},
+          {"id": "l1_rag", "name": "retrieve_knowledge", "args": {"query": "Spain entry requirements"}}
+        ]
+      },
+      {
+        "expect_prompt_contains": ["\"flight_count\": 1", "\"hotel_count\": 1"],
+        "tool_calls": [
+          {
+            "id": "l1_submit",
+            "name": "SubmitResearchResult",
+            "args": {
+              "summary": "Leg 1 research done for Barcelona.",
+              "entry_requirements": "Spain allows visa-free stays for US citizens.",
+              "destination_briefing": ""
+            }
+          }
+        ]
+      },
+      {
+        "expect_prompt_contains": [
+          "\"leg_index\": 2",
+          "\"needs_hotel\": false"
+        ],
+        "tool_calls": [
+          {"id": "l2_flights", "name": "search_flights", "args": {}}
+        ]
+      },
+      {
+        "expect_prompt_contains": ["\"flight_count\": 1"],
+        "tool_calls": [
+          {
+            "id": "l2_submit",
+            "name": "SubmitResearchResult",
+            "args": {
+              "summary": "Leg 2 return flight researched.",
+              "entry_requirements": "",
+              "destination_briefing": ""
+            }
+          }
+        ]
+      }
+    ],
     "tool_results": {
-      "search_leg_flights": [
-        [
-          {
-            "airline": "Air France",
-            "total_price": 180
-          }
+      "search_flights": {
+        "flight_options": [
+          {"airline": "Shared Airlines", "total_price": 180}
         ],
-        [
-          {
-            "airline": "Vueling",
-            "total_price": 95
-          }
-        ],
-        [
-          {
-            "airline": "easyJet",
-            "total_price": 130
-          }
+        "messages": [
+          {"role": "assistant", "content": "Found 1 flight option."}
         ]
-      ],
-      "search_leg_hotels": [
-        [
-          {
-            "name": "Hotel Le Six",
-            "total_price": 260
-          }
+      },
+      "search_hotels": {
+        "hotel_options": [
+          {"name": "Shared Hotel", "total_price": 300}
         ],
-        [
-          {
-            "name": "Yurbban Passage",
-            "total_price": 520
-          }
+        "messages": [
+          {"role": "assistant", "content": "Found 1 hotel option."}
         ]
-      ],
+      },
       "retrieve": [
         [
           {
@@ -229,7 +286,7 @@
       "rag_sources": [
         "Visa Requirements"
       ],
-      "rag_trace_node": "research_orchestrator_multi_city"
+      "rag_trace_node": "research_orchestrator"
     }
   }
 ]
