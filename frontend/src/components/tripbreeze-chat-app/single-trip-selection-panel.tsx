@@ -119,7 +119,9 @@ function HotelSelectionSection({
   returnOptionsLoading: boolean;
   hotelSectionRef: ReviewWorkspaceRefs["hotelSectionRef"];
 }) {
-  if (selection.flightIndex >= 0) {
+  const canShowHotels = selection.flightIndex >= 0 || !(state.flight_options ?? []).length;
+
+  if (canShowHotels) {
     return (
       <div ref={hotelSectionRef} className="space-y-3">
         <div className="text-sm font-semibold text-slate">Hotels</div>

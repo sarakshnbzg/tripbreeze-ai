@@ -20,6 +20,7 @@ export function FinalItineraryPanel({
   const {
     finalItinerary,
     hasStructuredItinerary,
+    fallbackNotice,
     snapshotItems: itinerarySnapshotItems,
     bookingLinks: itineraryBookingLinks,
     primarySections: primaryItinerarySections,
@@ -100,6 +101,13 @@ export function FinalItineraryPanel({
           </div>
         </div>
       </div>
+
+      {fallbackNotice ? (
+        <div className="mb-4 rounded-[1.6rem] border border-amber-200 bg-amber-50/85 p-4 text-sm text-amber-950">
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-800">{fallbackNotice.title}</div>
+          <div className="mt-2 leading-7">{fallbackNotice.detail}</div>
+        </div>
+      ) : null}
 
       <div className="mb-4 rounded-[1.6rem] border border-white/80 bg-white/85 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
         <div className="mb-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate">Trip snapshot</div>

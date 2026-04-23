@@ -46,6 +46,7 @@ export function useReviewWorkspaceModel({
         state.hotel_options_by_leg?.length
       )
     );
+    const partialResultsNote = String(state?.budget?.partial_results_note ?? "").trim();
     const hasReviewWorkspace = Boolean(
       state &&
       state.current_step === "awaiting_review" &&
@@ -128,6 +129,7 @@ export function useReviewWorkspaceModel({
       selectedReturnOption,
       selectedHotelOption,
       hasOptionResults,
+      partialResultsNote,
       currencyCode,
       selection,
       returnOptions,

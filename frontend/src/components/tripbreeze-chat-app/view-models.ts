@@ -32,6 +32,7 @@ export type ItineraryMapPoint = {
 export type ItineraryViewModel = {
   finalItinerary: string;
   hasStructuredItinerary: boolean;
+  fallbackNotice: { title: string; detail: string } | null;
   snapshotItems: ItinerarySnapshotItem[];
   bookingLinks: Array<{ label: string; url: string }>;
   primarySections: ItinerarySection[];
@@ -63,6 +64,7 @@ export function buildItineraryViewModel({
   const itineraryDays = readRecordArray(itineraryData.daily_plans);
   const finalItinerary = itinerary || String(state?.final_itinerary ?? "");
   const hasStructuredItinerary = Object.keys(itineraryData).length > 0;
+  const finaliserMetadata = readRecord(state?.finaliser_metadata);
   const finalSelectedFlight = readRecord(state?.selected_flight);
   const finalSelectedHotel = readRecord(state?.selected_hotel);
   const finalSelectedFlights = readRecordArray(state?.selected_flights);
@@ -118,10 +120,12 @@ export function buildItineraryViewModel({
     itineraryHighlights ? { key: "highlights", title: "Destination highlights", content: itineraryHighlights } : null,
     itineraryPacking ? { key: "packing", title: "Packing tips", content: itineraryPacking } : null,
   ].filter((section): section is ItinerarySection => Boolean(section));
+  const fallbackNotice = buildFallbackNotice(finaliserMetadata);
 
   return {
     finalItinerary,
     hasStructuredItinerary,
+    fallbackNotice,
     snapshotItems,
     bookingLinks,
     primarySections,
@@ -129,6 +133,30 @@ export function buildItineraryViewModel({
     mapPoints,
     itineraryLegs,
     itineraryDays,
+  };
+}
+
+function buildFallbackNotice(finaliserMetadata: Record<string, unknown>) {
+  const usedFallback = Boolean(finaliserMetadata.used_fallback);
+  if (!usedFallback) {
+    return null;
+  }
+
+  const fallbackReason = readString(finaliserMetadata.fallback_reason);
+  let detail =
+    "TripBreeze recovered this itinerary from your approved trip details after the planner hit an issue.";
+
+  if (fallbackReason === "no_tool_calls" || fallbackReason === "missing_final_tool") {
+    detail =
+      "The planner did not finish the structured itinerary step, so TripBreeze recovered this itinerary from your approved trip details.";
+  } else if (fallbackReason === "structured_parse_failed") {
+    detail =
+      "The planner returned malformed itinerary data, so TripBreeze recovered this itinerary from your approved trip details.";
+  }
+
+  return {
+    title: "Recovered itinerary",
+    detail,
   };
 }
 

@@ -93,6 +93,18 @@ export function EmptyOptionsPanel() {
   );
 }
 
+export function PartialResultsPanel({ note }: { note: string }) {
+  if (!note) {
+    return null;
+  }
+
+  return (
+    <div className="mb-5 rounded-[1.4rem] border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-950">
+      <span className="font-semibold">Partial results available:</span> {note}
+    </div>
+  );
+}
+
 export function PersonalisationPanel({
   model,
   actions,

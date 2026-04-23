@@ -25,6 +25,7 @@ function buildReviewWorkspaceModel(overrides: Partial<ReviewWorkspaceModel> = {}
       destination_info: "### Entry\nPassport required.",
       flight_options: [],
       hotel_options: [],
+      budget: {},
     } as unknown as TravelState,
     isRoundTrip: false,
     completedMultiCityLegs: 0,
@@ -35,6 +36,7 @@ function buildReviewWorkspaceModel(overrides: Partial<ReviewWorkspaceModel> = {}
     selectedReturnOption: {},
     selectedHotelOption: {},
     hasOptionResults: false,
+    partialResultsNote: "",
     currencyCode: "EUR",
     selection: buildSelection(),
     returnOptions: [],
@@ -150,12 +152,65 @@ describe("workspace panels", () => {
     expect(screen.getByText("Paris Stay")).toBeInTheDocument();
   });
 
+  it("shows leg-specific partial-results guidance in multi-city review", () => {
+    renderReviewPanel({
+      state: {
+        trip_legs: [
+          { origin: "Berlin", destination: "Paris", departure_date: "2026-06-10", nights: 3, needs_hotel: true },
+        ],
+        flight_options_by_leg: [[]],
+        hotel_options_by_leg: [[{ name: "Paris Stay", total_price: 420 }]],
+        budget: {
+          partial_results_note: "Some legs have only partial results right now (1 of 1). Review each leg for details or revise the search.",
+          per_leg_breakdown: [
+            {
+              partial_results_note:
+                "Hotel options are ready for this leg, but flight options are unavailable right now.",
+            },
+          ],
+        },
+      } as unknown as TravelState,
+      hasOptionResults: true,
+      partialResultsNote: "Some legs have only partial results right now (1 of 1). Review each leg for details or revise the search.",
+      completedMultiCityLegs: 0,
+      selection: buildSelection(),
+    });
+
+    expect(screen.getByText(/Some legs have only partial results right now/)).toBeInTheDocument();
+    expect(screen.getByText(/Partial results for this leg:/)).toBeInTheDocument();
+    expect(screen.getByText(/Hotel options are ready for this leg, but flight options are unavailable right now./)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /paris stay/i })).toBeInTheDocument();
+  });
+
+  it("shows partial-results guidance and preserves hotel options when flights are unavailable", () => {
+    renderReviewPanel({
+      state: {
+        destination_info: "### Porto\nBudget-friendly riverside stay.",
+        flight_options: [],
+        hotel_options: [{ name: "Harbor Hotel", total_price: 380 }],
+        budget: {
+          partial_results_note:
+            "Hotel options are ready, but flight options are unavailable right now. You can revise the search to try different dates, budget, or destination.",
+        },
+      } as unknown as TravelState,
+      hasOptionResults: true,
+      partialResultsNote:
+        "Hotel options are ready, but flight options are unavailable right now. You can revise the search to try different dates, budget, or destination.",
+    });
+
+    expect(screen.getByText(/Partial results available:/)).toBeInTheDocument();
+    expect(screen.getByText(/Hotel options are ready, but flight options are unavailable right now./)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /harbor hotel/i })).toBeInTheDocument();
+    expect(screen.getByText("No flights found. Try different dates or cities.")).toBeInTheDocument();
+  });
+
   it("renders final itinerary snapshot, booking links, and day plan details", () => {
     render(
       <FinalItineraryPanel
         viewModel={{
           finalItinerary: "Trip ready",
           hasStructuredItinerary: true,
+          fallbackNotice: null,
           snapshotItems: [
             { label: "Route", value: "Berlin -> Lisbon" },
             { label: "Dates", value: "2026-06-10 to 2026-06-15" },
@@ -239,6 +294,7 @@ describe("workspace panels", () => {
         viewModel={{
           finalItinerary: "#### Trip Overview\nBerlin to Lisbon",
           hasStructuredItinerary: false,
+          fallbackNotice: null,
           snapshotItems: [],
           bookingLinks: [],
           primarySections: [],
@@ -261,6 +317,42 @@ describe("workspace panels", () => {
     expect(screen.getByText("Live draft")).toBeInTheDocument();
     expect(screen.queryByText("Trip snapshot")).not.toBeInTheDocument();
     expect(screen.getByText("Berlin to Lisbon")).toBeInTheDocument();
+  });
+
+  it("renders a recovery notice when the final itinerary used fallback generation", () => {
+    render(
+      <FinalItineraryPanel
+        viewModel={{
+          finalItinerary: "Recovered trip",
+          hasStructuredItinerary: true,
+          fallbackNotice: {
+            title: "Recovered itinerary",
+            detail: "The planner did not finish the structured itinerary step, so TripBreeze recovered this itinerary from your approved trip details.",
+          },
+          snapshotItems: [{ label: "Route", value: "Berlin -> Paris" }],
+          bookingLinks: [],
+          primarySections: [],
+          secondarySections: [],
+          mapPoints: [],
+          itineraryLegs: [],
+          itineraryDays: [],
+        }}
+        shareState={{
+          loading: null,
+          emailAddress: "",
+          setEmailAddress: vi.fn(),
+          onDownloadPdf: vi.fn(async () => undefined),
+          onEmailItinerary: vi.fn(async () => undefined),
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Recovered itinerary")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "The planner did not finish the structured itinerary step, so TripBreeze recovered this itinerary from your approved trip details.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("builds Google Maps links for trip map points", () => {
@@ -287,6 +379,10 @@ describe("workspace panels", () => {
             },
           ],
         },
+        finaliser_metadata: {
+          used_fallback: true,
+          fallback_reason: "structured_parse_failed",
+        },
       } as unknown as TravelState,
       itinerary: "Trip ready",
       currencyCode: "EUR",
@@ -305,5 +401,10 @@ describe("workspace panels", () => {
       ]),
     );
     expect(viewModel.hasStructuredItinerary).toBe(true);
+    expect(viewModel.fallbackNotice).toEqual({
+      title: "Recovered itinerary",
+      detail:
+        "The planner returned malformed itinerary data, so TripBreeze recovered this itinerary from your approved trip details.",
+    });
   });
 });

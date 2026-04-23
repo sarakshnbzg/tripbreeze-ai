@@ -21,6 +21,13 @@ function MultiCityLegPanel({
 }) {
   const flightSelected =
     typeof selection.byLegFlights[legIndex] === "number" && selection.byLegFlights[legIndex] >= 0;
+  const flightOptions = state.flight_options_by_leg?.[legIndex] ?? [];
+  const hotelOptions = state.hotel_options_by_leg?.[legIndex] ?? [];
+  const canShowHotels = flightSelected || !flightOptions.length;
+  const legBudget = Array.isArray((state.budget as { per_leg_breakdown?: Array<Record<string, unknown>> } | undefined)?.per_leg_breakdown)
+    ? ((state.budget as { per_leg_breakdown?: Array<Record<string, unknown>> }).per_leg_breakdown?.[legIndex] ?? {})
+    : {};
+  const partialResultsNote = String(legBudget.partial_results_note ?? "").trim();
   const hotelSelected =
     !leg.needs_hotel ||
     (typeof selection.byLegHotels[legIndex] === "number" && selection.byLegHotels[legIndex] >= 0);
@@ -43,17 +50,22 @@ function MultiCityLegPanel({
         </div>
       </div>
       <div className="mb-4 text-sm text-slate">Departure: {String(leg.departure_date ?? "?")}</div>
+      {partialResultsNote ? (
+        <div className="mb-4 rounded-[1.4rem] border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-950">
+          <span className="font-semibold">Partial results for this leg:</span> {partialResultsNote}
+        </div>
+      ) : null}
       <div className="grid gap-4 xl:grid-cols-2">
         <div className="space-y-3">
           <div className="text-sm font-semibold text-slate">Flights</div>
-          {(state.flight_options_by_leg?.[legIndex] ?? []).length ? (
-            (state.flight_options_by_leg?.[legIndex] ?? []).slice(0, 5).map((option, optionIndex) => (
+          {flightOptions.length ? (
+            flightOptions.slice(0, 5).map((option, optionIndex) => (
               <ReviewOptionCard
                 key={`flight-${legIndex}-${optionIndex}`}
                 option={option}
                 title={`Flight ${optionIndex + 1}`}
                 variant="flight"
-                allOptions={state.flight_options_by_leg?.[legIndex] ?? []}
+                allOptions={flightOptions}
                 currencyCode={currencyCode}
                 selected={selection.byLegFlights[legIndex] === optionIndex}
                 onSelect={() =>
@@ -72,18 +84,18 @@ function MultiCityLegPanel({
         <div className="space-y-3">
           <div className="text-sm font-semibold text-slate">Hotels</div>
           {Boolean(leg.needs_hotel) ? (
-            !flightSelected ? (
+            !canShowHotels ? (
               <div className="rounded-[1.5rem] bg-white/70 p-4 text-sm text-slate">
                 Select a flight for this leg before choosing a hotel.
               </div>
-            ) : (state.hotel_options_by_leg?.[legIndex] ?? []).length ? (
-              (state.hotel_options_by_leg?.[legIndex] ?? []).slice(0, 5).map((option, optionIndex) => (
+            ) : hotelOptions.length ? (
+              hotelOptions.slice(0, 5).map((option, optionIndex) => (
                 <ReviewOptionCard
                   key={`hotel-${legIndex}-${optionIndex}`}
                   option={option}
                   title={`Hotel ${optionIndex + 1}`}
                   variant="hotel"
-                  allOptions={state.hotel_options_by_leg?.[legIndex] ?? []}
+                  allOptions={hotelOptions}
                   currencyCode={currencyCode}
                   selected={selection.byLegHotels[legIndex] === optionIndex}
                   onSelect={() =>

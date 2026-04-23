@@ -58,6 +58,8 @@ def _filter_options_within_budget(
     """Keep only options that can form at least one within-budget trip combination."""
     if budget_limit <= 0:
         return flights, hotels
+    if not flights or not hotels:
+        return flights, hotels
 
     cheapest_flight = min((_flight_total(f) for f in flights), default=None)
     cheapest_hotel = min((h["total_price"] for h in hotels), default=None)
@@ -94,11 +96,13 @@ def budget_aggregator(state: dict) -> dict:
         total_hotel_cost = 0.0
         total_daily_expenses = 0.0
         per_leg_breakdown = []
+        partial_leg_count = 0
 
         for leg in trip_legs:
             leg_idx = leg.get("leg_index", 0)
             destination = leg.get("destination", "")
             nights = leg.get("nights", 0)
+            needs_hotel = bool(leg.get("needs_hotel"))
 
             # Get flight options for this leg
             leg_flights = flight_options_by_leg[leg_idx] if leg_idx < len(flight_options_by_leg) else []
@@ -107,7 +111,8 @@ def budget_aggregator(state: dict) -> dict:
 
             # Get hotel options if this leg needs accommodation
             leg_hotel_cost = 0.0
-            if leg.get("needs_hotel"):
+            leg_partial_results_note = ""
+            if needs_hotel:
                 leg_hotels = hotel_options_by_leg[leg_idx] if leg_idx < len(hotel_options_by_leg) else []
                 leg_hotel_cost = min((h["total_price"] for h in leg_hotels), default=0.0)
                 total_hotel_cost += leg_hotel_cost
@@ -116,8 +121,25 @@ def budget_aggregator(state: dict) -> dict:
                 daily_rate = _destination_daily_rate(destination, currency)
                 leg_daily = daily_rate * nights * num_travelers
                 total_daily_expenses += leg_daily
+
+                if leg_flights and not leg_hotels:
+                    leg_partial_results_note = (
+                        "Flight options are ready for this leg, but hotel options are unavailable right now."
+                    )
+                elif leg_hotels and not leg_flights:
+                    leg_partial_results_note = (
+                        "Hotel options are ready for this leg, but flight options are unavailable right now."
+                    )
             else:
+                leg_hotels = []
                 leg_daily = 0.0
+                if not leg_flights:
+                    leg_partial_results_note = (
+                        "No flight options are available for this leg right now."
+                    )
+
+            if leg_partial_results_note:
+                partial_leg_count += 1
 
             per_leg_breakdown.append({
                 "leg_index": leg_idx,
@@ -128,12 +150,14 @@ def budget_aggregator(state: dict) -> dict:
                 "hotel_cost": leg_hotel_cost,
                 "daily_expenses": leg_daily,
                 "leg_total": leg_flight_cost + leg_hotel_cost + leg_daily,
+                "partial_results_note": leg_partial_results_note,
             })
 
         total = total_flight_cost + total_hotel_cost + total_daily_expenses
         within_budget = budget_limit <= 0 or total <= budget_limit
 
         notes = ""
+        partial_results_note = ""
         if budget_limit > 0 and not within_budget:
             over = total - budget_limit
             notes = (
@@ -143,6 +167,12 @@ def budget_aggregator(state: dict) -> dict:
             )
         elif budget_limit > 0:
             notes = f"You're within budget with ~{prefix}{budget_limit - total:.0f} to spare."
+
+        if partial_leg_count:
+            partial_results_note = (
+                f"Some legs have only partial results right now ({partial_leg_count} of {len(trip_legs)}). "
+                "Review each leg for details or revise the search."
+            )
 
         logger.info(
             "Multi-city budget aggregated legs=%s total_flights=%s total_hotels=%s daily=%s total=%s within_budget=%s",
@@ -160,6 +190,7 @@ def budget_aggregator(state: dict) -> dict:
                 "budget_notes": notes,
                 "per_leg_breakdown": per_leg_breakdown,
                 "is_multi_city": True,
+                "partial_results_note": partial_results_note,
             },
             "current_step": "budget_done",
         }
@@ -190,11 +221,33 @@ def budget_aggregator(state: dict) -> dict:
     total = flight_cost + hotel_cost + estimated_daily_total
     has_viable_combination = bool(filtered_flights) and bool(filtered_hotels)
     within_budget = budget_limit <= 0 or (has_viable_combination and total <= budget_limit)
+    partial_results_note = ""
 
     notes = ""
-    if budget_limit > 0 and not has_viable_combination:
+    if filtered_flights and not filtered_hotels:
+        partial_results_note = (
+            "Flight options are ready, but hotel options are unavailable right now. "
+            "You can revise the search to try different dates, budget, or destination."
+        )
+    elif filtered_hotels and not filtered_flights:
+        partial_results_note = (
+            "Hotel options are ready, but flight options are unavailable right now. "
+            "You can revise the search to try different dates, budget, or destination."
+        )
+
+    if budget_limit > 0 and not has_viable_combination and flights and hotels:
         notes = (
             "No flight and hotel combinations fit the selected budget. "
+            "Try increasing the budget, shortening the trip, or changing the dates."
+        )
+    elif budget_limit > 0 and filtered_flights and not filtered_hotels and hotels:
+        notes = (
+            "Flights fit the selected budget, but hotel options do not. "
+            "Try increasing the budget, shortening the trip, or changing the dates."
+        )
+    elif budget_limit > 0 and filtered_hotels and not filtered_flights and flights:
+        notes = (
+            "Hotels fit the selected budget, but flight options do not. "
             "Try increasing the budget, shortening the trip, or changing the dates."
         )
     elif budget_limit > 0 and not within_budget:
@@ -239,6 +292,7 @@ def budget_aggregator(state: dict) -> dict:
             "currency": currency,
             "within_budget": within_budget,
             "budget_notes": notes,
+            "partial_results_note": partial_results_note,
         },
         "current_step": "budget_done",
     }

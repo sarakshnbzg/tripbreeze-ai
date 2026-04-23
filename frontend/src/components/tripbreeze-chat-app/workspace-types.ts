@@ -17,6 +17,7 @@ export type ReviewWorkspaceModel = {
   selectedReturnOption: Record<string, unknown>;
   selectedHotelOption: Record<string, unknown>;
   hasOptionResults: boolean;
+  partialResultsNote: string;
   currencyCode: string;
   selection: SelectionState;
   returnOptions: TripOption[];

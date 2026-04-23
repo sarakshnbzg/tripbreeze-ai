@@ -515,6 +515,55 @@ async function mockMultiCityPlannerFlow(
   });
 }
 
+async function mockPartialResultsPlannerFlow(page: Page) {
+  await page.route(`${API_BASE}/api/search`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: sse([
+        { event: "node_start", data: { node: "research", label: "Researching flights, hotels, and destination info..." } },
+        {
+          event: "state",
+          data: {
+            thread_id: "thread-partial",
+            current_step: "awaiting_review",
+            trip_request: {
+              origin: "Berlin",
+              destination: "Porto",
+              departure_date: "2026-06-10",
+              check_out_date: "2026-06-14",
+              num_travelers: 1,
+              currency: "EUR",
+            },
+            destination_info: "### Porto briefing\nA calmer riverside stay with strong hotel value.",
+            budget: {
+              total_estimated_cost: 400,
+              partial_results_note:
+                "Hotel options are ready, but flight options are unavailable right now. You can revise the search to try different dates, budget, or destination.",
+            },
+            flight_options: [],
+            hotel_options: [
+              {
+                name: "Harbor Hotel",
+                description: "Relaxed stay near Ribeira with breakfast included.",
+                total_price: 400,
+                booking_url: "https://example.com/hotels/harbor",
+              },
+            ],
+            messages: [
+              {
+                role: "assistant",
+                content: "Hotel options are ready, but flight options are currently unavailable.",
+              },
+            ],
+          },
+        },
+        { event: "done", data: {} },
+      ]),
+    });
+  });
+}
+
 async function signInAndOpenPlanner(page: Page) {
   await mockReferenceData(page);
   await mockLogin(page);
@@ -688,4 +737,23 @@ test("completes a multi-city planner journey with leg-by-leg review and final it
     "href",
     "https://example.com/hotels/porto-riverside",
   );
+});
+
+test("shows partial search results in review when only hotels are available", async ({ page }) => {
+  await signInAndOpenPlanner(page);
+  await mockPartialResultsPlannerFlow(page);
+
+  await page.getByPlaceholder("Describe your trip...").fill("Find me a relaxing Porto trip.");
+  await page.getByRole("button", { name: "Search Trip" }).click();
+
+  await expect(page.getByText("Review your trip")).toBeVisible();
+  await expect(page.getByText("Partial results available:")).toBeVisible();
+  await expect(
+    page.getByText(
+      "Hotel options are ready, but flight options are unavailable right now. You can revise the search to try different dates, budget, or destination.",
+    ),
+  ).toBeVisible();
+  await expect(page.getByText("No flights found. Try different dates or cities.")).toBeVisible();
+  await expect(page.getByRole("button", { name: /harbor hotel/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Approve and Generate Itinerary" })).toBeDisabled();
 });

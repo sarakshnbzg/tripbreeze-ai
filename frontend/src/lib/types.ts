@@ -80,6 +80,7 @@ export type TravelState = {
   destination_info?: Record<string, unknown>;
   rag_sources?: string[];
   final_itinerary?: string;
+  finaliser_metadata?: Record<string, unknown>;
   itinerary_data?: Record<string, unknown>;
   flight_options?: TripOption[];
   hotel_options?: TripOption[];

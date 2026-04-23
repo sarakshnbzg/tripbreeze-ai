@@ -75,7 +75,12 @@ class TestFilterOptionsWithinBudget:
     def test_empty_flights_or_hotels(self):
         f, h = _filter_options_within_budget([], [{"total_price": 100}], 1000, 50)
         assert f == []
-        # Hotels can't pair with any flight, so also filtered out
+        assert h == [{"total_price": 100}]
+
+    def test_preserves_partial_results_when_only_flights_exist(self):
+        flights = [{"price": 200}]
+        f, h = _filter_options_within_budget(flights, [], 1000, 50)
+        assert f == flights
         assert h == []
 
 
@@ -91,11 +96,11 @@ class TestBudgetAggregatorNode:
                 "departure_date": "2025-06-01",
                 "return_date": "2025-06-08",
             },
-            "flight_options": flights or [
+            "flight_options": flights if flights is not None else [
                 {"price": 300},
                 {"price": 500},
             ],
-            "hotel_options": hotels or [
+            "hotel_options": hotels if hotels is not None else [
                 {"total_price": 400},
                 {"total_price": 800},
             ],
@@ -134,6 +139,62 @@ class TestBudgetAggregatorNode:
         ))
         assert "No flight and hotel combinations" in result["budget"]["budget_notes"]
         assert result["budget"]["within_budget"] is False
+
+    def test_partial_hotel_results_are_preserved_when_flights_missing(self):
+        result = budget_aggregator(self._base_state(
+            budget_limit=1000,
+            flights=[],
+            hotels=[{"total_price": 400}],
+        ))
+        assert result["flight_options"] == []
+        assert result["hotel_options"] == [{"total_price": 400}]
+        assert "Hotel options are ready" in result["budget"]["partial_results_note"]
+
+    def test_partial_flight_results_are_preserved_when_hotels_missing(self):
+        result = budget_aggregator(self._base_state(
+            budget_limit=1000,
+            flights=[{"price": 300}],
+            hotels=[],
+        ))
+        assert result["flight_options"] == [{"price": 300}]
+        assert result["hotel_options"] == []
+        assert "Flight options are ready" in result["budget"]["partial_results_note"]
+
+    def test_multi_city_partial_leg_notes_are_preserved(self):
+        state = {
+            "trip_request": {
+                "budget_limit": 0,
+                "currency": "EUR",
+                "departure_date": "2025-06-01",
+                "return_date": "2025-06-06",
+                "num_travelers": 1,
+            },
+            "trip_legs": [
+                {
+                    "leg_index": 0,
+                    "origin": "Berlin",
+                    "destination": "Paris",
+                    "departure_date": "2025-06-01",
+                    "nights": 3,
+                    "needs_hotel": True,
+                },
+                {
+                    "leg_index": 1,
+                    "origin": "Paris",
+                    "destination": "Berlin",
+                    "departure_date": "2025-06-04",
+                    "nights": 0,
+                    "needs_hotel": False,
+                },
+            ],
+            "flight_options_by_leg": [[], [{"price": 180}]],
+            "hotel_options_by_leg": [[{"total_price": 420}], []],
+        }
+
+        result = budget_aggregator(state)
+
+        assert "Some legs have only partial results" in result["budget"]["partial_results_note"]
+        assert "Hotel options are ready for this leg" in result["budget"]["per_leg_breakdown"][0]["partial_results_note"]
 
     def test_destination_fallback_no_longer_varies_by_currency(self):
         state = {
