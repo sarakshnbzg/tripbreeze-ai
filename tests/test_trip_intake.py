@@ -642,6 +642,282 @@ class TestTripIntakeNode:
 
         assert "$1,200" in result["messages"][0]["content"]
 
+    def test_conflicting_structured_and_free_text_fields_trigger_clarification(self):
+        parse_response = MagicMock()
+        parse_response.tool_calls = [{
+            "args": {
+                "origin": "Berlin",
+                "destination": "Lisbon",
+                "departure_date": _DEPARTURE,
+                "return_date": _RETURN,
+                "travel_class": "ECONOMY",
+            }
+        }]
+
+        clarify_response = MagicMock()
+        clarify_response.tool_calls = [{
+            "args": {
+                "travel_class": "BUSINESS",
+            }
+        }]
+
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+
+        interrupt_mock = MagicMock(return_value="Business class")
+        state = self._base_state(
+            structured_fields={
+                "origin": "Berlin",
+                "destination": "Lisbon",
+                "departure_date": _DEPARTURE,
+                "return_date": _RETURN,
+                "travel_class": "BUSINESS",
+            },
+            free_text_query="Berlin to Lisbon in economy class",
+        )
+
+        with patch("domain.nodes.trip_intake.create_chat_model", return_value=mock_llm):
+            with patch("domain.nodes.trip_intake.invoke_with_retry", side_effect=[parse_response, clarify_response]):
+                with patch("domain.nodes.trip_intake.extract_token_usage", return_value=None):
+                    with patch("domain.nodes.trip_intake.interrupt", interrupt_mock):
+                        result = trip_intake(state)
+
+        trip = result["trip_request"]
+        assert trip["travel_class"] == "BUSINESS"
+        assert interrupt_mock.call_count == 1
+        interrupt_payload = interrupt_mock.call_args.args[0]
+        assert "economy" in interrupt_payload["question"].lower()
+        assert "business" in interrupt_payload["question"].lower()
+        assert interrupt_payload["conflict_field"] == "travel_class"
+
+    def test_conflict_clarification_happens_before_missing_field_question(self):
+        parse_response = MagicMock()
+        parse_response.tool_calls = [{
+            "args": {
+                "origin": "Berlin",
+                "destination": "Lisbon",
+                "departure_date": _DEPARTURE,
+                "travel_class": "ECONOMY",
+            }
+        }]
+
+        conflict_response = MagicMock()
+        conflict_response.tool_calls = [{
+            "args": {
+                "travel_class": "BUSINESS",
+            }
+        }]
+
+        missing_response = MagicMock()
+        missing_response.tool_calls = [{
+            "args": {
+                "return_date": _RETURN,
+            }
+        }]
+
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+
+        interrupt_mock = MagicMock(side_effect=["Business class", _RETURN])
+        state = self._base_state(
+            structured_fields={
+                "origin": "Berlin",
+                "destination": "Lisbon",
+                "departure_date": _DEPARTURE,
+                "travel_class": "BUSINESS",
+            },
+            free_text_query="Berlin to Lisbon in economy class",
+        )
+
+        with patch("domain.nodes.trip_intake.create_chat_model", return_value=mock_llm):
+            with patch(
+                "domain.nodes.trip_intake.invoke_with_retry",
+                side_effect=[parse_response, conflict_response, missing_response],
+            ):
+                with patch("domain.nodes.trip_intake.extract_token_usage", return_value=None):
+                    with patch("domain.nodes.trip_intake.interrupt", interrupt_mock):
+                        result = trip_intake(state)
+
+        trip = result["trip_request"]
+        assert trip["travel_class"] == "BUSINESS"
+        assert trip["return_date"] == _RETURN
+        first_question = interrupt_mock.call_args_list[0].args[0]["question"].lower()
+        second_question = interrupt_mock.call_args_list[1].args[0]["question"].lower()
+        assert "cabin class" in first_question
+        assert "return" in second_question
+
+    def test_free_text_trip_parsing_preserves_flight_filters(self):
+        domain_response = MagicMock()
+        domain_response.tool_calls = [{"args": {"in_domain": True, "reason": ""}}]
+
+        parse_response = MagicMock()
+        parse_response.tool_calls = [{
+            "args": {
+                "origin": "Berlin",
+                "destination": "Lisbon",
+                "departure_date": _DEPARTURE,
+                "return_date": _RETURN,
+                "travel_class": "BUSINESS",
+                "max_duration": 600,
+                "exclude_airlines": ["FR"],
+            }
+        }]
+
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+
+        state = self._base_state(
+            structured_fields={},
+            free_text_query="Berlin to Lisbon in business class, exclude Ryanair, keep it under 10 hours.",
+        )
+
+        with patch("domain.nodes.trip_intake.create_chat_model", return_value=mock_llm):
+            with patch("domain.nodes.trip_intake.invoke_with_retry", side_effect=[domain_response, parse_response]):
+                with patch("domain.nodes.trip_intake.extract_token_usage", return_value=None):
+                    result = trip_intake(state)
+
+        trip = result["trip_request"]
+        assert trip["travel_class"] == "BUSINESS"
+        assert trip["max_duration"] == 600
+        assert trip["exclude_airlines"] == ["FR"]
+
+    def test_special_requests_are_parsed_even_when_free_text_query_is_present(self):
+        domain_response = MagicMock()
+        domain_response.tool_calls = [{"args": {"in_domain": True, "reason": ""}}]
+
+        parse_trip_response = MagicMock()
+        parse_trip_response.tool_calls = [{
+            "args": {
+                "origin": "Berlin",
+                "destination": "Lisbon",
+                "departure_date": _DEPARTURE,
+                "return_date": _RETURN,
+            }
+        }]
+
+        parse_preferences_response = MagicMock()
+        parse_preferences_response.tool_calls = [{
+            "args": {
+                "travel_class": "BUSINESS",
+                "max_duration": 600,
+                "exclude_airlines": ["FR"],
+            }
+        }]
+
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+
+        state = self._base_state(
+            structured_fields={"preferences": "Business class, exclude Ryanair, keep the flight under 10 hours."},
+            free_text_query="Berlin to Lisbon next month",
+        )
+
+        with patch("domain.nodes.trip_intake.create_chat_model", return_value=mock_llm):
+            with patch(
+                "domain.nodes.trip_intake.invoke_with_retry",
+                side_effect=[domain_response, parse_trip_response, parse_preferences_response],
+            ):
+                with patch("domain.nodes.trip_intake.extract_token_usage", return_value=None):
+                    result = trip_intake(state)
+
+        trip = result["trip_request"]
+        assert trip["travel_class"] == "BUSINESS"
+        assert trip["max_duration"] == 600
+        assert trip["exclude_airlines"] == ["FR"]
+
+    def test_structured_refine_fields_win_over_special_request_parse(self):
+        domain_response = MagicMock()
+        domain_response.tool_calls = [{"args": {"in_domain": True, "reason": ""}}]
+
+        parse_trip_response = MagicMock()
+        parse_trip_response.tool_calls = [{
+            "args": {
+                "origin": "Berlin",
+                "destination": "Lisbon",
+                "departure_date": _DEPARTURE,
+                "return_date": _RETURN,
+            }
+        }]
+
+        parse_preferences_response = MagicMock()
+        parse_preferences_response.tool_calls = [{
+            "args": {
+                "travel_class": "ECONOMY",
+                "max_duration": 900,
+            }
+        }]
+
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+
+        state = self._base_state(
+            structured_fields={
+                "preferences": "Economy is fine, up to 15 hours.",
+                "travel_class": "BUSINESS",
+                "max_duration": 600,
+            },
+            free_text_query="Berlin to Lisbon next month",
+        )
+
+        with patch("domain.nodes.trip_intake.create_chat_model", return_value=mock_llm):
+            with patch(
+                "domain.nodes.trip_intake.invoke_with_retry",
+                side_effect=[domain_response, parse_trip_response, parse_preferences_response],
+            ):
+                with patch("domain.nodes.trip_intake.extract_token_usage", return_value=None):
+                    result = trip_intake(state)
+
+        trip = result["trip_request"]
+        assert trip["travel_class"] == "BUSINESS"
+        assert trip["max_duration"] == 600
+
+    def test_multi_city_structured_fields_win_over_free_text_filters(self):
+        domain_response = MagicMock()
+        domain_response.tool_calls = [{"args": {"in_domain": True, "reason": ""}}]
+
+        parse_response = MagicMock()
+        parse_response.tool_calls = [{
+            "args": {
+                "origin": "Berlin",
+                "departure_date": _DEPARTURE,
+                "legs": [
+                    {"destination": "Paris", "nights": 2},
+                    {"destination": "Barcelona", "nights": 3},
+                ],
+                "travel_class": "ECONOMY",
+                "max_duration": 900,
+                "exclude_airlines": ["FR"],
+            }
+        }]
+
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+
+        state = self._base_state(
+            structured_fields={
+                "multi_city_legs": [
+                    {"destination": "Paris", "nights": 2},
+                    {"destination": "Barcelona", "nights": 3},
+                ],
+                "origin": "Berlin",
+                "departure_date": _DEPARTURE,
+                "travel_class": "BUSINESS",
+                "max_duration": 600,
+                "exclude_airlines": ["LH"],
+            },
+            free_text_query="Paris for 2 nights then Barcelona for 3 nights, economy, exclude Ryanair, up to 15 hours.",
+        )
+
+        with patch("domain.nodes.trip_intake.create_chat_model", return_value=mock_llm):
+            with patch("domain.nodes.trip_intake.invoke_with_retry", side_effect=[parse_response]):
+                with patch("domain.nodes.trip_intake.extract_token_usage", return_value=None):
+                    result = trip_intake(state)
+
+        trip = result["trip_request"]
+        assert trip["travel_class"] == "BUSINESS"
+        assert trip["max_duration"] == 600
+        assert trip["exclude_airlines"] == ["LH"]
+
     def test_revision_baseline_allows_feedback_to_override_existing_duration(self):
         departure_date = str(date.today() + timedelta(days=30))
         return_date = str(date.fromisoformat(departure_date) + timedelta(days=5))

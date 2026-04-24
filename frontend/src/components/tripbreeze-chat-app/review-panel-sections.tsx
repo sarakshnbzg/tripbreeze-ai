@@ -9,6 +9,44 @@ import {
 } from "./helpers";
 import type { ReviewWorkspaceActions, ReviewWorkspaceModel, ReviewWorkspaceRefs } from "./workspace-types";
 
+function activeFlightFilters(state: ReviewWorkspaceModel["state"]) {
+  const trip = (state?.trip_request ?? {}) as Record<string, unknown>;
+  const filters: string[] = [];
+
+  const travelClass = String(trip.travel_class ?? "").trim();
+  if (travelClass) {
+    filters.push(`${travelClass.replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase())} cabin`);
+  }
+
+  const maxDuration = Number(trip.max_duration ?? 0);
+  if (Number.isFinite(maxDuration) && maxDuration > 0) {
+    const hours = Math.floor(maxDuration / 60);
+    const minutes = maxDuration % 60;
+    filters.push(minutes ? `Max ${hours}h ${minutes}m` : `Max ${hours}h`);
+  }
+
+  const stops = Number(trip.stops);
+  if (Number.isFinite(stops) && stops >= 0) {
+    filters.push(stops === 0 ? "Direct only" : `${stops} stop max`);
+  }
+
+  const excludedAirlines = Array.isArray(trip.exclude_airlines)
+    ? trip.exclude_airlines.map((value) => String(value).trim()).filter(Boolean)
+    : [];
+  if (excludedAirlines.length) {
+    filters.push(`Exclude ${excludedAirlines.join(", ")}`);
+  }
+
+  const includedAirlines = Array.isArray(trip.include_airlines)
+    ? trip.include_airlines.map((value) => String(value).trim()).filter(Boolean)
+    : [];
+  if (includedAirlines.length) {
+    filters.push(`Only ${includedAirlines.join(", ")}`);
+  }
+
+  return filters;
+}
+
 export function DestinationBriefingPanel({ destinationInfo }: { destinationInfo: unknown }) {
   if (!destinationInfo) {
     return null;
@@ -40,6 +78,8 @@ export function ReviewWorkspaceHeader({ model }: { model: ReviewWorkspaceModel }
   if (!state) {
     return null;
   }
+
+  const filters = activeFlightFilters(state);
 
   const steps = state.trip_legs?.length
     ? ["1. Select flights", "2. Select hotels", "3. Personalise itinerary"]
@@ -86,6 +126,12 @@ export function ReviewWorkspaceHeader({ model }: { model: ReviewWorkspaceModel }
           {` • ${hasSelectedSingleHotel ? selectionLabel(selectedHotelOption, "Hotel selected") : "No hotel yet"}`}
         </div>
       )}
+      {filters.length ? (
+        <div className="mb-5 rounded-[1.4rem] border border-line/70 bg-white/88 px-4 py-3 text-sm text-slate">
+          <span className="font-semibold text-ink">Active flight filters:</span>{" "}
+          {filters.join(" • ")}
+        </div>
+      ) : null}
     </>
   );
 }

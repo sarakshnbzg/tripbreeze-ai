@@ -33,6 +33,7 @@ from domain.nodes.trip_intake_helpers import (
     _infer_stay_length_days,
     _infer_missing_dates_from_query,
     _merge_clarification_answer,
+    _merge_has_value,
     _merge_single_city_parsed_query,
     _missing_required_fields,
     _normalise_hotel_stars,
@@ -215,6 +216,149 @@ def _parse_preferences(llm, preferences: str, model: str) -> tuple[dict[str, Any
 
     return tool_calls[0].get("args", {}), usage
 
+
+def _conflict_value_text(field: str, value: Any) -> str:
+    if field in {"travel_class"}:
+        return str(value or "").replace("_", " ").title() or "not set"
+    if field in {"include_airlines", "exclude_airlines"}:
+        if isinstance(value, list):
+            return ", ".join(str(item) for item in value if str(item).strip()) or "none"
+    if field == "stops":
+        if value == 0:
+            return "direct only"
+        if isinstance(value, int):
+            return f"up to {value} stop{'s' if value != 1 else ''}"
+    if field == "max_duration":
+        try:
+            total = int(value)
+        except (TypeError, ValueError):
+            return str(value or "not set")
+        hours, minutes = divmod(total, 60)
+        if hours and minutes:
+            return f"{hours}h {minutes}m"
+        if hours:
+            return f"{hours}h"
+        if minutes:
+            return f"{minutes}m"
+        return "not set"
+    if field == "legs" and isinstance(value, list):
+        return " then ".join(
+            f"{leg.get('destination', '?')} for {leg.get('nights', '?')} nights"
+            for leg in value
+        ) or "not set"
+    if field == "return_to_origin":
+        return "return to origin" if value else "open-jaw / one-way"
+    return str(value or "not set")
+
+
+def _build_conflict_question(field: str, structured_value: Any, parsed_value: Any, is_multi_city: bool) -> str:
+    structured_text = _conflict_value_text(field, structured_value)
+    parsed_text = _conflict_value_text(field, parsed_value)
+
+    if field == "travel_class":
+        return (
+            f"Your typed request says {parsed_text}, but the refine fields say {structured_text}. "
+            "Which cabin class should I use?"
+        )
+    if field in {"origin", "destination"}:
+        label = "origin" if field == "origin" else "destination"
+        return (
+            f"Your typed request says {parsed_text} for the {label}, but the refine fields say {structured_text}. "
+            f"Which {label} should I use?"
+        )
+    if field in {"departure_date", "return_date"}:
+        label = "departure date" if field == "departure_date" else "return date"
+        return (
+            f"Your typed request says {parsed_text} for the {label}, but the refine fields say {structured_text}. "
+            f"Which {label} should I use?"
+        )
+    if field == "is_one_way":
+        return (
+            f"Your typed request implies {parsed_text}, but the refine fields say {structured_text}. "
+            "Should I treat this as one-way or round-trip?"
+        )
+    if field == "stops":
+        return (
+            f"Your typed request says {parsed_text}, but the refine fields say {structured_text}. "
+            "Which stop preference should I use?"
+        )
+    if field == "max_duration":
+        return (
+            f"Your typed request says a max flight duration of {parsed_text}, but the refine fields say {structured_text}. "
+            "What maximum flight duration should I use?"
+        )
+    if field in {"include_airlines", "exclude_airlines"}:
+        action = "include" if field == "include_airlines" else "exclude"
+        return (
+            f"Your typed request says to {action} {parsed_text}, but the refine fields say {structured_text}. "
+            f"Which airlines should I {action}?"
+        )
+    if field == "legs" and is_multi_city:
+        return (
+            f"Your typed request describes {parsed_text}, but the refine fields describe {structured_text}. "
+            "Which destinations and nights should I use?"
+        )
+    if field == "return_to_origin" and is_multi_city:
+        return (
+            f"Your typed request implies {parsed_text}, but the refine fields say {structured_text}. "
+            "Should I return to the origin city at the end of the trip?"
+        )
+    return (
+        f"Your typed request says {parsed_text}, but the refine fields say {structured_text}. "
+        f"Which {field.replace('_', ' ')} should I use?"
+    )
+
+
+def _find_conflicting_field(
+    structured_fields: dict[str, Any],
+    parsed_query: dict[str, Any],
+    *,
+    is_multi_city: bool,
+    resolved_fields: set[str],
+) -> tuple[str, Any, Any] | None:
+    conflict_pairs: list[tuple[str, str]] = [
+        ("origin", "origin"),
+        ("destination", "destination"),
+        ("departure_date", "departure_date"),
+        ("return_date", "return_date"),
+        ("is_one_way", "is_one_way"),
+        ("travel_class", "travel_class"),
+        ("stops", "stops"),
+        ("max_duration", "max_duration"),
+        ("include_airlines", "include_airlines"),
+        ("exclude_airlines", "exclude_airlines"),
+    ]
+
+    for field, parsed_key in conflict_pairs:
+        if field in resolved_fields or parsed_key in resolved_fields:
+            continue
+        structured_value = structured_fields.get(field)
+        parsed_value = parsed_query.get(parsed_key)
+        if not _merge_has_value(field, structured_value) or not _merge_has_value(parsed_key, parsed_value):
+            continue
+        if structured_value != parsed_value:
+            return parsed_key, structured_value, parsed_value
+
+    if is_multi_city:
+        if "legs" not in resolved_fields and structured_fields.get("multi_city_legs") and parsed_query.get("legs"):
+            structured_legs = [
+                {"destination": leg.get("destination"), "nights": leg.get("nights")}
+                for leg in structured_fields.get("multi_city_legs", [])
+            ]
+            parsed_legs = [
+                {"destination": leg.get("destination"), "nights": leg.get("nights")}
+                for leg in parsed_query.get("legs", [])
+            ]
+            if structured_legs and parsed_legs and structured_legs != parsed_legs:
+                return "legs", structured_legs, parsed_legs
+        if "return_to_origin" not in resolved_fields:
+            structured_return = structured_fields.get("return_to_origin")
+            parsed_return = parsed_query.get("return_to_origin")
+            if structured_return is not None and parsed_return is not None and structured_return != parsed_return:
+                return "return_to_origin", structured_return, parsed_return
+
+    return None
+
 def trip_intake(state: dict) -> dict:
     """LangGraph node: build trip request from structured form fields and/or free text."""
     profile = state.get("user_profile", {})
@@ -267,6 +411,7 @@ def trip_intake(state: dict) -> dict:
     is_multi_city = False
     trip_legs: list[dict[str, Any]] = []
     inferred_multi_city_data: dict[str, Any] | None = None
+    parsed_query_for_conflicts: dict[str, Any] = {}
 
     # Check for multi-city from structured form fields first
     if structured_fields.get("multi_city_legs"):
@@ -284,20 +429,24 @@ def trip_intake(state: dict) -> dict:
         logger.info("Trip intake parsing free-text query")
         llm = create_chat_model(provider, model, temperature=temperature)
         parsed_query, is_multi_city, usage = _parse_free_text(llm, free_text_query, model=model)
+        parsed_query_for_conflicts = parsed_query or {}
         if usage:
             token_usage.append(usage)
 
         if is_multi_city:
             inferred_multi_city_data = parsed_query
-            if not raw_trip_data.get("origin") and parsed_query.get("origin"):
+            if not _merge_has_value("origin", raw_trip_data.get("origin")) and _merge_has_value("origin", parsed_query.get("origin")):
                 raw_trip_data["origin"] = parsed_query["origin"]
-            if not raw_trip_data.get("destination") and parsed_query.get("legs"):
+            if not _merge_has_value("destination", raw_trip_data.get("destination")) and parsed_query.get("legs"):
                 raw_trip_data["destination"] = parsed_query["legs"][0].get("destination", "")
             for key in (
                 "num_travelers", "budget_limit", "currency", "preferences",
-                "stops", "hotel_stars", "travel_class", "interests", "pace",
+                "stops", "max_flight_price", "max_duration", "bags", "emissions",
+                "layover_duration_min", "layover_duration_max",
+                "include_airlines", "exclude_airlines",
+                "hotel_stars", "travel_class", "interests", "pace",
             ):
-                if parsed_query.get(key) not in (None, "", []):
+                if _merge_has_value(key, parsed_query.get(key)) and not _merge_has_value(key, raw_trip_data.get(key)):
                     raw_trip_data[key] = parsed_query[key]
             # Multi-city trip: build legs and derive trip_request from them
             trip_legs = _build_trip_legs(parsed_query, raw_trip_data.get("origin", ""), profile)
@@ -350,7 +499,88 @@ def trip_intake(state: dict) -> dict:
     # LangGraph replays answered interrupts on re-run, so each iteration's
     # interrupt() returns the previously supplied answer automatically.
     if free_text_query.strip() and not revision_mode:
+        resolved_conflict_fields: set[str] = set()
         while True:
+            conflict = _find_conflicting_field(
+                structured_fields,
+                parsed_query_for_conflicts,
+                is_multi_city=bool(trip_legs or inferred_multi_city_data),
+                resolved_fields=resolved_conflict_fields,
+            )
+            if conflict:
+                conflict_field, structured_value, parsed_value = conflict
+                target_fields = [conflict_field]
+                question = _build_conflict_question(
+                    conflict_field,
+                    structured_value,
+                    parsed_value,
+                    bool(trip_legs or inferred_multi_city_data),
+                )
+                logger.info("Conflict on field %s — interrupting for clarification", conflict_field)
+                log_event(
+                    logger,
+                    "workflow.intake_conflict_clarification_requested",
+                    field=conflict_field,
+                    is_multi_city=bool(trip_legs),
+                )
+                try:
+                    clarification_answer = interrupt({
+                        "type": "clarification",
+                        "question": question,
+                        "missing_fields": target_fields,
+                        "conflict_field": conflict_field,
+                    })
+                except RuntimeError as exc:
+                    if "outside of a runnable context" not in str(exc):
+                        raise
+                    logger.info(
+                        "Skipping conflict clarification outside runnable context; proceeding with precedence rules"
+                    )
+                    break
+                if not clarification_answer:
+                    break
+                logger.info("Conflict clarification answer received: %s", clarification_answer)
+                llm = create_chat_model(provider, model, temperature=temperature)
+                parsed_answer, clarification_is_multi_city, usage = _parse_clarification(
+                    llm,
+                    clarification_answer,
+                    target_fields,
+                    question,
+                    free_text_query,
+                    raw_trip_data,
+                    bool(trip_legs or inferred_multi_city_data or structured_fields.get("multi_city_legs")),
+                    model=model,
+                )
+                parsed_answer = _apply_clarification_duration_fallback(
+                    parsed_answer,
+                    clarification_answer,
+                    raw_trip_data,
+                    target_fields,
+                )
+                parsed_answer = _apply_clarification_intent_fallback(
+                    parsed_answer,
+                    clarification_answer,
+                    target_fields,
+                )
+                if usage:
+                    token_usage.append(usage)
+                if clarification_is_multi_city:
+                    inferred_multi_city_data = inferred_multi_city_data or {}
+                inferred_multi_city_data = _merge_clarification_answer(
+                    raw_trip_data,
+                    parsed_answer,
+                    inferred_multi_city_data,
+                    override_fields=set(target_fields),
+                )
+                _repair_invalid_duration_dates(
+                    raw_trip_data,
+                    free_text_query,
+                    parsed_answer,
+                    target_fields,
+                )
+                resolved_conflict_fields.update(target_fields)
+                continue
+
             missing_fields = _missing_required_fields(raw_trip_data)
 
             if not missing_fields:
@@ -411,6 +641,7 @@ def trip_intake(state: dict) -> dict:
                 raw_trip_data,
                 parsed_answer,
                 inferred_multi_city_data,
+                override_fields=set(missing_fields),
             )
             _repair_invalid_duration_dates(
                 raw_trip_data,
@@ -426,11 +657,11 @@ def trip_intake(state: dict) -> dict:
 
     _apply_profile_defaults(raw_trip_data, profile)
 
-    # Parse any remaining free-text preferences into filter criteria
+    # Parse special-request preferences into filter criteria whether the trip came
+    # from free text, structured fields, or both. Structured/free-text trip fields
+    # remain authoritative; parsed preferences fill in any still-empty filters.
     preferences = raw_trip_data.get("preferences", "")
-    if preferences.strip() and not free_text_query.strip():
-        # Only run separate preferences parsing if we didn't already parse free text
-        # (free text parsing already extracts filter criteria)
+    if preferences.strip():
         llm = create_chat_model(provider, model, temperature=temperature)
         parsed, usage = _parse_preferences(llm, preferences, model=model)
         if usage:
@@ -443,7 +674,7 @@ def trip_intake(state: dict) -> dict:
             "interests", "pace",
         ):
             value = parsed.get(key)
-            if value is not None and value != "" and value != []:
+            if _merge_has_value(key, value) and not _merge_has_value(key, raw_trip_data.get(key)):
                 raw_trip_data[key] = value
 
     try:

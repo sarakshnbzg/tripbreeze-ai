@@ -167,11 +167,11 @@ export function ClarificationPanel({
   }
 
   return (
-    <div className="mt-6 rounded-[1.75rem] border border-coral/30 bg-[linear-gradient(180deg,rgba(215,108,78,0.12),rgba(255,250,244,0.95))] p-5">
-      <div className="text-sm font-semibold text-coral">More information needed</div>
-      <div className="mt-2 text-sm text-slate">Answer this to continue planning your current trip.</div>
+    <div className="mt-6 rounded-[1.75rem] border border-pine/12 bg-[linear-gradient(180deg,rgba(243,248,245,0.96),rgba(255,250,244,0.96))] p-5 shadow-sm">
+      <div className="text-sm font-semibold text-ink">One quick detail</div>
+      <div className="mt-2 text-sm text-slate">This helps me keep the trip accurate before I continue.</div>
       <textarea
-        className="mt-3 h-24 w-full rounded-3xl border border-white/80 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
+        className="mt-3 h-24 w-full rounded-3xl border border-line/70 bg-white/92 px-4 py-3 text-sm outline-none transition focus:border-pine"
         value={clarificationAnswer}
         onChange={(event) => setClarificationAnswer(event.target.value)}
         placeholder="Type your answer here..."

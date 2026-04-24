@@ -15,6 +15,9 @@ export type PlannerForm = {
   budgetLimit: number;
   currency: string;
   preferences: string;
+  includeAirlines: string;
+  excludeAirlines: string;
+  maxFlightDurationHours: number;
   directOnly: boolean;
   travelClass: string;
   hotelStars: number[];
@@ -45,6 +48,9 @@ export const defaultForm: PlannerForm = {
   budgetLimit: 0,
   currency: "EUR",
   preferences: "",
+  includeAirlines: "",
+  excludeAirlines: "",
+  maxFlightDurationHours: 0,
   directOnly: false,
   travelClass: "ECONOMY",
   hotelStars: [],
@@ -92,6 +98,7 @@ function addDaysToIsoDate(isoDate: string, days: number) {
 
 export function buildStructuredFields(form: PlannerForm) {
   const fields: Record<string, unknown> = {};
+  const preferenceLines: string[] = [];
   const validMultiCityLegs = form.multiCityLegs
     .map((leg) => ({
       destination: leg.destination.trim(),
@@ -136,16 +143,28 @@ export function buildStructuredFields(form: PlannerForm) {
     fields.currency = form.currency;
   }
   if (form.preferences.trim()) {
-    fields.preferences = form.preferences.trim();
+    preferenceLines.push(form.preferences.trim());
+  }
+  if (form.includeAirlines.trim()) {
+    preferenceLines.push(`Only include these airlines: ${form.includeAirlines.trim()}.`);
+  }
+  if (form.excludeAirlines.trim()) {
+    preferenceLines.push(`Exclude these airlines: ${form.excludeAirlines.trim()}.`);
   }
   if (form.directOnly) {
     fields.stops = 0;
+  }
+  if (form.maxFlightDurationHours > 0) {
+    fields.max_duration = Math.round(form.maxFlightDurationHours * 60);
   }
   if (form.travelClass) {
     fields.travel_class = form.travelClass;
   }
   if (form.hotelStars.length) {
     fields.hotel_stars = form.hotelStars;
+  }
+  if (preferenceLines.length) {
+    fields.preferences = preferenceLines.join(" ");
   }
 
   return fields;

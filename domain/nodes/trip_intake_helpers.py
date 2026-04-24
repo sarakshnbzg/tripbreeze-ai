@@ -508,14 +508,16 @@ def _merge_clarification_answer(
     raw_trip_data: dict[str, Any],
     parsed_answer: dict[str, Any],
     inferred_multi_city_data: dict[str, Any] | None,
+    override_fields: set[str] | None = None,
 ) -> dict[str, Any] | None:
     """Merge clarification results and return updated inferred multi-city seed."""
     next_inferred = inferred_multi_city_data
+    override_fields = override_fields or set()
     if parsed_answer.get("legs") or "return_to_origin" in parsed_answer:
         next_inferred = dict(inferred_multi_city_data or {})
         if parsed_answer.get("legs"):
             next_inferred["legs"] = parsed_answer["legs"]
-            if not raw_trip_data.get("destination"):
+            if "legs" in override_fields or not raw_trip_data.get("destination"):
                 raw_trip_data["destination"] = parsed_answer["legs"][0].get("destination", "")
         if "return_to_origin" in parsed_answer:
             next_inferred["return_to_origin"] = parsed_answer["return_to_origin"]
@@ -526,7 +528,7 @@ def _merge_clarification_answer(
     for key, value in parsed_answer.items():
         not_empty = _merge_has_value(key, value) or (key == "return_date" and value == "")
         already_set = _merge_has_value(key, raw_trip_data.get(key))
-        if not_empty and not already_set:
+        if not_empty and (key in override_fields or not already_set):
             raw_trip_data[key] = value
 
     return next_inferred

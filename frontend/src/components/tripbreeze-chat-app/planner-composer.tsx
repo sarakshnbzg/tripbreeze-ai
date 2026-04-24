@@ -256,6 +256,19 @@ export function PlannerComposer({
                 ))}
               </select>
             </label>
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-slate">Max Flight Duration (hours)</span>
+              <input
+                type="number"
+                min={0}
+                step={0.5}
+                className="w-full rounded-full border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
+                value={form.maxFlightDurationHours}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, maxFlightDurationHours: Number(event.target.value || 0) }))
+                }
+              />
+            </label>
           </div>
 
           <label className="block">
@@ -264,6 +277,26 @@ export function PlannerComposer({
               className="w-full rounded-full border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
               value={form.preferences}
               onChange={(event) => setForm((current) => ({ ...current, preferences: event.target.value }))}
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-2 block text-sm font-medium text-slate">Exclude Airlines</span>
+            <input
+              className="w-full rounded-full border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
+              placeholder="e.g. Ryanair, easyJet"
+              value={form.excludeAirlines}
+              onChange={(event) => setForm((current) => ({ ...current, excludeAirlines: event.target.value }))}
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-2 block text-sm font-medium text-slate">Include Airlines</span>
+            <input
+              className="w-full rounded-full border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
+              placeholder="e.g. Lufthansa, Air France"
+              value={form.includeAirlines}
+              onChange={(event) => setForm((current) => ({ ...current, includeAirlines: event.target.value }))}
             />
           </label>
 

@@ -11,6 +11,49 @@ def _markdown_table_value(value: object) -> str:
     return str(value).replace("|", "\\|").replace("\n", " ")
 
 
+def _format_flight_filters(trip: dict) -> str:
+    filters: list[str] = []
+
+    class_name = str(trip.get("travel_class", "ECONOMY")).replace("_", " ").title()
+    if class_name:
+        filters.append(f"Cabin: {class_name}")
+
+    max_duration = int(trip.get("max_duration") or 0)
+    if max_duration > 0:
+        hours = max_duration // 60
+        minutes = max_duration % 60
+        duration_label = f"{hours}h" if minutes == 0 else f"{hours}h {minutes}m"
+        filters.append(f"Max duration: {duration_label}")
+
+    stops = trip.get("stops")
+    if isinstance(stops, int):
+        filters.append("Direct only" if stops == 0 else f"Up to {stops} stop{'s' if stops != 1 else ''}")
+
+    exclude_airlines = [str(code).strip() for code in trip.get("exclude_airlines", []) if str(code).strip()]
+    if exclude_airlines:
+        filters.append(f"Exclude: {', '.join(exclude_airlines)}")
+
+    include_airlines = [str(code).strip() for code in trip.get("include_airlines", []) if str(code).strip()]
+    if include_airlines:
+        filters.append(f"Only: {', '.join(include_airlines)}")
+
+    if not filters:
+        return ""
+
+    return "\n".join(
+        [
+            "### Flight Filters",
+            "",
+            "| Filter | Value |",
+            "|:---|:---|",
+            *[
+                f"| Applied | {_markdown_table_value(value)} |"
+                for value in filters
+            ],
+        ]
+    )
+
+
 def _format_multi_city_summary(trip: dict, trip_legs: list[dict]) -> str:
     """Format a summary for multi-city trips."""
     legs_route = " → ".join(
@@ -129,6 +172,10 @@ def hitl_review(state: dict) -> dict:
         parts.append(_format_multi_city_summary(trip, trip_legs))
     else:
         parts.append(_format_trip_summary(trip, flights, hotels))
+
+    flight_filters = _format_flight_filters(trip)
+    if flight_filters:
+        parts.append(flight_filters)
 
     if budget.get("budget_notes"):
         parts.append(f"### Budget Note\n\n> {budget['budget_notes']}")

@@ -16,6 +16,9 @@ function buildForm(overrides: Partial<PlannerForm> = {}): PlannerForm {
     budgetLimit: 0,
     currency: "EUR",
     preferences: "",
+    includeAirlines: "",
+    excludeAirlines: "",
+    maxFlightDurationHours: 0,
     directOnly: false,
     travelClass: "ECONOMY",
     hotelStars: [],
@@ -39,5 +42,41 @@ describe("planner helpers", () => {
     const fields = buildStructuredFields(buildForm({ departureDate: "not-a-date" }));
 
     expect(fields).not.toHaveProperty("check_out_date");
+  });
+
+  it("adds max flight duration and excluded airlines from refine controls", () => {
+    const fields = buildStructuredFields(
+      buildForm({
+        maxFlightDurationHours: 10,
+        excludeAirlines: "Ryanair, easyJet",
+      }),
+    );
+
+    expect(fields.max_duration).toBe(600);
+    expect(fields.preferences).toContain("Exclude these airlines: Ryanair, easyJet.");
+  });
+
+  it("adds included airlines from refine controls", () => {
+    const fields = buildStructuredFields(
+      buildForm({
+        includeAirlines: "Lufthansa, Air France",
+      }),
+    );
+
+    expect(fields.preferences).toContain("Only include these airlines: Lufthansa, Air France.");
+  });
+
+  it("merges special requests with excluded airlines into one preferences string", () => {
+    const fields = buildStructuredFields(
+      buildForm({
+        preferences: "Window seat if possible.",
+        includeAirlines: "Lufthansa",
+        excludeAirlines: "Ryanair",
+      }),
+    );
+
+    expect(fields.preferences).toBe(
+      "Window seat if possible. Only include these airlines: Lufthansa. Exclude these airlines: Ryanair.",
+    );
   });
 });

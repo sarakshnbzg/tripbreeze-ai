@@ -169,6 +169,91 @@ async function mockPlannerFlow(page: Page) {
   });
 }
 
+async function mockConflictClarificationPlannerFlow(
+  page: Page,
+  capture: {
+    searchPayload: Record<string, unknown> | null;
+    clarificationPayload: Record<string, unknown> | null;
+  },
+) {
+  await page.route(`${API_BASE}/api/search`, async (route) => {
+    capture.searchPayload = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: sse([
+        { event: "node_start", data: { node: "trip_intake", label: "Understanding your trip request..." } },
+        {
+          event: "clarification",
+          data: {
+            thread_id: "thread-conflict",
+            question:
+              "Your typed request says Economy, but the refine fields say Business. Which cabin class should I use?",
+            missing_fields: ["travel_class"],
+            conflict_field: "travel_class",
+          },
+        },
+        { event: "done", data: {} },
+      ]),
+    });
+  });
+
+  await page.route(`${API_BASE}/api/search/thread-conflict/clarify`, async (route) => {
+    capture.clarificationPayload = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: sse([
+        { event: "node_start", data: { node: "research", label: "Researching flights, hotels, and destination info..." } },
+        {
+          event: "state",
+          data: {
+            thread_id: "thread-conflict",
+            current_step: "awaiting_review",
+            trip_request: {
+              origin: "Berlin",
+              destination: "Lisbon",
+              departure_date: "2026-06-10",
+              return_date: "2026-06-14",
+              check_out_date: "2026-06-14",
+              num_travelers: 1,
+              currency: "EUR",
+              travel_class: "BUSINESS",
+            },
+            destination_info: "### Entry requirements\nPassport should be valid for your stay.",
+            budget: {
+              total_estimated_cost: 860,
+            },
+            flight_options: [
+              {
+                airline: "SkyWays",
+                outbound_summary: "Berlin to Lisbon · 09:00 departure",
+                total_price: 320,
+                booking_url: "https://example.com/flights/skyways",
+              },
+            ],
+            hotel_options: [
+              {
+                name: "River Hotel",
+                description: "Central boutique stay near the tram line.",
+                total_price: 540,
+                booking_url: "https://example.com/hotels/river",
+              },
+            ],
+            messages: [
+              {
+                role: "assistant",
+                content: "Select the flight and hotel that fit you best.",
+              },
+            ],
+          },
+        },
+        { event: "done", data: {} },
+      ]),
+    });
+  });
+}
+
 async function mockRevisionPlannerFlow(
   page: Page,
   capture: { approvePayload: Record<string, unknown> | null },
@@ -583,7 +668,7 @@ async function completePlannerJourney(page: Page) {
   await page.getByPlaceholder("Describe your trip...").fill("Plan a summer trip to Lisbon.");
   await page.getByRole("button", { name: "Search Trip" }).click();
 
-  await expect(page.getByText("More information needed")).toBeVisible();
+  await expect(page.getByText("One quick detail")).toBeVisible();
   await page.getByPlaceholder("Type your answer here...").fill("Depart on June 10 and stay 4 nights.");
   await page.getByRole("button", { name: "Continue Planning" }).click();
 
@@ -757,4 +842,42 @@ test("shows partial search results in review when only hotels are available", as
   await expect(page.getByText("No flights found. Try different dates or cities.")).toBeVisible();
   await expect(page.getByRole("button", { name: /harbor hotel/i })).toBeVisible();
   await expect(page.getByRole("button", { name: "Approve and Generate Itinerary" })).toBeDisabled();
+});
+
+test("asks a conflict clarification question when refine fields disagree with typed trip text", async ({ page }) => {
+  const capture = {
+    searchPayload: null as Record<string, unknown> | null,
+    clarificationPayload: null as Record<string, unknown> | null,
+  };
+  await signInAndOpenPlanner(page);
+  await mockConflictClarificationPlannerFlow(page, capture);
+
+  await page.getByPlaceholder("Describe your trip...").fill("Plan a Lisbon trip in economy class.");
+  await page.getByText("Refine your search (optional)").click();
+  await page.getByLabel("From (Origin City)").fill("Berlin");
+  await page.getByLabel("To (Destination City)").fill("Lisbon");
+  await page.getByLabel("Departure Date").fill("2026-06-10");
+  await page.getByLabel("Return Date").fill("2026-06-14");
+  await page.getByLabel("Travel Class").selectOption("BUSINESS");
+  await page.getByRole("button", { name: "Search Trip" }).click();
+
+  await expect.poll(() => capture.searchPayload).not.toBeNull();
+  const submittedSearch = capture.searchPayload;
+  if (!submittedSearch) {
+    throw new Error("Expected conflict search payload to be captured.");
+  }
+  expect((submittedSearch.structured_fields as { travel_class?: unknown }).travel_class).toBe("BUSINESS");
+
+  await expect(page.getByText("One quick detail")).toBeVisible();
+  await expect(page.getByText(/typed request says economy/i)).toBeVisible();
+  await expect(page.getByText(/refine fields say business/i)).toBeVisible();
+
+  await page.getByPlaceholder("Type your answer here...").fill("Business class");
+  await page.getByRole("button", { name: "Continue Planning" }).click();
+
+  await expect.poll(() => capture.clarificationPayload).not.toBeNull();
+  expect(capture.clarificationPayload?.answer).toBe("Business class");
+  await expect(page.getByText("Review your trip")).toBeVisible();
+  await expect(page.getByText("Active flight filters:")).toBeVisible();
+  await expect(page.getByText(/Business cabin/i)).toBeVisible();
 });

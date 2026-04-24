@@ -228,6 +228,40 @@ class ExtractTripDetails(BaseModel):
         default=0,
         description="Maximum flight price per person. 0 if not specified.",
     )
+    max_duration: int = Field(
+        default=0,
+        description="Maximum total flight duration in minutes. E.g. 'under 10 hours' = 600. Use 0 if not specified.",
+    )
+    bags: int = Field(
+        default=0,
+        description="Number of carry-on bags. Use 0 if not specified.",
+    )
+    emissions: bool = Field(
+        default=False,
+        description="Set to true if the user wants eco-friendly / low-emission flights only.",
+    )
+    layover_duration_min: int = Field(
+        default=0,
+        description="Minimum layover duration in minutes. Use 0 if not specified.",
+    )
+    layover_duration_max: int = Field(
+        default=0,
+        description="Maximum layover duration in minutes. Use 0 if not specified.",
+    )
+    include_airlines: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Airlines to include (only show these). Use 2-letter IATA codes (e.g. 'LH' for Lufthansa) "
+            "or alliance names: STAR_ALLIANCE, SKYTEAM, ONEWORLD. Empty list if not specified."
+        ),
+    )
+    exclude_airlines: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Airlines to exclude (hide these). Use 2-letter IATA codes (e.g. 'FR' for Ryanair) "
+            "or alliance names: STAR_ALLIANCE, SKYTEAM, ONEWORLD. Empty list if not specified."
+        ),
+    )
     hotel_stars: list[int] = Field(
         default_factory=list,
         description="Preferred hotel star ratings (1-5). Empty if not specified.",
@@ -318,6 +352,44 @@ class ExtractMultiCityTrip(BaseModel):
     stops: int | None = Field(
         default=None,
         description="Maximum number of stops per flight (0=direct, 1, 2). None if not specified.",
+    )
+    max_flight_price: float = Field(
+        default=0,
+        description="Maximum flight price per person. 0 if not specified.",
+    )
+    max_duration: int = Field(
+        default=0,
+        description="Maximum total flight duration in minutes. E.g. 'under 10 hours' = 600. Use 0 if not specified.",
+    )
+    bags: int = Field(
+        default=0,
+        description="Number of carry-on bags. Use 0 if not specified.",
+    )
+    emissions: bool = Field(
+        default=False,
+        description="Set to true if the user wants eco-friendly / low-emission flights only.",
+    )
+    layover_duration_min: int = Field(
+        default=0,
+        description="Minimum layover duration in minutes. Use 0 if not specified.",
+    )
+    layover_duration_max: int = Field(
+        default=0,
+        description="Maximum layover duration in minutes. Use 0 if not specified.",
+    )
+    include_airlines: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Airlines to include (only show these). Use 2-letter IATA codes (e.g. 'LH' for Lufthansa) "
+            "or alliance names: STAR_ALLIANCE, SKYTEAM, ONEWORLD. Empty list if not specified."
+        ),
+    )
+    exclude_airlines: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Airlines to exclude (hide these). Use 2-letter IATA codes (e.g. 'FR' for Ryanair) "
+            "or alliance names: STAR_ALLIANCE, SKYTEAM, ONEWORLD. Empty list if not specified."
+        ),
     )
     hotel_stars: list[int] = Field(
         default_factory=list,
