@@ -267,6 +267,7 @@ describe("workspace panels", () => {
         shareState={{
           loading: null,
           emailAddress: "",
+          shareMessage: "",
           setEmailAddress: vi.fn(),
           onDownloadPdf: vi.fn(async () => undefined),
           onEmailItinerary: vi.fn(async () => undefined),
@@ -306,6 +307,7 @@ describe("workspace panels", () => {
         shareState={{
           loading: "approving",
           emailAddress: "",
+          shareMessage: "",
           setEmailAddress: vi.fn(),
           onDownloadPdf: vi.fn(async () => undefined),
           onEmailItinerary: vi.fn(async () => undefined),
@@ -340,6 +342,7 @@ describe("workspace panels", () => {
         shareState={{
           loading: null,
           emailAddress: "",
+          shareMessage: "",
           setEmailAddress: vi.fn(),
           onDownloadPdf: vi.fn(async () => undefined),
           onEmailItinerary: vi.fn(async () => undefined),
@@ -353,6 +356,35 @@ describe("workspace panels", () => {
         "The planner did not finish the structured itinerary step, so TripBreeze recovered this itinerary from your approved trip details.",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("shows itinerary email success in the share panel", () => {
+    render(
+      <FinalItineraryPanel
+        viewModel={{
+          finalItinerary: "Recovered trip",
+          hasStructuredItinerary: true,
+          fallbackNotice: null,
+          snapshotItems: [{ label: "Route", value: "Berlin -> Paris" }],
+          bookingLinks: [],
+          primarySections: [],
+          secondarySections: [],
+          mapPoints: [],
+          itineraryLegs: [],
+          itineraryDays: [],
+        }}
+        shareState={{
+          loading: null,
+          emailAddress: "sara@example.com",
+          shareMessage: "Sent to sara@example.com",
+          setEmailAddress: vi.fn(),
+          onDownloadPdf: vi.fn(async () => undefined),
+          onEmailItinerary: vi.fn(async () => undefined),
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Sent to sara@example.com")).toBeInTheDocument();
   });
 
   it("builds Google Maps links for trip map points", () => {
@@ -440,6 +472,118 @@ describe("workspace panels", () => {
         label: "Trevi Fountain",
         latitude: 41.9009,
         longitude: 12.4833,
+      }),
+    ]);
+  });
+
+  it("omits flexible nearby placeholder activities from trip map points", () => {
+    const viewModel = buildItineraryViewModel({
+      state: {
+        itinerary_data: {
+          daily_plans: [
+            {
+              day_number: 4,
+              theme: "Departure Day",
+              activities: [
+                {
+                  name: "Flexible Activity Nearby",
+                  is_mappable: false,
+                  latitude: -3.5,
+                  longitude: 10.2,
+                },
+                {
+                  name: "Colosseum",
+                  latitude: 41.8902,
+                  longitude: 12.4922,
+                },
+              ],
+            },
+          ],
+        },
+      } as unknown as TravelState,
+      itinerary: "Trip ready",
+      currencyCode: "EUR",
+    });
+
+    expect(viewModel.mapPoints).toEqual([
+      expect.objectContaining({
+        label: "Colosseum",
+        latitude: 41.8902,
+        longitude: 12.4922,
+      }),
+    ]);
+  });
+
+  it("prefers the structured is_mappable flag over label matching for trip map points", () => {
+    const viewModel = buildItineraryViewModel({
+      state: {
+        itinerary_data: {
+          daily_plans: [
+            {
+              day_number: 2,
+              activities: [
+                {
+                  name: "Sunset walk",
+                  is_mappable: false,
+                  latitude: 38.71,
+                  longitude: -9.14,
+                },
+                {
+                  name: "Belem Tower",
+                  is_mappable: true,
+                  latitude: 38.6916,
+                  longitude: -9.216,
+                },
+              ],
+            },
+          ],
+        },
+      } as unknown as TravelState,
+      itinerary: "Trip ready",
+      currencyCode: "EUR",
+    });
+
+    expect(viewModel.mapPoints).toEqual([
+      expect.objectContaining({
+        label: "Belem Tower",
+        latitude: 38.6916,
+        longitude: -9.216,
+      }),
+    ]);
+  });
+
+  it("still omits legacy logistics labels without structured flags for older itinerary data", () => {
+    const viewModel = buildItineraryViewModel({
+      state: {
+        itinerary_data: {
+          daily_plans: [
+            {
+              day_number: 2,
+              activities: [
+                {
+                  name: "Baggage storage",
+                  latitude: 41.9,
+                  longitude: 12.48,
+                },
+                {
+                  name: "Pantheon",
+                  latitude: 41.8986,
+                  longitude: 12.4769,
+                },
+              ],
+            },
+          ],
+        },
+      } as unknown as TravelState,
+      itinerary: "Trip ready",
+      currencyCode: "EUR",
+    });
+
+    expect(viewModel.mapPoints).toEqual([
+      expect.objectContaining({
+        label: "Pantheon",
+        latitude: 41.8986,
+        longitude: 12.4769,
       }),
     ]);
   });

@@ -23,6 +23,7 @@ export function useTripPlannerUtilityActions({
   setPlanningUpdates,
   setLoading,
   setError,
+  setShareMessage,
 }: UseTripPlannerActionParams) {
   async function handleVoiceInput(recording: boolean, setRecording: Dispatch<SetStateAction<boolean>>) {
     if (recording) {
@@ -79,6 +80,7 @@ export function useTripPlannerUtilityActions({
       return;
     }
     setError("");
+    setShareMessage("");
     setLoading("pdf");
     try {
       const fileName = buildItineraryFileName(state);
@@ -103,10 +105,12 @@ export function useTripPlannerUtilityActions({
   async function handleEmailItinerary() {
     const finalItinerary = itinerary || String(state?.final_itinerary ?? "");
     if (!finalItinerary || !emailAddress.trim()) {
+      setShareMessage("");
       setError("Enter an email address before sending the itinerary.");
       return;
     }
     setError("");
+    setShareMessage("");
     setLoading("email");
     try {
       const result = await emailItinerary(
@@ -116,7 +120,9 @@ export function useTripPlannerUtilityActions({
         (state ?? {}) as Record<string, unknown>,
       );
       setPlanningUpdates((current) => [...current, result.message]);
+      setShareMessage(result.message);
     } catch (emailError) {
+      setShareMessage("");
       setError(safeErrorMessage(emailError));
     } finally {
       setLoading(null);

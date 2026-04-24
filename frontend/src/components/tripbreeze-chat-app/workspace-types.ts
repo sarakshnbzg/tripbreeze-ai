@@ -55,6 +55,7 @@ export type ReviewPanelProps = {
 export type ItineraryShareState = {
   loading: PlannerLoadingState;
   emailAddress: string;
+  shareMessage: string;
   setEmailAddress: React.Dispatch<React.SetStateAction<string>>;
   onDownloadPdf: () => Promise<void>;
   onEmailItinerary: () => Promise<void>;

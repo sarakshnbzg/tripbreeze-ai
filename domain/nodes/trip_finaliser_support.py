@@ -47,6 +47,10 @@ class Activity(BaseModel):
     longitude: float | None = Field(default=None, description="Longitude for map display, if known.")
     maps_url: str = Field(default="", description="Google Maps URL for the attraction, if known.")
     destination: str = Field(default="", description="Destination city this attraction belongs to, if known.")
+    is_mappable: bool = Field(
+        default=True,
+        description="Whether this activity should appear as a map pin. Set false for transfers, checkout, baggage storage, or flexible nearby placeholders.",
+    )
 
 
 class DayWeatherInfo(BaseModel):
@@ -191,6 +195,21 @@ def _is_generic_logistics_activity(name: str | None) -> bool:
     return any(phrase in text for phrase in generic_phrases)
 
 
+def _is_non_mappable_activity(name: str | None) -> bool:
+    """Return True for activities that should stay in the itinerary but not appear on the map."""
+    text = (name or "").strip().lower()
+    if not text:
+        return False
+    if _is_generic_logistics_activity(text):
+        return True
+
+    placeholder_phrases = (
+        "flexible activity nearby",
+        "nearby flexible activity",
+    )
+    return any(phrase in text for phrase in placeholder_phrases)
+
+
 def _backfill_activity_coordinates(
     daily_plans: list,
     destination_by_date: dict[str, str] | None = None,
@@ -205,6 +224,9 @@ def _backfill_activity_coordinates(
         if destination_by_date and getattr(day, "date", None):
             day_hint = destination_by_date.get(day.date, "") or ""
         for activity in getattr(day, "activities", []) or []:
+            if _is_non_mappable_activity(activity.name):
+                activity.is_mappable = False
+                continue
             if activity.latitude is not None and activity.longitude is not None:
                 continue
             address = (activity.address or "").strip()
@@ -219,6 +241,7 @@ def _backfill_activity_coordinates(
             coords = geocode_fn(", ".join(query_parts))
             if coords:
                 activity.latitude, activity.longitude = coords
+                activity.is_mappable = True
 
 
 def _strip_generic_logistics_coordinates(daily_plans: list) -> None:
@@ -232,8 +255,10 @@ def _strip_generic_logistics_coordinates(daily_plans: list) -> None:
 
     for day in daily_plans:
         for activity in getattr(day, "activities", []) or []:
-            if not _is_generic_logistics_activity(getattr(activity, "name", "")):
+            if not _is_non_mappable_activity(getattr(activity, "name", "")):
+                activity.is_mappable = True
                 continue
+            activity.is_mappable = False
             activity.latitude = None
             activity.longitude = None
             activity.maps_url = ""

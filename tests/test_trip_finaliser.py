@@ -235,8 +235,10 @@ class TestActivityLocationMetadata:
         assert mock_geocode.call_count == 0
         assert plans[0].activities[0].latitude is None
         assert plans[0].activities[0].longitude is None
+        assert plans[0].activities[0].is_mappable is False
         assert plans[0].activities[1].latitude is None
         assert plans[0].activities[1].longitude is None
+        assert plans[0].activities[1].is_mappable is False
 
     def test_strips_existing_coordinates_from_generic_logistics_activities(self):
         plans = [
@@ -271,11 +273,53 @@ class TestActivityLocationMetadata:
         assert baggage.latitude is None
         assert baggage.longitude is None
         assert baggage.maps_url == ""
+        assert baggage.is_mappable is False
 
         landmark = plans[0].activities[1]
         assert landmark.latitude == 41.9009
         assert landmark.longitude == 12.4833
         assert "Trevi+Fountain" in landmark.maps_url
+        assert landmark.is_mappable is True
+
+    def test_marks_flexible_nearby_placeholders_as_non_mappable(self):
+        plans = [
+            DayPlan(
+                day_number=4,
+                date="2026-06-14",
+                theme="Departure day",
+                activities=[
+                    Activity(
+                        name="Flexible Activity Nearby",
+                        time_of_day="afternoon",
+                        notes="Keep this optional before heading out",
+                        latitude=-3.119,
+                        longitude=11.887,
+                        maps_url="https://www.google.com/maps/search/?api=1&query=Flexible+Activity+Nearby",
+                    ),
+                    Activity(
+                        name="Colosseum",
+                        time_of_day="morning",
+                        notes="Classic Rome stop",
+                        latitude=41.8902,
+                        longitude=12.4922,
+                        maps_url="https://www.google.com/maps/search/?api=1&query=Colosseum",
+                    ),
+                ],
+            )
+        ]
+
+        _strip_generic_logistics_coordinates(plans)
+
+        placeholder = plans[0].activities[0]
+        assert placeholder.latitude is None
+        assert placeholder.longitude is None
+        assert placeholder.maps_url == ""
+        assert placeholder.is_mappable is False
+
+        landmark = plans[0].activities[1]
+        assert landmark.latitude == 41.8902
+        assert landmark.longitude == 12.4922
+        assert landmark.is_mappable is True
 
 
 class TestSelectedFlightContext:

@@ -47,6 +47,7 @@ type UseTripPlannerParams = {
   setShowPlanningProgress: Dispatch<SetStateAction<boolean>>;
   setLoading: Dispatch<SetStateAction<PlannerLoadingState>>;
   setError: Dispatch<SetStateAction<string>>;
+  setShareMessage: Dispatch<SetStateAction<string>>;
 };
 
 export function useTripPlanner({
@@ -86,6 +87,7 @@ export function useTripPlanner({
   setShowPlanningProgress,
   setLoading,
   setError,
+  setShareMessage,
 }: UseTripPlannerParams) {
   const { archiveCurrentTokenUsage, logout, resetTrip, handleStreamEvent } = useTripPlannerState({
     authenticatedUser,
@@ -150,6 +152,7 @@ export function useTripPlanner({
     setShowPlanningProgress,
     setLoading,
     setError,
+    setShareMessage,
     handleStreamEvent,
     archiveCurrentTokenUsage,
   });

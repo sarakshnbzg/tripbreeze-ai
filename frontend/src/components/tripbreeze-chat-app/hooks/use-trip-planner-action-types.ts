@@ -36,6 +36,7 @@ export type UseTripPlannerActionParams = {
   setShowPlanningProgress: Dispatch<SetStateAction<boolean>>;
   setLoading: Dispatch<SetStateAction<PlannerLoadingState>>;
   setError: Dispatch<SetStateAction<string>>;
+  setShareMessage: Dispatch<SetStateAction<string>>;
   handleStreamEvent: (event: StreamEvent) => void;
   archiveCurrentTokenUsage: () => void;
 };

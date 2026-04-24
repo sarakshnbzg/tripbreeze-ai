@@ -61,6 +61,7 @@ export function TripBreezeChatApp() {
   const [showTokenUsage, setShowTokenUsage] = useState(false);
   const [loading, setLoading] = useState<PlannerLoadingState>(null);
   const [error, setError] = useState("");
+  const [shareMessage, setShareMessage] = useState("");
   const [recording, setRecording] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
@@ -205,6 +206,7 @@ export function TripBreezeChatApp() {
     setShowPlanningProgress,
     setLoading,
     setError,
+    setShareMessage,
   });
   const reviewWorkspaceActions: ReviewWorkspaceActions = {
     setSelectedReturnIndex,
@@ -251,7 +253,11 @@ export function TripBreezeChatApp() {
     itineraryShareState: {
       loading,
       emailAddress,
-      setEmailAddress,
+      shareMessage,
+      setEmailAddress: (value) => {
+        setShareMessage("");
+        setEmailAddress(value);
+      },
       onDownloadPdf: handleDownloadPdf,
       onEmailItinerary: handleEmailItinerary,
     },

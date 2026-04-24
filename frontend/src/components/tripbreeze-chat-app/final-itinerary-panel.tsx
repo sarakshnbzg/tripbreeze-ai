@@ -32,6 +32,7 @@ export function FinalItineraryPanel({
   const {
     loading,
     emailAddress,
+    shareMessage,
     setEmailAddress,
     onDownloadPdf,
     onEmailItinerary,
@@ -99,6 +100,11 @@ export function FinalItineraryPanel({
               </Button>
             </div>
           </div>
+          {shareMessage ? (
+            <div className="mt-3 rounded-[1.1rem] border border-pine/20 bg-pine/8 px-4 py-3 text-sm text-pine">
+              {shareMessage}
+            </div>
+          ) : null}
         </div>
       </div>
 

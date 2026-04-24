@@ -250,6 +250,9 @@ function buildMapPoints({
     const dayTheme = readString(day.theme);
 
     activities.forEach((activity, activityIndex) => {
+      if (activity.is_mappable === false) {
+        return;
+      }
       const latitude = toFiniteNumber(activity.latitude);
       const longitude = toFiniteNumber(activity.longitude);
       if (latitude === null || longitude === null) {

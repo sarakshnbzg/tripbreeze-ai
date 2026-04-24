@@ -629,6 +629,7 @@ test("emails the final itinerary from the review workspace", async ({ page }) =>
   await page.getByRole("button", { name: "Email itinerary" }).click();
 
   await expect.poll(() => emailPayload).not.toBeNull();
+  await expect(page.getByText("Sent to sara@example.com")).toBeVisible();
   const submittedPayload = emailPayload as unknown as {
     recipient_email?: unknown;
     final_itinerary?: unknown;

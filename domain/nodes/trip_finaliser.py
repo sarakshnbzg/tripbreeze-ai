@@ -123,9 +123,11 @@ Daily plan requirements:
 - Each day should include {activities_per_day} activities chosen STRICTLY from the
   attraction_candidates list above — never invent attractions
 - For every chosen activity, preserve the candidate metadata when available:
-  category, address, latitude, longitude, maps_url, destination
+  category, address, latitude, longitude, maps_url, destination, is_mappable
 - If the final trip date is the return/departure date, make the final DayPlan a lighter departure day:
   airport transfer, checkout, baggage storage, and at most 1-2 flexible nearby activities
+- Set is_mappable=false for transfers, checkout, baggage storage, and flexible nearby placeholder activities.
+- Set is_mappable=true for real attractions or venues that should appear as map pins.
 - Prefer activities whose category matches the user's interests
 - Vary time_of_day across morning / afternoon / evening within each day
 - Keep notes to one short sentence
@@ -203,8 +205,10 @@ When calling `MultiCityItinerary`, follow these requirements:
 - legs: one LegDetails per leg with leg_number, origin, destination, departure_date, flight_summary, hotel_summary (empty for return leg), nights
 - destination_highlights: combined highlights for all destinations
 - daily_plans: chronological day-by-day plan spanning all legs (day_number continues across legs)
-- When attraction_candidates are provided, choose activities STRICTLY from that list and preserve category, address, latitude, longitude, maps_url, and destination when available
+- When attraction_candidates are provided, choose activities STRICTLY from that list and preserve category, address, latitude, longitude, maps_url, destination, and is_mappable when available
 - If the final trip date is a travel/departure day, make that DayPlan a lighter departure day with airport or station transfer context
+- Set is_mappable=false for transfers, checkout, baggage storage, and flexible nearby placeholder activities.
+- Set is_mappable=true for real attractions or venues that should appear as map pins.
 - budget_breakdown: show costs per leg and total
 - visa_entry_info: entry requirements for all destinations visited
 - packing_tips: tips considering all destinations and varying weather
