@@ -1,12 +1,14 @@
 # TripBreeze AI ✈️
 
-> Turn a trip idea into a researched, budgeted, day-by-day itinerary — with a human in the loop.
+TripBreeze AI is an agentic travel planner that turns a free-text trip request into a fully researched, budgeted, and weather-enriched itinerary. It orchestrates a multi-step AI pipeline — live flight and hotel search, visa and entry research, budget validation, and day-by-day itinerary generation — with a human-in-the-loop review step before anything gets locked in.
+
+Built on LangGraph with a FastAPI backend and Next.js frontend, it supports single-city and multi-city trips, remembers preferences across sessions, and streams results in real time.
 
 **Live:** [tripbreeze-ai.vercel.app](https://tripbreeze-ai.vercel.app) · **API:** [tripbreeze-ai.onrender.com](https://tripbreeze-ai.onrender.com)
 
 ---
 
-## 📸 Screenshots
+## 🖼️ Screenshots
 
 <p align="center">
   <img src="docs/images/auth-screen.png" alt="TripBreeze AI authentication screen" width="48%" />
@@ -18,13 +20,14 @@
 
 ## ✨ What It Does
 
-- 🗺️ Parses free-text trip requests — single-city or multi-city
-- 🔍 Searches live flights and hotels via SerpAPI
+- 🎙️ Accepts trip requests by text or voice (Whisper transcription)
+- 🗣️ Parses free-text input — single-city or multi-city
+- 🔎 Searches live flights and hotels via SerpAPI
 - 🛂 Retrieves visa and entry guidance from a local RAG knowledge base
-- 💰 Checks the budget before committing to a plan
-- 🧑‍✈️ Pauses for **human review** before finalising
+- 💸 Checks the budget before committing to a plan
+- 🧑‍⚖️ Pauses for **human review** before finalising
 - 🌤️ Generates a day-by-day itinerary enriched with live weather
-- 💾 Saves user preferences and trip history in Postgres
+- 🗂️ Saves user preferences and trip history in Postgres
 
 ---
 
@@ -49,7 +52,7 @@ Key files: [application/graph.py](application/graph.py) · [application/state.py
 
 ---
 
-## 🧰 Tech Stack
+## 🛠️ Tech Stack
 
 | Layer | Tools |
 |---|---|
@@ -130,7 +133,7 @@ RAG eval results write to `evals/results/`. Add `--retrieval-only` or `--llm-jud
 
 ---
 
-## 💬 Example Prompts
+## 🗺️ Example Prompts
 
 ```
 I want to fly from London to Tokyo from 2026-06-10 to 2026-06-17 for 2 travelers with a budget of 3000 EUR.
