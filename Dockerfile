@@ -15,16 +15,16 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev
-
 COPY AGENTS.md ./
-COPY app.py config.py docker-entrypoint.sh ./
+COPY app.py config.py settings.py model_catalog.py constants.py docker-entrypoint.sh ./
 COPY application ./application
 COPY domain ./domain
 COPY infrastructure ./infrastructure
 COPY knowledge_base ./knowledge_base
 COPY presentation ./presentation
 COPY scripts ./scripts
+
+RUN uv sync --frozen --no-dev
 
 RUN useradd --create-home --shell /bin/bash appuser \
     && mkdir -p /app/chroma_db \
