@@ -74,7 +74,7 @@ cp .env.example .env
 Minimum required:
 
 ```env
-OPENAI_API_KEY=...        # or GOOGLE_API_KEY
+OPENAI_API_KEY=...
 SERPAPI_API_KEY=...
 DATABASE_URL=postgresql://user:pass@host/db?sslmode=require
 ```

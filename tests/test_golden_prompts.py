@@ -76,7 +76,7 @@ def test_trip_finaliser_golden(case, mock_llm_responses):
         judge_provider = GOLDEN_JUDGE_PROVIDER or case["input_state"].get("llm_provider", "openai")
         judge_model = GOLDEN_JUDGE_MODEL or ""
         if not judge_model:
-            judge_model = "gpt-4.1-mini" if judge_provider == "openai" else "gemini-2.5-flash"
+            judge_model = "gpt-4.1-mini"
 
         judge_result = evaluate_itinerary_with_llm_judge(
             input_state=case["input_state"],

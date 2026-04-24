@@ -732,10 +732,11 @@ def retrieve(
     query: str, k: int = RAG_TOP_K, provider: str | None = DEFAULT_LLM_PROVIDER
 ) -> list[dict[str, str]]:
     """Return the top-k relevant visa text chunks with source metadata."""
-    logger.info("Running RAG retrieval query=%s k=%s provider=%s", query, k, provider)
+    chosen_provider, _ = normalise_llm_selection(provider, None)
+    logger.info("Running RAG retrieval query=%s k=%s provider=%s", query, k, chosen_provider)
     started_at = time.perf_counter()
     vectorstore_started_at = time.perf_counter()
-    vs = _build_vectorstore(provider=provider)
+    vs = _build_vectorstore(provider=chosen_provider)
     logger.info("RAG vectorstore ready elapsed_ms=%.2f", (time.perf_counter() - vectorstore_started_at) * 1000)
     chunks_started_at = time.perf_counter()
     chunks = _load_and_split_docs()

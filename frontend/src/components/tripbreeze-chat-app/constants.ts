@@ -11,4 +11,3 @@ export const OPENAI_MODELS = [
   "gpt-4.1-mini",
   "gpt-4.1-nano",
 ] as const;
-export const GOOGLE_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite"] as const;

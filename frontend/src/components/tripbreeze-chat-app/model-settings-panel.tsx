@@ -1,7 +1,5 @@
 import type { PlannerForm } from "@/lib/planner";
 
-import { GOOGLE_MODELS, OPENAI_MODELS } from "./constants";
-
 export function ModelSettingsPanel({
   form,
   setForm,
@@ -16,24 +14,7 @@ export function ModelSettingsPanel({
       <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-ink">
         Settings
       </div>
-      <div className="grid gap-3 md:grid-cols-2">
-        <label className="block">
-          <span className="mb-2 block text-sm font-medium text-slate">Provider</span>
-          <select
-            className="w-full rounded-full border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
-            value={form.provider}
-            onChange={(event) =>
-              setForm((current) => ({
-                ...current,
-                provider: event.target.value as PlannerForm["provider"],
-                model: event.target.value === "google" ? GOOGLE_MODELS[0] : OPENAI_MODELS[0],
-              }))
-            }
-          >
-            <option value="openai">OpenAI</option>
-            <option value="google">Google</option>
-          </select>
-        </label>
+      <div className="grid gap-3">
         <label className="block">
           <span className="mb-2 block text-sm font-medium text-slate">Model</span>
           <select

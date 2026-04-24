@@ -31,7 +31,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--provider",
         default=DEFAULT_LLM_PROVIDER,
-        choices=["openai", "google"],
+        choices=["openai"],
         help="Provider to use for retrieval and answer generation.",
     )
     parser.add_argument(
@@ -52,7 +52,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--judge-provider",
         default="",
-        choices=["", "openai", "google"],
+        choices=["", "openai"],
         help="Provider for LLM-as-a-judge. Defaults to the main provider.",
     )
     parser.add_argument(

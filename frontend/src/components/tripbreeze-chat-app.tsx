@@ -6,7 +6,6 @@ import { defaultForm, type PlannerForm, type SelectionState } from "@/lib/planne
 import type { TravelState, TripOption } from "@/lib/types";
 import { AuthScreen } from "@/components/tripbreeze-chat-app/auth-screen";
 import {
-  GOOGLE_MODELS,
   OPENAI_MODELS,
   PACE_OPTIONS,
 } from "@/components/tripbreeze-chat-app/constants";
@@ -102,7 +101,7 @@ export function TripBreezeChatApp() {
   });
 
   const currencyCode = String(state?.trip_request?.currency ?? form.currency ?? "EUR");
-  const availableModels = form.provider === "google" ? GOOGLE_MODELS : OPENAI_MODELS;
+  const availableModels = OPENAI_MODELS;
   const originalUserMessage = messages.find((message) => message.role === "user") ?? null;
   const currentTokenSummary = useMemo(() => summariseTokenUsage(state?.token_usage), [state?.token_usage]);
   const itineraryView = useMemo(

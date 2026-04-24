@@ -627,7 +627,7 @@ class TestFinaliserFallbacks:
 
     @patch("domain.nodes.trip_finaliser.fetch_weather_for_trip", return_value={})
     @patch("domain.nodes.trip_finaliser.create_chat_model")
-    def test_google_malformed_output_falls_back_after_failed_parse(self, mock_create, _mock_weather):
+    def test_malformed_output_falls_back_after_failed_parse(self, mock_create, _mock_weather):
         response = MagicMock()
         response.tool_calls = [
             {
@@ -653,11 +653,11 @@ class TestFinaliserFallbacks:
         mock_llm.invoke.return_value = response
         mock_create.return_value = mock_llm
 
-        state = self._single_city_state(llm_provider="google", llm_model="gemini-2.5-flash")
+        state = self._single_city_state(llm_provider="openai", llm_model="gpt-4o-mini")
         result = trip_finaliser(state)
 
         assert "Trip Overview" in result["final_itinerary"]
-        assert result["finaliser_metadata"]["provider"] == "google"
+        assert result["finaliser_metadata"]["provider"] == "openai"
         assert result["finaliser_metadata"]["used_fallback"] is True
         assert result["finaliser_metadata"]["fallback_reason"] == "structured_parse_failed"
         assert result["finaliser_metadata"]["react_loop"]["final_tool_emitted"] is True

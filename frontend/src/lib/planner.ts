@@ -20,7 +20,7 @@ export type PlannerForm = {
   hotelStars: number[];
   multiCityLegs: Array<{ destination: string; nights: number }>;
   userId: string;
-  provider: "openai" | "google";
+  provider: "openai";
   model: string;
   temperature: number;
 };

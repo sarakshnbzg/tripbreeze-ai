@@ -6,7 +6,7 @@ import { defaultForm } from "@/lib/planner";
 import { ModelSettingsPanel } from "./model-settings-panel";
 
 describe("ModelSettingsPanel", () => {
-  it("renders provider, model, and temperature controls", () => {
+  it("renders model and temperature controls", () => {
     const setForm = vi.fn();
 
     render(
@@ -18,12 +18,11 @@ describe("ModelSettingsPanel", () => {
     );
 
     expect(screen.getByText("Settings")).toBeInTheDocument();
-    expect(screen.getByText("Provider")).toBeInTheDocument();
     expect(screen.getByText("Model")).toBeInTheDocument();
     expect(screen.getByText("Temperature")).toBeInTheDocument();
     expect(screen.getByText("0.3")).toBeInTheDocument();
 
-    fireEvent.change(screen.getAllByRole("combobox")[1], {
+    fireEvent.change(screen.getByRole("combobox"), {
       target: { value: "gpt-4.1-mini" },
     });
 

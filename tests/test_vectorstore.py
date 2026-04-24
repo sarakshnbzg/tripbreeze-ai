@@ -17,11 +17,11 @@ from infrastructure.rag.vectorstore import (
 class TestChromaDirForProvider:
     def test_provider_gets_own_directory(self):
         assert str(_chroma_dir_for_provider("openai")).endswith("chroma_db/openai")
-        assert str(_chroma_dir_for_provider("google")).endswith("chroma_db/google")
+        assert str(_chroma_dir_for_provider("google")).endswith("chroma_db/openai")
 
 
 class TestBuildVectorstore:
-    def test_uses_provider_specific_embeddings_and_directory(self, monkeypatch):
+    def test_google_provider_normalises_to_openai_embeddings_and_directory(self, monkeypatch):
         captured = {}
 
         monkeypatch.setattr(
@@ -47,12 +47,12 @@ class TestBuildVectorstore:
 
         assert isinstance(result, FakeChroma)
         assert captured["documents"] == ["doc1"]
-        assert captured["embedding"] == "embeddings:google"
-        assert captured["persist_directory"].endswith("chroma_db/google")
+        assert captured["embedding"] == "embeddings:openai"
+        assert captured["persist_directory"].endswith("chroma_db/openai")
 
 
 class TestRetrieve:
-    def test_passes_provider_through_to_vectorstore(self, monkeypatch):
+    def test_google_provider_is_normalised_before_vectorstore_lookup(self, monkeypatch):
         calls = {}
 
         class FakeVectorStore:
@@ -113,7 +113,7 @@ class TestRetrieve:
             k=2,
         )
 
-        assert calls["provider"] == "google"
+        assert calls["provider"] == "openai"
         assert calls["similarity_search"][0]["k"] == 8
         assert calls["similarity_search"][0]["filter"] == {
             "$and": [
