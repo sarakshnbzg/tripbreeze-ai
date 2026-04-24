@@ -657,11 +657,12 @@ def trip_intake(state: dict) -> dict:
 
     _apply_profile_defaults(raw_trip_data, profile)
 
-    # Parse special-request preferences into filter criteria whether the trip came
-    # from free text, structured fields, or both. Structured/free-text trip fields
-    # remain authoritative; parsed preferences fill in any still-empty filters.
+    # Parse explicit structured special requests into filter criteria, including
+    # when a main free-text trip prompt is also present. Preferences synthesized
+    # by the free-text trip parser should not trigger an extra LLM call here.
+    structured_preferences = str(structured_fields.get("preferences") or "").strip()
     preferences = raw_trip_data.get("preferences", "")
-    if preferences.strip():
+    if structured_preferences and str(preferences).strip():
         llm = create_chat_model(provider, model, temperature=temperature)
         parsed, usage = _parse_preferences(llm, preferences, model=model)
         if usage:
