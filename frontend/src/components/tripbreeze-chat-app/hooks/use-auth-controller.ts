@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { login, register, saveProfile } from "@/lib/api";
 import { expandStarThresholds, safeErrorMessage } from "@/components/tripbreeze-chat-app/helpers";
@@ -47,9 +47,23 @@ export function useAuthController({
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [loginForm, setLoginForm] = useState<LoginFormState>(DEFAULT_LOGIN_FORM);
   const [registerForm, setRegisterForm] = useState<RegisterFormState>(DEFAULT_REGISTER_FORM);
+  const [profileSaveMessage, setProfileSaveMessage] = useState("");
+
+  useEffect(() => {
+    if (!profileSaveMessage) {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setProfileSaveMessage("");
+    }, 3000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [profileSaveMessage]);
 
   async function handleLogin() {
     setError("");
+    setProfileSaveMessage("");
     setLoading("auth");
     try {
       const result = await login(loginForm.userId.trim(), loginForm.password);
@@ -63,6 +77,7 @@ export function useAuthController({
 
   async function handleRegister() {
     setError("");
+    setProfileSaveMessage("");
     if (registerForm.password !== registerForm.confirmPassword) {
       setError("Passwords do not match.");
       return;
@@ -99,11 +114,14 @@ export function useAuthController({
     }
 
     setError("");
+    setProfileSaveMessage("");
     setLoading("saving");
     try {
       const result = await saveProfile(authenticatedUser, profile);
       persistAuth(result.user_id, result.profile);
+      setProfileSaveMessage("Profile saved.");
     } catch (saveError) {
+      setProfileSaveMessage("");
       setError(safeErrorMessage(saveError));
     } finally {
       setLoading(null);
@@ -120,5 +138,7 @@ export function useAuthController({
     handleLogin,
     handleRegister,
     handleSaveProfile,
+    profileSaveMessage,
+    clearProfileSaveMessage: () => setProfileSaveMessage(""),
   };
 }

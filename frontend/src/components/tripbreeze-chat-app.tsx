@@ -91,6 +91,8 @@ export function TripBreezeChatApp() {
     handleLogin,
     handleRegister,
     handleSaveProfile,
+    profileSaveMessage,
+    clearProfileSaveMessage,
   } = useAuthController({
     authenticatedUser,
     profile,
@@ -282,10 +284,12 @@ export function TripBreezeChatApp() {
         authenticatedUser={authenticatedUser}
         profile={profile}
         setProfile={setProfile}
+        onProfileEdit={clearProfileSaveMessage}
         airlines={airlines}
         loading={loading}
         onLogout={logout}
         onSaveProfile={handleSaveProfile}
+        profileSaveMessage={profileSaveMessage}
         currentTokenSummary={currentTokenSummary}
         tokenUsageHistory={tokenUsageHistory}
         showTokenUsage={showTokenUsage}

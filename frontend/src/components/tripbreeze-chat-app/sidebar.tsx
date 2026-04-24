@@ -16,10 +16,12 @@ export function AppSidebar({
   authenticatedUser,
   profile,
   setProfile,
+  onProfileEdit,
   airlines,
   loading,
   onLogout,
   onSaveProfile,
+  profileSaveMessage,
   currentTokenSummary,
   tokenUsageHistory,
   showTokenUsage,
@@ -36,10 +38,12 @@ export function AppSidebar({
   authenticatedUser: string;
   profile: UserProfile | null;
   setProfile: React.Dispatch<React.SetStateAction<UserProfile | null>>;
+  onProfileEdit: () => void;
   airlines: string[];
   loading: LoadingState;
   onLogout: () => void;
   onSaveProfile: () => Promise<void>;
+  profileSaveMessage: string;
   currentTokenSummary: { input_tokens: number; output_tokens: number; cost: number };
   tokenUsageHistory: Array<{ label: string; input_tokens: number; output_tokens: number; cost: number }>;
   showTokenUsage: boolean;
@@ -53,6 +57,11 @@ export function AppSidebar({
   setShowPlanningProgress: React.Dispatch<React.SetStateAction<boolean>>;
   setError: React.Dispatch<React.SetStateAction<string>>;
 }) {
+  function updateProfile(updater: React.SetStateAction<UserProfile | null>) {
+    onProfileEdit();
+    setProfile(updater);
+  }
+
   return (
     <aside className="hidden w-80 shrink-0 lg:block">
       <Card className="border-white/70 bg-white/76 p-6">
@@ -88,19 +97,19 @@ export function AppSidebar({
                   placeholder="Home City"
                   className="w-full rounded-full border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
                   value={profile?.home_city ?? ""}
-                  onChange={(event) => setProfile((current) => ({ ...(current ?? {}), home_city: event.target.value }))}
+                  onChange={(event) => updateProfile((current) => ({ ...(current ?? {}), home_city: event.target.value }))}
                 />
                 <input
                   list="countries"
                   placeholder="Passport Country"
                   className="w-full rounded-full border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
                   value={profile?.passport_country ?? ""}
-                  onChange={(event) => setProfile((current) => ({ ...(current ?? {}), passport_country: event.target.value }))}
+                  onChange={(event) => updateProfile((current) => ({ ...(current ?? {}), passport_country: event.target.value }))}
                 />
                 <select
                   className="w-full rounded-full border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
                   value={profile?.travel_class ?? "ECONOMY"}
-                  onChange={(event) => setProfile((current) => ({ ...(current ?? {}), travel_class: event.target.value }))}
+                  onChange={(event) => updateProfile((current) => ({ ...(current ?? {}), travel_class: event.target.value }))}
                 >
                   {TRAVEL_CLASSES.map((travelClass) => (
                     <option key={travelClass} value={travelClass}>
@@ -113,7 +122,7 @@ export function AppSidebar({
                   start={Number(profile?.preferred_outbound_time_window?.[0] ?? 0)}
                   end={Number(profile?.preferred_outbound_time_window?.[1] ?? 23)}
                   onChange={(nextStart, nextEnd) =>
-                    setProfile((current) => ({
+                    updateProfile((current) => ({
                       ...(current ?? {}),
                       preferred_outbound_time_window: [nextStart, nextEnd],
                     }))
@@ -124,7 +133,7 @@ export function AppSidebar({
                   start={Number(profile?.preferred_return_time_window?.[0] ?? 0)}
                   end={Number(profile?.preferred_return_time_window?.[1] ?? 23)}
                   onChange={(nextStart, nextEnd) =>
-                    setProfile((current) => ({
+                    updateProfile((current) => ({
                       ...(current ?? {}),
                       preferred_return_time_window: [nextStart, nextEnd],
                     }))
@@ -135,7 +144,7 @@ export function AppSidebar({
                   className="h-32 w-full rounded-3xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
                   value={(profile?.preferred_airlines as string[] | undefined) ?? []}
                   onChange={(event) =>
-                    setProfile((current) => ({
+                    updateProfile((current) => ({
                       ...(current ?? {}),
                       preferred_airlines: Array.from(event.target.selectedOptions, (option) => option.value),
                     }))
@@ -152,7 +161,7 @@ export function AppSidebar({
                   helper="Choose one or more default hotel tiers like 3-star and up."
                   thresholds={compressStarPreferences(((profile?.preferred_hotel_stars as number[] | undefined) ?? []))}
                   onChange={(thresholds) =>
-                    setProfile((current) => ({
+                    updateProfile((current) => ({
                       ...(current ?? {}),
                       preferred_hotel_stars: expandStarThresholds(thresholds),
                     }))
@@ -162,6 +171,7 @@ export function AppSidebar({
                   {loading === "saving" ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                   Save Profile
                 </Button>
+                {profileSaveMessage ? <p className="text-sm font-medium text-pine">{profileSaveMessage}</p> : null}
               </div>
             ) : null}
           </div>
