@@ -16,3 +16,5 @@ frontend/*.tsbuildinfo
 frontend/.env.local
 frontend/playwright-report/
 frontend/test-results/
+.claude/
+CLAUDE.original.md
