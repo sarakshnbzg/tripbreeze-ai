@@ -38,6 +38,19 @@ class SMTPConfig:
             and self.sender_password
         )
 
+    def resolved_password(self) -> str:
+        """Normalize provider-specific password formats before SMTP login."""
+        password = self.sender_password.strip()
+
+        # Gmail app passwords are displayed in 4 groups with spaces for readability.
+        # SMTP login expects the underlying 16-character token.
+        if self.smtp_host.lower() == "smtp.gmail.com":
+            compact_password = password.replace(" ", "")
+            if len(compact_password) == 16 and compact_password.isalnum():
+                return compact_password
+
+        return password
+
 
 def send_itinerary_email(
     recipient_email: str,
@@ -100,9 +113,11 @@ TripBreeze AI Team"""
         )
 
         with smtplib.SMTP(smtp_config.smtp_host, smtp_config.smtp_port) as server:
+            server.ehlo()
             if smtp_config.use_tls:
                 server.starttls()
-            server.login(smtp_config.sender_email, smtp_config.sender_password)
+                server.ehlo()
+            server.login(smtp_config.sender_email, smtp_config.resolved_password())
             server.send_message(msg)
 
         logger.info("Email sent successfully to %s", recipient_email)
@@ -110,6 +125,8 @@ TripBreeze AI Team"""
 
     except smtplib.SMTPAuthenticationError:
         error_msg = "SMTP authentication failed. Check your sender email and password."
+        if smtp_config.smtp_host.lower() == "smtp.gmail.com":
+            error_msg += " For Gmail, use a Google app password and paste it into `.env` without spaces."
         logger.error(error_msg)
         return False, error_msg
     except smtplib.SMTPException as e:

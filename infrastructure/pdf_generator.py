@@ -1,12 +1,38 @@
 """Generate PDF documents from trip planning data."""
 
 import io
+import re
 from datetime import datetime
 from typing import Any
 
 
+_PDF_TEXT_REPLACEMENTS = {
+    "\u2022": " - ",
+    "\u00b7": " - ",
+    "\u2192": " -> ",
+    "\u2013": "-",
+    "\u2014": "-",
+    "\u2026": "...",
+    "\u2018": "'",
+    "\u2019": "'",
+    "\u201c": '"',
+    "\u201d": '"',
+    "\u2b50": "*",
+}
+
+
+def _normalize_pdf_text(text: str) -> str:
+    """Replace glyphs that render poorly in ReportLab's built-in fonts."""
+    normalized = text
+    for original, replacement in _PDF_TEXT_REPLACEMENTS.items():
+        normalized = normalized.replace(original, replacement)
+    normalized = re.sub(r"[ \t]{2,}", " ", normalized)
+    return normalized
+
+
 def _escape_xml(text: str) -> str:
     """Escape special XML characters for reportlab Paragraph."""
+    text = _normalize_pdf_text(text)
     return (
         text
         .replace("&", "&amp;")
@@ -168,7 +194,7 @@ def generate_trip_pdf(
     # Title and subtitle
     story.append(Paragraph("TripBreeze AI", title_style))
     timestamp = datetime.now().strftime("%B %d, %Y at %I:%M %p")
-    story.append(Paragraph(f"Trip Itinerary • Generated {timestamp}", subtitle_style))
+    story.append(Paragraph(f"Trip Itinerary - Generated {timestamp}", subtitle_style))
 
     # Trip details summary
     selected_flight = graph_state.get("selected_flight", {})
@@ -198,7 +224,7 @@ def generate_trip_pdf(
                 flight_details += f"Outbound: {outbound_summary}<br/>"
             if return_summary and "require selecting" not in return_summary.lower():
                 flight_details += f"Return: {return_summary}<br/>"
-            flight_details += f"<font size=9>{duration} · {stops_text}</font><br/>"
+            flight_details += f"<font size=9>{duration} - {stops_text}</font><br/>"
             flight_details += f"<font size=9 color='#666666'>Total: {currency} {total_price} ({adults} traveler{'s' if adults > 1 else ''})</font>"
 
             summary_data.append([
@@ -210,7 +236,7 @@ def generate_trip_pdf(
             # Hotel info
             hotel_name = selected_hotel.get("name", "Unknown Hotel")
             hotel_class = selected_hotel.get("hotel_class")
-            stars = "⭐" * hotel_class if hotel_class else ""
+            stars = "*" * hotel_class if hotel_class else ""
             rating = selected_hotel.get("rating", "")
             total_price = selected_hotel.get("total_price", 0)
             price_per_night = selected_hotel.get("price_per_night", 0)
@@ -226,7 +252,7 @@ def generate_trip_pdf(
                 hotel_details += f"<font size=9>{check_in} to {check_out}</font><br/>"
             if rating:
                 hotel_details += f"<font size=9>Rating: {rating}/5</font><br/>"
-            hotel_details += f"<font size=9 color='#666666'>{currency} {price_per_night}/night · Total: {currency} {total_price}</font>"
+            hotel_details += f"<font size=9 color='#666666'>{currency} {price_per_night}/night - Total: {currency} {total_price}</font>"
 
             summary_data.append([
                 Paragraph("<b>Hotel</b>", normal_style),
@@ -286,7 +312,7 @@ def generate_trip_pdf(
             for leg in legs:
                 if not isinstance(leg, dict):
                     continue
-                route = f"{leg.get('origin', '?')} → {leg.get('destination', '?')}"
+                route = f"{leg.get('origin', '?')} -> {leg.get('destination', '?')}"
                 details_parts = []
                 if leg.get("departure_date"):
                     details_parts.append(str(leg["departure_date"]))
@@ -324,7 +350,7 @@ def generate_trip_pdf(
                 date_text = str(day.get("date", "")).strip()
                 day_title = f"Day {day_number}"
                 if theme:
-                    day_title += f" • {theme}"
+                    day_title += f" - {theme}"
                 story.append(Paragraph(day_title, subheading_style))
                 if date_text:
                     story.append(Paragraph(_convert_inline_markdown(date_text), normal_style))
@@ -335,7 +361,7 @@ def generate_trip_pdf(
                     temp_max = weather.get("temp_max")
                     weather_text = condition
                     if temp_min is not None and temp_max is not None:
-                        weather_text = f"{condition} • {temp_min}° to {temp_max}°" if condition else f"{temp_min}° to {temp_max}°"
+                        weather_text = f"{condition} - {temp_min}° to {temp_max}°" if condition else f"{temp_min}° to {temp_max}°"
                     if weather_text:
                         story.append(Paragraph(_convert_inline_markdown(weather_text), normal_style))
                 activities = day.get("activities", [])
@@ -351,7 +377,7 @@ def generate_trip_pdf(
                         if time_of_day:
                             bullet_text = f"{time_of_day.title()}: {bullet_text}"
                         if notes:
-                            bullet_text += f" — {notes}"
+                            bullet_text += f" - {notes}"
                         if address:
                             bullet_text += f" ({address})"
                         story.append(Paragraph(f"<bullet>&bull;</bullet> {_convert_inline_markdown(bullet_text)}", bullet_style))

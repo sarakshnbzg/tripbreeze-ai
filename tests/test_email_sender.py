@@ -19,6 +19,9 @@ class FakeSMTP:
     def __exit__(self, exc_type, exc, tb):
         return False
 
+    def ehlo(self):
+        return (250, b"OK")
+
     def starttls(self):
         self.started_tls = True
 
@@ -33,6 +36,26 @@ class TestSMTPConfig:
     def test_is_configured_requires_all_fields(self):
         assert SMTPConfig("", 587, "a@example.com", "pw").is_configured() is False
         assert SMTPConfig("smtp.example.com", 587, "a@example.com", "pw").is_configured() is True
+
+    def test_compacts_gmail_app_password_spacing(self):
+        config = SMTPConfig(
+            "smtp.gmail.com",
+            587,
+            "sender@example.com",
+            "abcd efgh ijkl mnop",
+        )
+
+        assert config.resolved_password() == "abcdefghijklmnop"
+
+    def test_preserves_non_gmail_password_spacing(self):
+        config = SMTPConfig(
+            "smtp.example.com",
+            587,
+            "sender@example.com",
+            "pass with spaces",
+        )
+
+        assert config.resolved_password() == "pass with spaces"
 
 
 class TestSendItineraryEmail:
@@ -102,6 +125,40 @@ class TestSendItineraryEmail:
 
         assert ok is False
         assert "authentication failed" in message.lower()
+
+    def test_uses_normalized_gmail_password_for_login(self, monkeypatch):
+        smtp = FakeSMTP("smtp.gmail.com", 587)
+        monkeypatch.setattr(smtplib, "SMTP", lambda host, port: smtp)
+
+        ok, _ = send_itinerary_email(
+            "traveler@example.com",
+            b"pdf-bytes",
+            SMTPConfig(
+                "smtp.gmail.com",
+                587,
+                "sender@example.com",
+                "abcd efgh ijkl mnop",
+            ),
+        )
+
+        assert ok is True
+        assert smtp.logged_in == ("sender@example.com", "abcdefghijklmnop")
+
+    def test_returns_gmail_specific_authentication_hint(self, monkeypatch):
+        class AuthFailSMTP(FakeSMTP):
+            def login(self, email, password):
+                raise smtplib.SMTPAuthenticationError(535, b"bad auth")
+
+        monkeypatch.setattr(smtplib, "SMTP", lambda host, port: AuthFailSMTP(host, port))
+
+        ok, message = send_itinerary_email(
+            "traveler@example.com",
+            b"pdf",
+            SMTPConfig("smtp.gmail.com", 587, "sender@example.com", "pw"),
+        )
+
+        assert ok is False
+        assert "without spaces" in message
 
     def test_returns_generic_smtp_error(self, monkeypatch):
         class BrokenSMTP(FakeSMTP):
