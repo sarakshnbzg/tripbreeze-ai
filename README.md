@@ -59,26 +59,9 @@ Core files:
 
 ## Workflow 🔄
 
-```text
-Profile Loader
-  -> Trip Intake
-  -> Research Orchestrator
-     -> flights
-     -> hotels
-     -> RAG entry requirements
-  -> Budget Aggregator
-  -> HITL Review
-  -> Feedback Router
-     -> approve: Attractions -> Finaliser -> Memory Updater
-     -> revise_plan: back to Trip Intake
-     -> cancel: end
-```
+Trip flow: `load_profile -> trip_intake -> research -> aggregate_budget -> review -> feedback_router`, then either `approve -> attractions -> finalise -> update_memory`, `revise_plan -> trip_intake`, or `cancel`.
 
-Review actions:
-
-- `rewrite_itinerary`: keep the approved trip and rewrite the itinerary
-- `revise_plan`: patch the trip request and rerun planning
-- `cancel`: stop the workflow
+For the full agent and node breakdown, see [AGENTS.md](/Users/sarakashanibozorg/Documents/AI Engineering Course/tripbreeze-ai/AGENTS.md).
 
 ## Tech Stack 🧰
 
@@ -181,6 +164,10 @@ Defaults:
 
 Set `NEXT_PUBLIC_API_BASE_URL` if the frontend should target a different backend URL.
 
+## Deployment ☁️
+
+TripBreeze AI is live at `https://tripbreeze-ai.vercel.app/`, with the API deployed at `https://tripbreeze-ai.onrender.com`.
+
 ## Testing 🧪
 
 Backend:
@@ -198,13 +185,7 @@ npm run test:e2e --prefix frontend
 
 ## RAG Evaluation 📚
 
-Install optional evaluation dependencies:
-
-```bash
-uv sync --group eval
-```
-
-Run the evaluator:
+Install optional evaluation dependencies with `uv sync --group eval`, then run:
 
 ```bash
 uv run python scripts/evaluate_rag.py --provider openai
@@ -215,27 +196,16 @@ Useful variants:
 ```bash
 uv run python scripts/evaluate_rag.py --provider openai --retrieval-only
 uv run python scripts/evaluate_rag.py --provider openai --llm-judge
-```
-
-Results are written to `evals/results/`.
-
-Golden itinerary judging:
-
-```bash
 RUN_LLM_JUDGE_GOLDENS=1 uv run pytest tests/test_golden_prompts.py -k finaliser
 ```
 
-## Evaluation Results 📈
-
-Recent OpenAI-based RAG evaluations have shown strong grounded performance, including solid context precision and recall, high faithfulness, and a perfect pass rate in a small LLM-judge run. The latest artifacts live in `evals/results/`.
+Results are written to `evals/results/`.
 
 ## Ethics & Privacy 🛡️
 
 TripBreeze is designed to assist with travel planning, not replace official airline, border-control, health, or government guidance. Entry requirements can change, so travelers should confirm critical details with official sources before booking or departure.
 
-The workflow reduces unreliable output by grounding entry guidance in a local knowledge base, checking budgets before finalisation, requiring human review before approval, and treating free-text intake as untrusted input. The intake layer strips obvious prompt-injection patterns before user text is inserted into prompts.
-
-Known risk areas include third-party ranking bias from live search providers, uneven knowledge-base coverage across passports and destinations, and model bias in geographic or cultural recommendations. Profile data is stored in Postgres, passwords are bcrypt-hashed, and trip history is capped to the latest 10 trips. A fuller write-up lives in [docs/ethics.md](/Users/sarakashanibozorg/Documents/AI Engineering Course/tripbreeze-ai/docs/ethics.md).
+The system reduces unreliable output by grounding entry guidance in a local knowledge base, checking budgets before finalisation, and requiring human review before approval. A fuller write-up lives in [docs/ethics.md](/Users/sarakashanibozorg/Documents/AI Engineering Course/tripbreeze-ai/docs/ethics.md).
 
 ## Docker 🐳
 
@@ -243,49 +213,12 @@ Build:
 
 ```bash
 docker build -t tripbreeze-ai .
-```
-
-Run full stack:
-
-```bash
 docker compose up --build
-```
-
-Run backend only:
-
-```bash
-docker run --rm -p 8100:8100 --env-file .env tripbreeze-ai
-```
-
-Persist RAG indexes:
-
-```bash
-docker run --rm -p 8100:8100 --env-file .env \
-  -v "$(pwd)/chroma_db:/app/chroma_db" \
-  tripbreeze-ai
 ```
 
 ## Operations 🔎
 
-TripBreeze emits structured JSON logs via `infrastructure/logging_utils.py`.
-
-High-signal workflow events:
-
-- `workflow.graph_build_started`
-- `workflow.intake_completed`
-- `workflow.research_completed`
-- `workflow.review_ready`
-- `workflow.review_decision_received`
-- `workflow.finaliser_completed`
-- `workflow.finaliser_fallback_used`
-- `workflow.memory_updated`
-
-Useful production checks:
-
-- rising intake failures
-- frequent finaliser fallbacks
-- searches reaching review but not memory update
-- repeated partial flight or hotel results
+TripBreeze emits structured JSON logs via `infrastructure/logging_utils.py`. High-signal workflow events include `workflow.intake_completed`, `workflow.research_completed`, `workflow.review_ready`, `workflow.review_decision_received`, `workflow.finaliser_completed`, and `workflow.memory_updated`.
 
 ## Example Prompts 💬
 
