@@ -332,8 +332,11 @@ class CityLeg(BaseModel):
         description="Real stopover destination city for this leg. Never use placeholders like 'home' or 'back home'.",
     )
     nights: int = Field(
-        default=0,
-        description="Number of nights at this destination. Use 0 for the final return leg (no hotel needed).",
+        default=1,
+        description=(
+            "Number of nights staying at this destination. Must be at least 1 for every real stopover. "
+            "Do not include the return-home leg here; set return_to_origin=true instead."
+        ),
     )
 
 
@@ -363,7 +366,12 @@ class ExtractMultiCityTrip(BaseModel):
     )
     return_to_origin: bool = Field(
         default=True,
-        description="True if the trip ends by returning to the origin city. False for open-jaw trips.",
+        description=(
+            "True if the traveler flies back to the origin city at the end (e.g. 'fly home', 'return home'). "
+            "False only for open-jaw trips where the traveler ends in a different city. "
+            "Never set this to false just because legs list ends at origin — "
+            "legs should never include the return-home leg."
+        ),
     )
     num_travelers: int = Field(
         default=1,
