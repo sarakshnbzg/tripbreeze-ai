@@ -9,6 +9,7 @@ import {
   readString,
   renderMarkdownContent,
 } from "./helpers";
+import { SourceTrustCard } from "./source-trust";
 import type { FinalItineraryPanelProps } from "./workspace-types";
 
 const ItineraryMap = dynamic(() => import("./itinerary-map"), { ssr: false });
@@ -25,6 +26,7 @@ export function FinalItineraryPanel({
     bookingLinks: itineraryBookingLinks,
     primarySections: primaryItinerarySections,
     secondarySections: secondaryItinerarySections,
+    visaTrust,
     mapPoints,
     itineraryLegs,
     itineraryDays,
@@ -156,6 +158,12 @@ export function FinalItineraryPanel({
               </div>
             ))}
           </div>
+        </div>
+      ) : null}
+
+      {visaTrust ? (
+        <div className="mb-4">
+          <SourceTrustCard trust={visaTrust} />
         </div>
       ) : null}
 

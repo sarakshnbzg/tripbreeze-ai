@@ -7,6 +7,7 @@ import {
   readString,
   selectionLabel,
 } from "./helpers";
+import { extractSourceTrust, type SourceTrust } from "./source-trust";
 
 export type ItinerarySnapshotItem = {
   label: string;
@@ -37,6 +38,7 @@ export type ItineraryViewModel = {
   bookingLinks: Array<{ label: string; url: string }>;
   primarySections: ItinerarySection[];
   secondarySections: ItinerarySection[];
+  visaTrust: SourceTrust | null;
   mapPoints: ItineraryMapPoint[];
   itineraryLegs: Array<Record<string, unknown>>;
   itineraryDays: Array<Record<string, unknown>>;
@@ -59,6 +61,7 @@ export function buildItineraryViewModel({
   const itineraryHighlights = readString(itineraryData.destination_highlights);
   const itineraryBudget = readString(itineraryData.budget_breakdown);
   const itineraryVisa = readString(itineraryData.visa_entry_info);
+  const parsedVisa = extractSourceTrust(itineraryVisa);
   const itineraryPacking = readString(itineraryData.packing_tips);
   const itineraryLegs = readRecordArray(itineraryData.legs);
   const itineraryDays = readRecordArray(itineraryData.daily_plans);
@@ -113,7 +116,7 @@ export function buildItineraryViewModel({
     itineraryFlightDetails ? { key: "flight", title: "Flight details", content: itineraryFlightDetails } : null,
     itineraryHotelDetails ? { key: "hotel", title: "Hotel details", content: itineraryHotelDetails } : null,
     itineraryBudget ? { key: "budget", title: "Budget breakdown", content: itineraryBudget } : null,
-    itineraryVisa ? { key: "visa", title: "Visa and entry", content: itineraryVisa } : null,
+    parsedVisa.content ? { key: "visa", title: "Visa and entry", content: parsedVisa.content } : null,
   ].filter((section): section is ItinerarySection => Boolean(section));
 
   const secondarySections = [
@@ -130,6 +133,7 @@ export function buildItineraryViewModel({
     bookingLinks,
     primarySections,
     secondarySections,
+    visaTrust: parsedVisa.trust,
     mapPoints,
     itineraryLegs,
     itineraryDays,

@@ -7,6 +7,7 @@ import {
   selectionLabel,
   sentenceLabel,
 } from "./helpers";
+import { extractSourceTrust, SourceTrustCard } from "./source-trust";
 import type { ReviewWorkspaceActions, ReviewWorkspaceModel, ReviewWorkspaceRefs } from "./workspace-types";
 
 function activeFlightFilters(state: ReviewWorkspaceModel["state"]) {
@@ -52,11 +53,14 @@ export function DestinationBriefingPanel({ destinationInfo }: { destinationInfo:
     return null;
   }
 
+  const parsed = extractSourceTrust(String(destinationInfo));
+
   return (
     <div className="rounded-[1.75rem] border border-line/70 bg-paper/88 p-5">
       <div className="mb-3 text-lg font-semibold text-ink">Destination briefing</div>
-      <div className="text-sm leading-7 text-ink">
-        {renderMarkdownContent(String(destinationInfo)) ?? String(destinationInfo)}
+      <div className="space-y-4">
+        <div className="text-sm leading-7 text-ink">{renderMarkdownContent(parsed.content) ?? parsed.content}</div>
+        {parsed.trust ? <SourceTrustCard trust={parsed.trust} compact /> : null}
       </div>
     </div>
   );

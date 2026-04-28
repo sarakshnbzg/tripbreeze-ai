@@ -97,6 +97,32 @@ describe("workspace panels", () => {
     expect(screen.getByText("Passport required.")).toBeInTheDocument();
   });
 
+  it("surfaces visa source trust clearly in the review workspace", () => {
+    renderReviewPanel({
+      state: {
+        destination_info: `### Entry
+Passport required.
+
+#### Source Trust
+- Source: France-Visas
+- Authority: official_government
+- Official link: https://france-visas.gouv.fr/
+- Last verified: 2026-04-28 (fresh)`,
+        flight_options: [],
+        hotel_options: [],
+        budget: {},
+      } as unknown as TravelState,
+    });
+
+    expect(screen.getByText("Source trust")).toBeInTheDocument();
+    expect(screen.getByText("France-Visas")).toBeInTheDocument();
+    expect(screen.getByText("2026-04-28 (fresh)")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Check official source" })).toHaveAttribute(
+      "href",
+      "https://france-visas.gouv.fr/",
+    );
+  });
+
   it("lets the user choose a return option in round-trip review", () => {
     const returnOption: TripOption = {
       airline: "Return Air",
@@ -220,10 +246,18 @@ describe("workspace panels", () => {
           ],
           primarySections: [
             { key: "flight", title: "Flight details", content: "Nonstop outbound" },
+            { key: "visa", title: "Visa and entry", content: "Passport valid for 3 months after departure." },
           ],
           secondarySections: [
             { key: "packing", title: "Packing tips", content: "Bring layers." },
           ],
+          visaTrust: {
+            sourceName: "France-Visas",
+            authority: "official_government",
+            officialLink: "https://france-visas.gouv.fr/",
+            lastVerified: "2026-04-28 (fresh)",
+            isStale: false,
+          },
           mapPoints: [
             {
               latitude: 38.7223,
@@ -278,6 +312,9 @@ describe("workspace panels", () => {
     expect(screen.getByText("Trip snapshot")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Flight booking" })).toHaveAttribute("href", "https://example.com/flight");
     expect(screen.getByText("Flight details")).toBeInTheDocument();
+    expect(screen.getByText("Visa and entry")).toBeInTheDocument();
+    expect(screen.getByText("Source trust")).toBeInTheDocument();
+    expect(screen.getByText("France-Visas")).toBeInTheDocument();
     expect(screen.getByText("Packing tips")).toBeInTheDocument();
     expect(screen.getByText("Trip map")).toBeInTheDocument();
     expect(screen.getByText(/Leg 1: Berlin to Lisbon/)).toBeInTheDocument();
@@ -300,6 +337,7 @@ describe("workspace panels", () => {
           bookingLinks: [],
           primarySections: [],
           secondarySections: [],
+          visaTrust: null,
           mapPoints: [],
           itineraryLegs: [],
           itineraryDays: [],
@@ -335,6 +373,7 @@ describe("workspace panels", () => {
           bookingLinks: [],
           primarySections: [],
           secondarySections: [],
+          visaTrust: null,
           mapPoints: [],
           itineraryLegs: [],
           itineraryDays: [],
@@ -369,6 +408,7 @@ describe("workspace panels", () => {
           bookingLinks: [],
           primarySections: [],
           secondarySections: [],
+          visaTrust: null,
           mapPoints: [],
           itineraryLegs: [],
           itineraryDays: [],
@@ -437,6 +477,38 @@ describe("workspace panels", () => {
       title: "Recovered itinerary",
       detail:
         "The planner returned malformed itinerary data, so TripBreeze recovered this itinerary from your approved trip details.",
+    });
+  });
+
+  it("extracts visa trust metadata into a dedicated itinerary field", () => {
+    const viewModel = buildItineraryViewModel({
+      state: {
+        itinerary_data: {
+          visa_entry_info: `Passport required.
+
+#### Source Trust
+- Source: Portugal Ministry of Foreign Affairs
+- Authority: official_government
+- Official link: https://vistos.mne.gov.pt/
+- Last verified: 2026-04-28 (stale - please re-check official rules)`,
+        },
+      } as unknown as TravelState,
+      itinerary: "Trip ready",
+      currencyCode: "EUR",
+    });
+
+    expect(viewModel.primarySections).toEqual([
+      expect.objectContaining({
+        key: "visa",
+        content: "Passport required.",
+      }),
+    ]);
+    expect(viewModel.visaTrust).toEqual({
+      sourceName: "Portugal Ministry of Foreign Affairs",
+      authority: "official_government",
+      officialLink: "https://vistos.mne.gov.pt/",
+      lastVerified: "2026-04-28 (stale - please re-check official rules)",
+      isStale: true,
     });
   });
 
