@@ -21,6 +21,7 @@ from domain.nodes.research_orchestrator_helpers import (
     list_place_aliases,
     resolve_destination_country,
 )
+from application.state import TravelState
 from application.workflow_types import WorkflowStep
 from infrastructure.llms.model_factory import create_chat_model, extract_token_usage, invoke_with_retry
 from infrastructure.logging_utils import get_logger, log_event
@@ -99,7 +100,7 @@ def _per_leg_trip_request(leg: dict, base_trip_request: dict) -> dict:
 
 def _run_react_research(
     *,
-    state: dict,
+    state: TravelState,
     trip_request: dict,
     user_profile: dict,
     leg_context: dict | None = None,
@@ -319,7 +320,7 @@ def _run_react_research(
     }
 
 
-def _research_multi_city_legs(state: dict) -> dict:
+def _research_multi_city_legs(state: TravelState) -> dict:
     """Run the ReAct loop once per leg and aggregate per-leg results."""
     trip_legs = state.get("trip_legs", [])
     trip_request = state.get("trip_request", {})
@@ -440,7 +441,7 @@ def _research_multi_city_legs(state: dict) -> dict:
     }
 
 
-def research_orchestrator(state: dict) -> dict:
+def research_orchestrator(state: TravelState) -> dict:
     """LangGraph node: let the LLM choose which research tools to run."""
     trip_request = state.get("trip_request", {})
     trip_legs = state.get("trip_legs", [])

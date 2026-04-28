@@ -1,5 +1,6 @@
 """HITL Review node — formats research results for human inspection."""
 
+from application.state import TravelState
 from application.workflow_types import WorkflowStep
 from domain.utils.dates import trip_duration_display
 from infrastructure.logging_utils import get_logger, log_event
@@ -122,7 +123,7 @@ def _format_trip_summary(trip: dict, flights: list[dict], hotels: list[dict]) ->
     )
 
 
-def hitl_review(state: dict) -> dict:
+def hitl_review(state: TravelState) -> dict:
     """Prepare the review summary for the user to approve or adjust."""
     flights = state.get("flight_options", [])
     hotels = state.get("hotel_options", [])

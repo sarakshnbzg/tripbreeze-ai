@@ -1,5 +1,6 @@
 """Memory Updater node — persists learned preferences to long-term memory."""
 
+from application.state import TravelState
 from application.workflow_types import WorkflowStep
 from infrastructure.persistence.memory_store import update_profile_from_trip
 from infrastructure.logging_utils import get_logger, log_event
@@ -39,7 +40,7 @@ def _build_history_destination_label(trip: dict) -> str:
     return route_label
 
 
-def memory_updater(state: dict) -> dict:
+def memory_updater(state: TravelState) -> dict:
     """LangGraph node: update user profile with info from this session."""
     user_id = state.get("user_id", "default_user")
     trip = state.get("trip_request", {})

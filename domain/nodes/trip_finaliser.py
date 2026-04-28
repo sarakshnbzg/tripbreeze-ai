@@ -2,6 +2,7 @@
 
 import json
 
+from application.state import TravelState
 from domain.utils.sanitize import sanitise_untrusted_text
 from infrastructure.apis.geocoding_client import geocode_address
 from infrastructure.apis.serpapi_client import fetch_hotel_address
@@ -258,7 +259,7 @@ Structured itinerary JSON:
 # ── Node ──────────────────────────────────────────────────────────────
 
 
-def _finalise_multi_city(state: dict) -> dict:
+def _finalise_multi_city(state: TravelState) -> dict:
     """Handle multi-city trip itinerary generation."""
     trip_legs = state.get("trip_legs", [])
     selected_flights = state.get("selected_flights", [])
@@ -453,7 +454,7 @@ def _finalise_multi_city(state: dict) -> dict:
     )
 
 
-def _finalise_single_city(state: dict) -> dict:
+def _finalise_single_city(state: TravelState) -> dict:
     """Handle single-destination trip itinerary generation."""
     selected_flight = state.get("selected_flight", {})
     selected_hotel = state.get("selected_hotel", {})
@@ -628,7 +629,7 @@ def _finalise_single_city(state: dict) -> dict:
     )
 
 
-def trip_finaliser(state: dict) -> dict:
+def trip_finaliser(state: TravelState) -> dict:
     """LangGraph node: generate the final trip itinerary using ReAct-style tool calling."""
     if state.get("trip_legs"):
         return _finalise_multi_city(state)

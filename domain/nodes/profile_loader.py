@@ -1,5 +1,6 @@
 """Profile Loader node — loads user preferences from long-term memory."""
 
+from application.state import TravelState
 from application.workflow_types import WorkflowStep
 from infrastructure.persistence.memory_store import load_profile
 from infrastructure.logging_utils import get_logger, log_event
@@ -7,7 +8,7 @@ from infrastructure.logging_utils import get_logger, log_event
 logger = get_logger(__name__)
 
 
-def profile_loader(state: dict) -> dict:
+def profile_loader(state: TravelState) -> dict:
     """LangGraph node: load user profile from persistent storage."""
     user_id = state.get("user_id", "default_user")
     logger.info("Loading profile for user_id=%s", user_id)

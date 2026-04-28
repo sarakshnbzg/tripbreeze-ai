@@ -40,6 +40,7 @@ from domain.nodes.trip_intake_helpers import (
     _repair_invalid_duration_dates,
     _recover_multi_city_trip,
 )
+from application.state import TravelState
 from application.workflow_types import WorkflowStep
 from domain.utils.sanitize import sanitise_untrusted_text
 from infrastructure.llms.model_factory import create_chat_model, extract_token_usage, invoke_with_retry
@@ -330,7 +331,7 @@ def _find_conflicting_field(
 
     return None
 
-def trip_intake(state: dict) -> dict:
+def trip_intake(state: TravelState) -> dict:
     """LangGraph node: build trip request from structured form fields and/or free text."""
     profile = state.get("user_profile", {})
     structured_fields = state.get("structured_fields", {})

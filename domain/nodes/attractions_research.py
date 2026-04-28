@@ -5,6 +5,7 @@ Results feed the finaliser, which sequences them into a day-by-day plan
 grounded in the real candidate list (no invented POIs).
 """
 
+from application.state import TravelState
 from application.workflow_types import WorkflowStep
 from infrastructure.apis.serpapi_client import search_attractions
 from infrastructure.logging_utils import get_logger
@@ -12,7 +13,7 @@ from infrastructure.logging_utils import get_logger
 logger = get_logger(__name__)
 
 
-def attractions_research(state: dict) -> dict:
+def attractions_research(state: TravelState) -> dict:
     """LangGraph node: fetch attraction candidates for the destination."""
     trip_request = state.get("trip_request", {})
     interests = trip_request.get("interests", []) or []

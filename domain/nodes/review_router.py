@@ -5,7 +5,7 @@ from datetime import date, timedelta
 
 from langgraph.types import interrupt
 
-from application.state import REVISION_RESET
+from application.state import REVISION_RESET, TravelState
 from application.workflow_types import FeedbackType, WorkflowStep
 from infrastructure.logging_utils import get_logger, log_event
 
@@ -14,7 +14,7 @@ logger = get_logger(__name__)
 _NIGHTS_PATTERN = re.compile(r"\b(\d+)\s*nights?\b", re.IGNORECASE)
 
 
-def build_revision_query(state: dict) -> str:
+def build_revision_query(state: TravelState) -> str:
     """Turn review-time feedback into a fresh intake prompt."""
     trip = state.get("trip_request", {}) or {}
     trip_legs = state.get("trip_legs", []) or []
@@ -74,7 +74,7 @@ def _extract_requested_nights(feedback: str) -> int | None:
     return nights if nights > 0 else None
 
 
-def _build_revision_baseline(state: dict, feedback: str = "") -> dict:
+def _build_revision_baseline(state: TravelState, feedback: str = "") -> dict:
     trip = dict(state.get("trip_request", {}) or {})
     feedback = str(feedback or state.get("user_feedback") or "")
     trip_legs = state.get("trip_legs", []) or []
@@ -101,7 +101,7 @@ def _build_revision_baseline(state: dict, feedback: str = "") -> dict:
     return trip
 
 
-def review_router(state: dict) -> dict:
+def review_router(state: TravelState) -> dict:
     """Pause for the user's review decision, then prepare the next graph hop."""
     decision = interrupt(
         {

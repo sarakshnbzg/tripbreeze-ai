@@ -8,6 +8,7 @@ from typing import Any
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from pydantic import BaseModel, Field, ValidationError
 
+from application.state import TravelState
 from infrastructure.apis.geocoding_client import geocode_address
 from infrastructure.apis.serpapi_client import fetch_hotel_address
 from infrastructure.apis.weather_client import fetch_weather_for_trip
@@ -302,7 +303,7 @@ def _rescue_malformed_itinerary(raw: dict) -> dict:
 
 def _run_finaliser_react_loop(
     *,
-    state: dict,
+    state: TravelState,
     prompt: str,
     final_tool_model,
     final_tool_name: str,
@@ -488,7 +489,7 @@ def _chunk_text(chunk: Any) -> str:
 
 
 def _render_markdown_with_live_stream(
-    state: dict,
+    state: TravelState,
     itinerary,
     fallback_markdown: str,
     *,
@@ -843,7 +844,7 @@ def _extract_single_city_destination_sections(destination_info: str) -> tuple[st
     return overview, _strip_source_suffix(entry)
 
 
-def _build_single_city_fallback_itinerary(state: dict, fallback_reason: str) -> Itinerary:
+def _build_single_city_fallback_itinerary(state: TravelState, fallback_reason: str) -> Itinerary:
     trip_request = state.get("trip_request", {})
     selected_flight = state.get("selected_flight", {})
     selected_hotel = state.get("selected_hotel", {})
@@ -927,7 +928,7 @@ def _build_single_city_fallback_itinerary(state: dict, fallback_reason: str) -> 
     )
 
 
-def _build_multi_city_fallback_itinerary(state: dict, fallback_reason: str) -> MultiCityItinerary:
+def _build_multi_city_fallback_itinerary(state: TravelState, fallback_reason: str) -> MultiCityItinerary:
     trip_request = state.get("trip_request", {})
     trip_legs = state.get("trip_legs", []) or []
     selected_flights = state.get("selected_flights", []) or []

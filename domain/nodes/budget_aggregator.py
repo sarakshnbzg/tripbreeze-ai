@@ -1,5 +1,6 @@
 """Budget Aggregator node — combines costs and checks against the budget limit."""
 
+from application.state import TravelState
 from application.workflow_types import WorkflowStep
 from settings import DEFAULT_DAILY_EXPENSE
 from domain.utils.dates import trip_duration_days
@@ -79,7 +80,7 @@ def _filter_options_within_budget(
     return filtered_flights, filtered_hotels
 
 
-def budget_aggregator(state: dict) -> dict:
+def budget_aggregator(state: TravelState) -> dict:
     """LangGraph node: aggregate flight + hotel costs and compare to budget."""
     trip = state.get("trip_request", {})
     trip_legs = state.get("trip_legs", [])
