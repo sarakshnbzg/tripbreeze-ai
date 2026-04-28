@@ -20,7 +20,7 @@ from infrastructure.llms.model_factory import (
 )
 from domain.utils.dates import trip_duration_with_dates
 from infrastructure.currency_utils import format_currency
-from infrastructure.logging_utils import get_logger
+from infrastructure.logging_utils import get_logger, log_event
 from infrastructure.streaming import get_token_emitter
 
 logger = get_logger(__name__)
@@ -360,6 +360,13 @@ def _run_finaliser_react_loop(
             tool_name = tool_call["name"]
             diagnostics["tool_calls"].append(tool_name)
             logger.info("%s received tool call %s", completion_log_name, tool_name)
+            log_event(
+                logger,
+                "workflow.tool_called",
+                workflow_node=token_node_name,
+                tool_name=tool_name,
+                iteration=iteration + 1,
+            )
 
             if tool_name == final_tool_name:
                 final_result = tool_call.get("args", {})
@@ -382,10 +389,25 @@ def _run_finaliser_react_loop(
                 continue
 
             try:
+                tool_started_at = datetime.now()
                 tool_result = tools_by_name[tool_name].invoke(tool_call.get("args", {}))
+                log_event(
+                    logger,
+                    "workflow.tool_completed",
+                    workflow_node=token_node_name,
+                    tool_name=tool_name,
+                    latency_ms=round((datetime.now() - tool_started_at).total_seconds() * 1000, 2),
+                )
             except Exception as exc:
                 logger.exception("%s tool %s failed", completion_log_name, tool_name)
                 diagnostics["tool_errors"].append({"tool": tool_name, "error": str(exc)})
+                log_event(
+                    logger,
+                    "workflow.tool_failed",
+                    workflow_node=token_node_name,
+                    tool_name=tool_name,
+                    error_type=type(exc).__name__,
+                )
                 tool_result = json.dumps({"error": str(exc)})
             messages.append(ToolMessage(content=tool_result, tool_call_id=tool_call["id"]))
 

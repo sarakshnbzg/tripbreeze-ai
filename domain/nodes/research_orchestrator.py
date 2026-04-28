@@ -151,9 +151,19 @@ def _run_react_research(
     def search_flights_tool() -> str:
         """Search live flight options for the current trip request."""
         logger.info("Research orchestrator invoking search_flights tool")
+        started_at = time.perf_counter()
         result = search_flights(tool_state)
         collected["flight_options"] = result.get("flight_options", [])
         collected["node_errors"].extend(result.get("node_errors", []))
+        log_event(
+            logger,
+            "workflow.tool_completed",
+            workflow_node="research_orchestrator",
+            tool_name="search_flights",
+            option_count=len(collected["flight_options"] or []),
+            error_count=len(result.get("node_errors", []) or []),
+            latency_ms=round((time.perf_counter() - started_at) * 1000, 2),
+        )
         return json.dumps(
             {
                 "flight_count": len(collected["flight_options"] or []),
@@ -167,6 +177,13 @@ def _run_react_research(
         if not allows_hotel_research:
             logger.info("Research orchestrator skipped search_hotels for leg without accommodation")
             collected["hotel_options"] = []
+            log_event(
+                logger,
+                "workflow.tool_skipped",
+                workflow_node="research_orchestrator",
+                tool_name="search_hotels",
+                reason="leg_without_accommodation",
+            )
             return json.dumps(
                 {
                     "hotel_count": 0,
@@ -174,9 +191,19 @@ def _run_react_research(
                 }
             )
         logger.info("Research orchestrator invoking search_hotels tool")
+        started_at = time.perf_counter()
         result = search_hotels(tool_state)
         collected["hotel_options"] = result.get("hotel_options", [])
         collected["node_errors"].extend(result.get("node_errors", []))
+        log_event(
+            logger,
+            "workflow.tool_completed",
+            workflow_node="research_orchestrator",
+            tool_name="search_hotels",
+            option_count=len(collected["hotel_options"] or []),
+            error_count=len(result.get("node_errors", []) or []),
+            latency_ms=round((time.perf_counter() - started_at) * 1000, 2),
+        )
         return json.dumps(
             {
                 "hotel_count": len(collected["hotel_options"] or []),
@@ -194,6 +221,7 @@ def _run_react_research(
             effective_query,
         )
         collected["rag_used"] = True
+        started_at = time.perf_counter()
         results = retrieve(effective_query, provider=state.get("llm_provider"))
         record_rag_event(
             collected["rag_trace"],
@@ -205,6 +233,15 @@ def _run_react_research(
         for r in results:
             if r["source"] not in collected["rag_sources"]:
                 collected["rag_sources"].append(r["source"])
+        log_event(
+            logger,
+            "workflow.tool_completed",
+            workflow_node="research_orchestrator",
+            tool_name="retrieve_knowledge",
+            result_count=len(results),
+            source_count=len(collected["rag_sources"]),
+            latency_ms=round((time.perf_counter() - started_at) * 1000, 2),
+        )
         return json.dumps({
             "query": effective_query,
             "chunks": [
@@ -271,6 +308,13 @@ def _run_react_research(
         for tool_call in response.tool_calls:
             tool_name = tool_call["name"]
             logger.info("Research orchestrator received tool call %s", tool_name)
+            log_event(
+                logger,
+                "workflow.tool_called",
+                workflow_node="research_orchestrator",
+                tool_name=tool_name,
+                iteration=iteration + 1,
+            )
             if tool_name == "SubmitResearchResult":
                 final_result = tool_call.get("args", {})
                 final_response = final_result.get("summary", "")

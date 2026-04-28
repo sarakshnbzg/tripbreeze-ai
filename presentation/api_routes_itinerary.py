@@ -46,6 +46,12 @@ async def itinerary_pdf(req: ItineraryPdfRequest, request: Request):
     if not req.final_itinerary.strip():
         raise HTTPException(status_code=400, detail="Final itinerary is required")
     enforce_text_length(
+        "file_name",
+        req.file_name,
+        max_chars=200,
+        message="Export filename is too long.",
+    )
+    enforce_text_length(
         "final_itinerary",
         req.final_itinerary,
         max_chars=_MAX_ITINERARY_TEXT_CHARS,
@@ -98,6 +104,12 @@ async def itinerary_email(req: ItineraryEmailRequest, request: Request):
         raise HTTPException(status_code=400, detail="Recipient email is required")
     if not req.final_itinerary.strip():
         raise HTTPException(status_code=400, detail="Final itinerary is required")
+    enforce_text_length(
+        "recipient_email",
+        req.recipient_email,
+        max_chars=320,
+        message="Recipient email is too long.",
+    )
     enforce_text_length(
         "final_itinerary",
         req.final_itinerary,

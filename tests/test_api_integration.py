@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 from presentation import api
 from presentation import api_routes_planning as planning_routes
+from presentation import api_sse
 from presentation.api_sse import SENTINEL, sse_event
 
 
@@ -147,3 +148,34 @@ def test_approve_stream_returns_tokens_and_final_state(monkeypatch):
     assert "Day 1" in body
     assert '"final_itinerary": "Day 1: Arrive"' in body
     assert "event: done" in body
+
+
+def test_run_planning_sync_logs_step_and_run_summary(monkeypatch):
+    class FakeGraph:
+        def stream(self, initial_state, config):
+            yield {
+                "trip_intake": {
+                    "messages": [{"role": "assistant", "content": "Parsed trip"}],
+                    "token_usage": [
+                        {
+                            "input_tokens": 10,
+                            "output_tokens": 5,
+                            "cost_usd": 0.001,
+                        }
+                    ],
+                    "current_step": "intake_complete",
+                }
+            }
+
+        def get_state(self, config):
+            return SimpleNamespace(values={"user_id": "sara", "token_usage": [{"input_tokens": 10, "output_tokens": 5, "cost_usd": 0.001}], "current_step": "intake_complete"})
+
+    events = []
+    monkeypatch.setattr(api_sse, "get_graph", lambda: FakeGraph())
+    monkeypatch.setattr(api_sse, "log_event", lambda logger, event, **fields: events.append((event, fields)))
+
+    q: queue.Queue = queue.Queue()
+    api_sse.run_planning_sync(q, {"user_id": "sara"}, {"configurable": {"thread_id": "thread-123"}})
+
+    assert any(event == "workflow.step_completed" and fields["step"] == "trip_intake" for event, fields in events)
+    assert any(event == "workflow.run_completed" and fields["thread_id"] == "thread-123" for event, fields in events)

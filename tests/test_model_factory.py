@@ -149,6 +149,35 @@ class TestInvokeWithRetry:
         assert fields["input_tokens"] == 12
         assert fields["output_tokens"] == 3
         assert "latency_ms" in fields
+        assert fields["attempts"] == 1
+
+    def test_logs_retry_before_success(self, monkeypatch):
+        class FakeOpenAIModel:
+            model_name = "gpt-4o-mini"
+
+            def __init__(self):
+                self.calls = 0
+
+            def invoke(self, prompt):
+                self.calls += 1
+                if self.calls == 1:
+                    raise TimeoutError("boom")
+                return MagicMock(usage_metadata={"input_tokens": 12, "output_tokens": 3})
+
+        llm = FakeOpenAIModel()
+
+        events = []
+        monkeypatch.setattr(
+            "infrastructure.llms.model_factory.log_event",
+            lambda logger, event, **fields: events.append((event, fields)),
+        )
+        monkeypatch.setattr("infrastructure.llms.model_factory.time.sleep", lambda seconds: None)
+
+        invoke_with_retry(llm, "hello", max_attempts=3)
+
+        assert events[0][0] == "llm.call_retrying"
+        assert events[-1][0] == "llm.call_completed"
+        assert events[-1][1]["attempts"] == 2
 
     def test_logs_failed_call(self, monkeypatch):
         class FakeOpenAIModel:
@@ -170,6 +199,7 @@ class TestInvokeWithRetry:
 
         assert events[-1][0] == "llm.call_failed"
         assert events[-1][1]["error_type"] == "TimeoutError"
+        assert events[-1][1]["attempts"] == 1
 
 
 class TestStreamWithRetry:
@@ -196,3 +226,4 @@ class TestStreamWithRetry:
         assert events[-1][0] == "llm.stream_completed"
         assert events[-1][1]["input_tokens"] == 7
         assert events[-1][1]["output_tokens"] == 2
+        assert events[-1][1]["attempts"] == 1

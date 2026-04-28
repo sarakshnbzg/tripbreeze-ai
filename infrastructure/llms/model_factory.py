@@ -9,14 +9,6 @@ from typing import Any
 
 from langchain_openai import ChatOpenAI
 from langchain_openai import OpenAIEmbeddings
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-    before_sleep_log,
-)
-
 from model_catalog import (
     DEFAULT_LLM_MODEL,
     DEFAULT_LLM_PROVIDER,
@@ -157,30 +149,41 @@ def invoke_with_retry(llm, prompt, *, max_attempts: int = 3):
     on rate-limit, timeout, and server errors from OpenAI.
     """
 
-    @retry(
-        retry=retry_if_exception_type(_RETRYABLE_EXCEPTIONS),
-        stop=stop_after_attempt(max_attempts),
-        wait=wait_exponential(multiplier=1, min=1, max=16),
-        before_sleep=before_sleep_log(logger, 30),  # logging.WARNING
-        reraise=True,
-    )
-    def _call():
-        return llm.invoke(prompt)
-
     provider, model = _infer_llm_metadata(llm)
     started_at = time.perf_counter()
-    try:
-        response = _call()
-    except Exception as exc:
-        log_event(
-            logger,
-            "llm.call_failed",
-            provider=provider,
-            model=model,
-            latency_ms=round((time.perf_counter() - started_at) * 1000, 2),
-            error_type=exc.__class__.__name__,
-        )
-        raise
+    attempts = 0
+    while True:
+        attempts += 1
+        try:
+            response = llm.invoke(prompt)
+            break
+        except Exception as exc:
+            is_retryable = isinstance(exc, _RETRYABLE_EXCEPTIONS)
+            if not is_retryable or attempts >= max_attempts:
+                log_event(
+                    logger,
+                    "llm.call_failed",
+                    provider=provider,
+                    model=model,
+                    latency_ms=round((time.perf_counter() - started_at) * 1000, 2),
+                    error_type=exc.__class__.__name__,
+                    attempts=attempts,
+                    max_attempts=max_attempts,
+                )
+                raise
+
+            sleep_seconds = min(max(2 ** (attempts - 1), 1), 16)
+            log_event(
+                logger,
+                "llm.call_retrying",
+                provider=provider,
+                model=model,
+                attempt=attempts,
+                max_attempts=max_attempts,
+                retry_in_seconds=sleep_seconds,
+                error_type=exc.__class__.__name__,
+            )
+            time.sleep(sleep_seconds)
 
     usage = _usage_from_response(response, model=model)
     log_event(
@@ -192,6 +195,7 @@ def invoke_with_retry(llm, prompt, *, max_attempts: int = 3):
         output_tokens=usage["output_tokens"],
         cost_usd=usage["cost_usd"],
         latency_ms=round((time.perf_counter() - started_at) * 1000, 2),
+        attempts=attempts,
     )
     return response
 
@@ -202,31 +206,41 @@ def stream_with_retry(llm, prompt, *, max_attempts: int = 3) -> Iterator[Any]:
     Once streaming has begun, yielded chunks are passed through directly.
     """
 
-    @retry(
-        retry=retry_if_exception_type(_RETRYABLE_EXCEPTIONS),
-        stop=stop_after_attempt(max_attempts),
-        wait=wait_exponential(multiplier=1, min=1, max=16),
-        before_sleep=before_sleep_log(logger, 30),  # logging.WARNING
-        reraise=True,
-    )
-    def _start_stream():
-        return llm.stream(prompt)
-
     provider, model = _infer_llm_metadata(llm)
     started_at = time.perf_counter()
+    attempts = 0
 
-    try:
-        stream = _start_stream()
-    except Exception as exc:
-        log_event(
-            logger,
-            "llm.stream_failed",
-            provider=provider,
-            model=model,
-            latency_ms=round((time.perf_counter() - started_at) * 1000, 2),
-            error_type=exc.__class__.__name__,
-        )
-        raise
+    while True:
+        attempts += 1
+        try:
+            stream = llm.stream(prompt)
+            break
+        except Exception as exc:
+            is_retryable = isinstance(exc, _RETRYABLE_EXCEPTIONS)
+            if not is_retryable or attempts >= max_attempts:
+                log_event(
+                    logger,
+                    "llm.stream_failed",
+                    provider=provider,
+                    model=model,
+                    latency_ms=round((time.perf_counter() - started_at) * 1000, 2),
+                    error_type=exc.__class__.__name__,
+                    attempts=attempts,
+                    max_attempts=max_attempts,
+                )
+                raise
+            sleep_seconds = min(max(2 ** (attempts - 1), 1), 16)
+            log_event(
+                logger,
+                "llm.stream_retrying",
+                provider=provider,
+                model=model,
+                attempt=attempts,
+                max_attempts=max_attempts,
+                retry_in_seconds=sleep_seconds,
+                error_type=exc.__class__.__name__,
+            )
+            time.sleep(sleep_seconds)
 
     def _logged_stream() -> Iterator[Any]:
         last_chunk = None
@@ -242,6 +256,8 @@ def stream_with_retry(llm, prompt, *, max_attempts: int = 3) -> Iterator[Any]:
                 model=model,
                 latency_ms=round((time.perf_counter() - started_at) * 1000, 2),
                 error_type=exc.__class__.__name__,
+                attempts=attempts,
+                max_attempts=max_attempts,
             )
             raise
 
@@ -259,6 +275,7 @@ def stream_with_retry(llm, prompt, *, max_attempts: int = 3) -> Iterator[Any]:
             output_tokens=usage["output_tokens"],
             cost_usd=usage["cost_usd"],
             latency_ms=round((time.perf_counter() - started_at) * 1000, 2),
+            attempts=attempts,
         )
 
     return _logged_stream()
