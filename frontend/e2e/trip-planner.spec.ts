@@ -771,14 +771,14 @@ test("completes a multi-city planner journey with leg-by-leg review and final it
   await signInAndOpenPlanner(page);
   await mockMultiCityPlannerFlow(page, capture);
 
-  await page.getByText("Refine your search (optional)").click();
+  await page.getByText("Advanced trip filters").click();
   await page.getByLabel("Multi-city trip").check();
-  await page.getByLabel("From (Origin City)").fill("Berlin");
-  await page.getByLabel("Departure Date").fill("2026-07-10");
-  await page.locator('input[list="cities"]').nth(1).fill("Lisbon");
+  await page.getByRole("combobox", { name: "From", exact: true }).fill("Berlin");
+  await page.getByLabel("Departure").fill("2026-07-10");
+  await page.getByRole("combobox", { name: "Destination 1", exact: true }).fill("Lisbon");
   await page.getByLabel("Nights").first().fill("3");
   await page.getByRole("button", { name: "Add another destination" }).click();
-  await page.locator('input[list="cities"]').nth(2).fill("Porto");
+  await page.getByRole("combobox", { name: "Destination 2", exact: true }).fill("Porto");
   await page.getByLabel("Nights").nth(1).fill("2");
   await page.getByRole("button", { name: "Search Trip" }).click();
 
@@ -853,11 +853,11 @@ test("asks a conflict clarification question when refine fields disagree with ty
   await mockConflictClarificationPlannerFlow(page, capture);
 
   await page.getByPlaceholder("Describe your trip...").fill("Plan a Lisbon trip in economy class.");
-  await page.getByText("Refine your search (optional)").click();
-  await page.getByLabel("From (Origin City)").fill("Berlin");
-  await page.getByLabel("To (Destination City)").fill("Lisbon");
-  await page.getByLabel("Departure Date").fill("2026-06-10");
-  await page.getByLabel("Return Date").fill("2026-06-14");
+  await page.getByText("Advanced trip filters").click();
+  await page.getByRole("combobox", { name: "From", exact: true }).fill("Berlin");
+  await page.getByRole("combobox", { name: "To", exact: true }).fill("Lisbon");
+  await page.getByLabel("Departure").fill("2026-06-10");
+  await page.getByLabel("Return").fill("2026-06-14");
   await page.getByLabel("Travel Class").selectOption("BUSINESS");
   await page.getByRole("button", { name: "Search Trip" }).click();
 
