@@ -5,6 +5,7 @@ Results feed the finaliser, which sequences them into a day-by-day plan
 grounded in the real candidate list (no invented POIs).
 """
 
+from application.workflow_types import WorkflowStep
 from infrastructure.apis.serpapi_client import search_attractions
 from infrastructure.logging_utils import get_logger
 
@@ -30,7 +31,7 @@ def attractions_research(state: dict) -> dict:
 
     if not destinations:
         logger.info("attractions_research skipped — no destinations available")
-        return {"attraction_candidates": [], "current_step": "attractions_complete"}
+        return {"attraction_candidates": [], "current_step": WorkflowStep.ATTRACTIONS_COMPLETE}
 
     logger.info(
         "attractions_research started destinations=%s interests=%s",
@@ -59,5 +60,5 @@ def attractions_research(state: dict) -> dict:
 
     return {
         "attraction_candidates": candidates,
-        "current_step": "attractions_complete",
+        "current_step": WorkflowStep.ATTRACTIONS_COMPLETE,
     }

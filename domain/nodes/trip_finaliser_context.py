@@ -2,6 +2,7 @@
 
 import json
 
+from application.workflow_types import WorkflowStep
 from domain.nodes.trip_finaliser_support import (
     _build_multi_city_daily_plans,
     _multi_city_flight_summary,
@@ -36,7 +37,7 @@ def _finaliser_success_response(
         "token_usage": token_usage,
         "finaliser_metadata": finaliser_metadata or {},
         "messages": [{"role": "assistant", "content": markdown}],
-        "current_step": "finalised",
+        "current_step": WorkflowStep.FINALISED,
     }
     if selected_hotel is not None:
         response["selected_hotel"] = selected_hotel
@@ -58,7 +59,7 @@ def _finaliser_error_response_with_tokens(
         "token_usage": token_usage,
         "finaliser_metadata": finaliser_metadata or {},
         "messages": [{"role": "assistant", "content": assistant_message or display_message}],
-        "current_step": "finalised",
+        "current_step": WorkflowStep.FINALISED,
     }
 
 

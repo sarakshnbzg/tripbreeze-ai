@@ -7,6 +7,7 @@ This module only imports from the domain layer (nodes & agents).
 from langgraph.graph import StateGraph, START, END
 
 from application.state import TravelState
+from application.workflow_types import FeedbackType, WorkflowStep
 from infrastructure.persistence.checkpointer import get_checkpointer
 from domain.nodes.attractions_research import attractions_research
 from domain.nodes.profile_loader import profile_loader
@@ -28,7 +29,7 @@ def _route_after_intake(state: dict) -> str:
     current_step = state.get("current_step")
     logger.info("Routing after intake: current_step=%s", current_step)
     log_event(logger, "workflow.route_after_intake", current_step=current_step or "")
-    if current_step == "intake_complete":
+    if current_step == WorkflowStep.INTAKE_COMPLETE:
         return "continue"
     return "stop"
 
@@ -46,9 +47,9 @@ def _route_after_review_router(state: dict) -> str:
         feedback_type=feedback_type or "",
         user_approved=bool(state.get("user_approved")),
     )
-    if feedback_type == "revise_plan":
+    if feedback_type == FeedbackType.REVISE_PLAN:
         return "revise"
-    if feedback_type == "cancel":
+    if feedback_type == FeedbackType.CANCEL:
         return "stop"
     return "approve"
 

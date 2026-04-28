@@ -21,6 +21,7 @@ from domain.nodes.research_orchestrator_helpers import (
     list_place_aliases,
     resolve_destination_country,
 )
+from application.workflow_types import WorkflowStep
 from infrastructure.llms.model_factory import create_chat_model, extract_token_usage, invoke_with_retry
 from infrastructure.logging_utils import get_logger, log_event
 from infrastructure.rag.evaluation import record_rag_event
@@ -435,7 +436,7 @@ def _research_multi_city_legs(state: dict) -> dict:
         "rag_trace": aggregated_rag_trace,
         "token_usage": aggregated_token_usage,
         "messages": [{"role": "assistant", "content": summary}],
-        "current_step": "research_complete",
+        "current_step": WorkflowStep.RESEARCH_COMPLETE,
     }
 
 
@@ -496,5 +497,5 @@ def research_orchestrator(state: dict) -> dict:
         "rag_trace": merged_rag_trace,
         "token_usage": result.get("token_usage") or [],
         "messages": [{"role": "assistant", "content": result.get("summary", "")}],
-        "current_step": "research_complete",
+        "current_step": WorkflowStep.RESEARCH_COMPLETE,
     }

@@ -5,6 +5,7 @@ from datetime import date, timedelta
 
 from langgraph.types import interrupt
 
+from application.workflow_types import FeedbackType, WorkflowStep
 from infrastructure.logging_utils import get_logger, log_event
 
 logger = get_logger(__name__)
@@ -110,7 +111,7 @@ def review_router(state: dict) -> dict:
     decision = decision if isinstance(decision, dict) else {}
     feedback_type = str(decision.get("feedback_type") or state.get("feedback_type") or "").strip().lower()
     user_feedback = str(decision.get("user_feedback") or state.get("user_feedback") or "").strip()
-    is_revision = feedback_type == "revise_plan"
+    is_revision = feedback_type == FeedbackType.REVISE_PLAN
 
     logger.info(
         "review_router received feedback_type=%s user_approved=%s",
@@ -120,15 +121,15 @@ def review_router(state: dict) -> dict:
     log_event(
         logger,
         "workflow.review_decision_received",
-        feedback_type=feedback_type or "rewrite_itinerary",
+        feedback_type=feedback_type or FeedbackType.REWRITE_ITINERARY,
         user_approved=bool(decision.get("user_approved", state.get("user_approved"))),
     )
 
     if not is_revision:
         return {
             **decision,
-            "current_step": "approval_received",
-            "feedback_type": feedback_type or "rewrite_itinerary",
+            "current_step": WorkflowStep.APPROVAL_RECEIVED,
+            "feedback_type": feedback_type or FeedbackType.REWRITE_ITINERARY,
             "user_feedback": user_feedback,
             "user_approved": bool(decision.get("user_approved", state.get("user_approved", True))),
         }
@@ -136,7 +137,7 @@ def review_router(state: dict) -> dict:
     return {
         **decision,
         "user_approved": False,
-        "current_step": "revising_plan",
+        "current_step": WorkflowStep.REVISING_PLAN,
         "structured_fields": {},
         "user_feedback": user_feedback,
         "revision_baseline": _build_revision_baseline(state, user_feedback),

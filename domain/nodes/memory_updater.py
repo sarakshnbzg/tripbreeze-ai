@@ -1,5 +1,6 @@
 """Memory Updater node — persists learned preferences to long-term memory."""
 
+from application.workflow_types import WorkflowStep
 from infrastructure.persistence.memory_store import update_profile_from_trip
 from infrastructure.logging_utils import get_logger, log_event
 
@@ -46,7 +47,7 @@ def memory_updater(state: dict) -> dict:
     if not trip:
         logger.info("Memory updater skipped because trip data is missing for user_id=%s", user_id)
         log_event(logger, "workflow.memory_update_skipped", user_id=user_id, reason="missing_trip")
-        return {"current_step": "done"}
+        return {"current_step": WorkflowStep.DONE}
 
     trip_data = {
         "destination": _build_history_destination_label({
@@ -83,6 +84,6 @@ def memory_updater(state: dict) -> dict:
 
     return {
         "user_profile": updated_profile,
-        "current_step": "done",
+        "current_step": WorkflowStep.DONE,
         "messages": [{"role": "system", "content": "User preferences updated in long-term memory."}],
     }

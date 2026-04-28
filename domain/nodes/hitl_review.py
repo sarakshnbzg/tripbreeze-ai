@@ -1,5 +1,6 @@
 """HITL Review node — formats research results for human inspection."""
 
+from application.workflow_types import WorkflowStep
 from domain.utils.dates import trip_duration_display
 from infrastructure.logging_utils import get_logger, log_event
 
@@ -182,5 +183,5 @@ def hitl_review(state: dict) -> dict:
 
     return {
         "messages": [{"role": "assistant", "content": "\n\n".join(parts)}],
-        "current_step": "awaiting_review",
+        "current_step": WorkflowStep.AWAITING_REVIEW,
     }

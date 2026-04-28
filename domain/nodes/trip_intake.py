@@ -41,6 +41,7 @@ from domain.nodes.trip_intake_helpers import (
     _repair_invalid_duration_dates,
     _recover_multi_city_trip,
 )
+from application.workflow_types import WorkflowStep
 from infrastructure.llms.model_factory import create_chat_model, extract_token_usage, invoke_with_retry
 from infrastructure.logging_utils import get_logger, log_event
 
@@ -394,7 +395,7 @@ def trip_intake(state: dict) -> dict:
             )
             return {
                 "error": "Out-of-domain request.",
-                "current_step": "out_of_domain",
+                "current_step": WorkflowStep.OUT_OF_DOMAIN,
                 "token_usage": token_usage,
                 "messages": [
                     {
@@ -685,7 +686,7 @@ def trip_intake(state: dict) -> dict:
         log_event(logger, "workflow.intake_failed", reason="validation_error", error=str(exc))
         return {
             "error": str(exc),
-            "current_step": "intake_error",
+            "current_step": WorkflowStep.INTAKE_ERROR,
             "messages": [{"role": "assistant", "content": f"I couldn't process your trip details: {exc}"}],
         }
     except Exception as exc:
@@ -693,7 +694,7 @@ def trip_intake(state: dict) -> dict:
         log_event(logger, "workflow.intake_failed", reason="normalisation_exception", error=str(exc))
         return {
             "error": "Something went wrong while processing your trip details. Please try again.",
-            "current_step": "intake_error",
+            "current_step": WorkflowStep.INTAKE_ERROR,
             "messages": [{"role": "assistant", "content": "Something went wrong while processing your trip details. Please try again."}],
         }
 
@@ -723,5 +724,5 @@ def trip_intake(state: dict) -> dict:
         "trip_legs": trip_legs,
         "token_usage": token_usage,
         "messages": [{"role": "assistant", "content": _build_trip_intake_message(trip_data, trip_legs)}],
-        "current_step": "intake_complete",
+        "current_step": WorkflowStep.INTAKE_COMPLETE,
     }

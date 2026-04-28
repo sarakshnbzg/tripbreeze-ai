@@ -1,5 +1,6 @@
 """Profile Loader node — loads user preferences from long-term memory."""
 
+from application.workflow_types import WorkflowStep
 from infrastructure.persistence.memory_store import load_profile
 from infrastructure.logging_utils import get_logger, log_event
 
@@ -37,5 +38,5 @@ def profile_loader(state: dict) -> dict:
                 f"Past destinations: {', '.join(t['destination'] for t in profile.get('past_trips', [])) or 'none'}."
             ),
         }],
-        "current_step": "profile_loaded",
+        "current_step": WorkflowStep.PROFILE_LOADED,
     }

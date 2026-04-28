@@ -1,5 +1,6 @@
 """Budget Aggregator node — combines costs and checks against the budget limit."""
 
+from application.workflow_types import WorkflowStep
 from settings import DEFAULT_DAILY_EXPENSE
 from domain.utils.dates import trip_duration_days
 from infrastructure.currency_utils import currency_prefix
@@ -192,7 +193,7 @@ def budget_aggregator(state: dict) -> dict:
                 "is_multi_city": True,
                 "partial_results_note": partial_results_note,
             },
-            "current_step": "budget_done",
+            "current_step": WorkflowStep.BUDGET_DONE,
         }
 
     # Single-destination trip: existing logic
@@ -304,5 +305,5 @@ def budget_aggregator(state: dict) -> dict:
             "budget_notes": notes,
             "partial_results_note": partial_results_note,
         },
-        "current_step": "budget_done",
+        "current_step": WorkflowStep.BUDGET_DONE,
     }
