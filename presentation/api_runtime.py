@@ -1,5 +1,6 @@
 """Shared runtime objects for the FastAPI backend."""
 
+import threading
 from concurrent.futures import ThreadPoolExecutor
 
 from application.graph import compile_graph
@@ -22,10 +23,13 @@ NODE_LABELS = {
 }
 
 _graph = None
+_graph_lock = threading.Lock()
 
 
 def get_graph():
     global _graph
     if _graph is None:
-        _graph = compile_graph()
+        with _graph_lock:
+            if _graph is None:
+                _graph = compile_graph()
     return _graph

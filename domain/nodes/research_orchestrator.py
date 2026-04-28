@@ -23,6 +23,7 @@ from domain.nodes.research_orchestrator_helpers import (
 )
 from application.state import TravelState
 from application.workflow_types import WorkflowStep
+from domain.utils.sanitize import sanitise_untrusted_text
 from infrastructure.llms.model_factory import create_chat_model, extract_token_usage, invoke_with_retry
 from infrastructure.logging_utils import get_logger, log_event
 from infrastructure.rag.evaluation import record_rag_event
@@ -84,6 +85,25 @@ class SubmitResearchResult(BaseModel):
             "destination fields when possible. Leave empty if no destination briefing is available."
         ),
     )
+
+
+def _sanitise_profile_for_prompt(profile: dict) -> dict:
+    """Return a sanitized subset of the user profile safe for LLM injection.
+
+    Only includes fields the research orchestrator actually uses. String fields
+    are scrubbed for prompt-injection patterns so a crafted home_city or
+    passport_country cannot hijack the system prompt.
+    """
+    str_fields = ("home_city", "passport_country", "travel_class")
+    sanitised: dict[str, Any] = {
+        field: sanitise_untrusted_text(str(profile.get(field) or ""), context=f"profile.{field}")
+        for field in str_fields
+    }
+    # Numeric/list preference fields are safe as-is (no free-text injection risk).
+    for field in ("preferred_airlines", "preferred_hotel_stars",
+                  "preferred_outbound_time_window", "preferred_return_time_window"):
+        sanitised[field] = profile.get(field, [])
+    return sanitised
 
 
 def _per_leg_trip_request(leg: dict, base_trip_request: dict) -> dict:
@@ -208,7 +228,7 @@ def _run_react_research(
     human_parts.extend(
         [
             f"<trip_request>\n{json.dumps(trip_request)}\n</trip_request>",
-            f"<user_profile>\n{json.dumps(user_profile)}\n</user_profile>",
+            f"<user_profile>\n{json.dumps(_sanitise_profile_for_prompt(user_profile))}\n</user_profile>",
             (
                 "When you are done, call `SubmitResearchResult` exactly once. "
                 "If you used `retrieve_knowledge`, include a concise destination briefing in `destination_briefing`."
