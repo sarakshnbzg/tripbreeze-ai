@@ -49,7 +49,6 @@ export function PlannerStage({
     recording,
     error,
     username,
-    homeCity,
   } = displayState;
   const {
     availableModels,
@@ -187,7 +186,6 @@ export function PlannerStage({
           recording={recording}
           error={error}
           username={username}
-          homeCity={homeCity}
           onPlanTrip={() => void handlePlanTrip()}
           onVoiceInput={() => void handleVoiceInput()}
         />
