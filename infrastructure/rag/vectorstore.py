@@ -24,7 +24,6 @@ from settings import (
     RAG_BM25_WEIGHT,
     RAG_EMBEDDING_BATCH_SIZE,
     RAG_EMBEDDING_MAX_RETRIES,
-    RAG_GOOGLE_EMBEDDING_BATCH_DELAY_SECONDS,
 )
 from infrastructure.llms.model_factory import create_embeddings, normalise_llm_selection
 from infrastructure.logging_utils import get_logger
@@ -597,9 +596,7 @@ def _add_documents_with_quota_backoff(
     chunks: list,
     provider: str,
 ) -> None:
-    """Add chunks in batches, slowing down for providers with strict embedding quotas."""
-    is_google = provider == "google"
-    batch_delay = RAG_GOOGLE_EMBEDDING_BATCH_DELAY_SECONDS if is_google else 0
+    """Add chunks in batches with retry on transient embedding errors."""
     batches = list(_batched(chunks, RAG_EMBEDDING_BATCH_SIZE))
 
     for batch_number, batch in enumerate(batches, start=1):
@@ -631,13 +628,6 @@ def _add_documents_with_quota_backoff(
                     exc,
                 )
                 time.sleep(sleep_seconds)
-
-        if batch_delay and batch_number < len(batches):
-            logger.info(
-                "Sleeping between Google embedding batches seconds=%s",
-                batch_delay,
-            )
-            time.sleep(batch_delay)
 
 
 def _load_and_split_docs() -> list:

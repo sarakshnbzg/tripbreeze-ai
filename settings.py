@@ -34,10 +34,6 @@ class Settings(BaseSettings):
     )
 
     openai_api_key: str = Field("", alias="OPENAI_API_KEY")
-    google_api_key: str = Field(
-        "",
-        validation_alias=AliasChoices("GOOGLE_API_KEY", "GEMINI_API_KEY"),
-    )
     serpapi_api_key: str = Field("", alias="SERPAPI_API_KEY")
     memory_database_url: str = Field(
         "",
@@ -53,7 +49,6 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = Field(True, alias="SMTP_USE_TLS")
 
     openai_embedding_model: str = Field("text-embedding-3-small", alias="OPENAI_EMBEDDING_MODEL")
-    google_embedding_model: str = Field("gemini-embedding-001", alias="GOOGLE_EMBEDDING_MODEL")
 
     rag_chunk_size: int = Field(800, alias="RAG_CHUNK_SIZE", gt=0)
     rag_chunk_overlap: int = Field(100, alias="RAG_CHUNK_OVERLAP", ge=0)
@@ -61,11 +56,6 @@ class Settings(BaseSettings):
     rag_vector_weight: float = 0.5
     rag_bm25_weight: float = 0.5
     rag_embedding_batch_size: int = Field(50, alias="RAG_EMBEDDING_BATCH_SIZE", gt=0)
-    rag_google_embedding_batch_delay_seconds: float = Field(
-        31.0,
-        alias="RAG_GOOGLE_EMBEDDING_BATCH_DELAY_SECONDS",
-        ge=0,
-    )
     rag_embedding_max_retries: int = Field(4, alias="RAG_EMBEDDING_MAX_RETRIES", ge=0)
 
     max_flight_results: int = Field(5, alias="MAX_FLIGHT_RESULTS", gt=0)
@@ -118,7 +108,6 @@ class Settings(BaseSettings):
     def embedding_models(self) -> dict[str, str]:
         return {
             "openai": self.openai_embedding_model,
-            "google": self.google_embedding_model,
         }
 
     @property
@@ -135,7 +124,6 @@ if settings.langchain_tracing_v2 and settings.langchain_api_key:
 
 # Backward-compatible module-level exports
 OPENAI_API_KEY = settings.openai_api_key
-GOOGLE_API_KEY = settings.google_api_key
 SERPAPI_API_KEY = settings.serpapi_api_key
 MEMORY_DATABASE_URL = settings.memory_database_url
 CSC_API_KEY = settings.csc_api_key
@@ -155,7 +143,6 @@ RAG_TOP_K = settings.rag_top_k
 RAG_VECTOR_WEIGHT = settings.rag_vector_weight
 RAG_BM25_WEIGHT = settings.rag_bm25_weight
 RAG_EMBEDDING_BATCH_SIZE = settings.rag_embedding_batch_size
-RAG_GOOGLE_EMBEDDING_BATCH_DELAY_SECONDS = settings.rag_google_embedding_batch_delay_seconds
 RAG_EMBEDDING_MAX_RETRIES = settings.rag_embedding_max_retries
 
 MAX_FLIGHT_RESULTS = settings.max_flight_results

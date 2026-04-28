@@ -44,9 +44,7 @@ def _infer_llm_metadata(llm: Any, *, _visited: set[int] | None = None) -> tuple[
 
     class_name = llm.__class__.__name__.lower()
     module_name = llm.__class__.__module__.lower()
-    if "google" in class_name or "google" in module_name or "gemini" in class_name:
-        provider = "google"
-    elif "openai" in class_name or "openai" in module_name:
+    if "openai" in class_name or "openai" in module_name:
         provider = "openai"
 
     if provider and model:
@@ -152,19 +150,11 @@ try:
 except ImportError:
     pass
 
-try:
-    from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable, DeadlineExceeded
-
-    _RETRYABLE_EXCEPTIONS += (ResourceExhausted, ServiceUnavailable, DeadlineExceeded)
-except ImportError:
-    pass
-
-
 def invoke_with_retry(llm, prompt, *, max_attempts: int = 3):
     """Invoke an LLM with automatic retry on transient failures.
 
     Retries up to *max_attempts* times with exponential back-off (1s, 2s, 4s …)
-    on rate-limit, timeout, and server errors from OpenAI / Google.
+    on rate-limit, timeout, and server errors from OpenAI.
     """
 
     @retry(

@@ -1,7 +1,6 @@
 """Tests for infrastructure/rag/vectorstore.py."""
 
 from infrastructure.rag.vectorstore import (
-    _build_vectorstore,
     _chroma_dir_for_provider,
     _build_chroma_filter,
     _doc_matches_filters,
@@ -10,126 +9,12 @@ from infrastructure.rag.vectorstore import (
     _preferred_source_types,
     _rank_scored_docs,
     _score_doc,
-    retrieve,
 )
 
 
 class TestChromaDirForProvider:
     def test_provider_gets_own_directory(self):
         assert str(_chroma_dir_for_provider("openai")).endswith("chroma_db/openai")
-        assert str(_chroma_dir_for_provider("google")).endswith("chroma_db/openai")
-
-
-class TestBuildVectorstore:
-    def test_google_provider_normalises_to_openai_embeddings_and_directory(self, monkeypatch):
-        captured = {}
-
-        monkeypatch.setattr(
-            "infrastructure.rag.vectorstore.create_embeddings",
-            lambda provider: f"embeddings:{provider}",
-        )
-        monkeypatch.setattr(
-            "infrastructure.rag.vectorstore._load_and_split_docs",
-            lambda: ["doc1"],
-        )
-
-        class FakeChroma:
-            def __init__(self, persist_directory, embedding_function):
-                captured["embedding"] = embedding_function
-                captured["persist_directory"] = persist_directory
-
-            def add_documents(self, documents):
-                captured["documents"] = documents
-
-        monkeypatch.setattr("infrastructure.rag.vectorstore.Chroma", FakeChroma)
-
-        result = _build_vectorstore(provider="google", force_rebuild=True)
-
-        assert isinstance(result, FakeChroma)
-        assert captured["documents"] == ["doc1"]
-        assert captured["embedding"] == "embeddings:openai"
-        assert captured["persist_directory"].endswith("chroma_db/openai")
-
-
-class TestRetrieve:
-    def test_google_provider_is_normalised_before_vectorstore_lookup(self, monkeypatch):
-        calls = {}
-
-        class FakeVectorStore:
-            def similarity_search(self, query, k, filter=None):
-                calls.setdefault("similarity_search", []).append(
-                    {"query": query, "k": k, "filter": filter}
-                )
-                return [
-                    FakeDoc(
-                        "chunk 2",
-                        "knowledge_base/visa_requirements.md",
-                        source_type="visa_requirements",
-                        country="France",
-                    ),
-                ]
-
-        class FakeDoc:
-            def __init__(self, page_content, source, **metadata):
-                self.page_content = page_content
-                self.metadata = {"source": source, **metadata}
-
-        class FakeBM25:
-            def __init__(self, documents, k):
-                calls.setdefault("bm25_inputs", []).append(
-                    {"documents": documents, "k": k}
-                )
-                self.k = k
-
-            def invoke(self, query):
-                calls["query"] = query
-                return [FakeDoc("chunk 3", "knowledge_base/visa_requirements.md", source_type="visa_requirements", country="France")]
-
-        monkeypatch.setattr(
-            "infrastructure.rag.vectorstore._build_vectorstore",
-            lambda provider=None, force_rebuild=False: (
-                calls.__setitem__("provider", provider) or FakeVectorStore()
-            ),
-        )
-        monkeypatch.setattr(
-            "infrastructure.rag.vectorstore._load_and_split_docs",
-            lambda: [
-                FakeDoc(
-                    "bm25 visa chunk",
-                    "knowledge_base/visa_requirements.md",
-                    source_type="visa_requirements",
-                    country="France",
-                ),
-            ],
-        )
-        monkeypatch.setattr(
-            "infrastructure.rag.vectorstore.BM25Retriever.from_documents",
-            lambda chunks, k: FakeBM25(chunks, k),
-        )
-
-        result = retrieve(
-            "What are the entry requirements for a US passport holder visiting Paris?",
-            provider="google",
-            k=2,
-        )
-
-        assert calls["provider"] == "openai"
-        assert calls["similarity_search"][0]["k"] == 8
-        assert calls["similarity_search"][0]["filter"] == {
-            "$and": [
-                {"source_type": "visa_requirements"},
-                {"$or": [{"city": "Paris"}, {"country": "France"}]},
-            ]
-        }
-        assert all(
-            doc.metadata.get("source_type") == "visa_requirements"
-            for doc in calls["bm25_inputs"][0]["documents"]
-        )
-        assert calls["query"] == "What are the entry requirements for a US passport holder visiting Paris?"
-        assert result == [
-            {"content": "chunk 2", "source": "Visa Requirements"},
-            {"content": "chunk 3", "source": "Visa Requirements"},
-        ]
 
 
 class TestMetadataExtraction:
