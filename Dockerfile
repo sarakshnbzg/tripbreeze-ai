@@ -16,7 +16,7 @@ RUN apt-get update \
 
 COPY pyproject.toml uv.lock ./
 COPY AGENTS.md ./
-COPY app.py config.py settings.py model_catalog.py constants.py docker-entrypoint.sh ./
+COPY app.py settings.py model_catalog.py constants.py docker-entrypoint.sh ./
 COPY application ./application
 COPY domain ./domain
 COPY infrastructure ./infrastructure
