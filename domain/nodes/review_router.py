@@ -5,6 +5,7 @@ from datetime import date, timedelta
 
 from langgraph.types import interrupt
 
+from application.state import REVISION_RESET
 from application.workflow_types import FeedbackType, WorkflowStep
 from infrastructure.logging_utils import get_logger, log_event
 
@@ -136,27 +137,10 @@ def review_router(state: dict) -> dict:
 
     return {
         **decision,
+        **REVISION_RESET,
         "user_approved": False,
         "current_step": WorkflowStep.REVISING_PLAN,
-        "structured_fields": {},
         "user_feedback": user_feedback,
         "revision_baseline": _build_revision_baseline(state, user_feedback),
         "free_text_query": user_feedback,
-        "selected_flight": {},
-        "selected_hotel": {},
-        "selected_flights": [],
-        "selected_hotels": [],
-        "flight_options": [],
-        "hotel_options": [],
-        "flight_options_by_leg": [],
-        "hotel_options_by_leg": [],
-        "budget": {},
-        "destination_info": "",
-        "rag_used": False,
-        "rag_sources": [],
-        "rag_trace": [],
-        "attraction_candidates": [],
-        "final_itinerary": "",
-        "itinerary_data": {},
-        "finaliser_metadata": {},
     }

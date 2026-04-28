@@ -71,3 +71,27 @@ class TravelState(TypedDict, total=False):
     # Control flow
     current_step: str
     error: str
+
+
+# Fields to wipe when the user requests a revision so the next research
+# pass starts from a clean slate. Keep in sync with TravelState above.
+REVISION_RESET: dict = {
+    "structured_fields": {},
+    "selected_flight": {},
+    "selected_hotel": {},
+    "selected_flights": [],
+    "selected_hotels": [],
+    "flight_options": [],
+    "hotel_options": [],
+    "flight_options_by_leg": [],
+    "hotel_options_by_leg": [],
+    "budget": {},
+    "destination_info": "",
+    "rag_used": False,
+    "rag_sources": [],
+    "rag_trace": [],
+    "attraction_candidates": [],
+    "final_itinerary": "",
+    "itinerary_data": {},
+    "finaliser_metadata": {},
+}
