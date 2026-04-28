@@ -44,7 +44,7 @@ Dependency direction: `application` → `domain` → `infrastructure`. `presenta
 
 ## Key Patterns
 
-**Settings** — Config from `settings.py` (pydantic-settings, typed). `config.py` = backward-compat shim; use `settings.py` for new code. Nodes/agents never read env vars directly.
+**Settings** — Config comes from `settings.py` (pydantic-settings, typed). Nodes and agents should read settings from there rather than from environment variables directly.
 
 **LLM calls** — Always use `invoke_with_retry` / `stream_with_retry` from `infrastructure/llms/model_factory.py`. Handle backoff retry, emit `llm.call_completed` / `llm.stream_completed` structured logs with token counts + cost.
 

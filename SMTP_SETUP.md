@@ -2,6 +2,8 @@
 
 To enable email functionality for sending trip itineraries, configure these environment variables:
 
+TripBreeze currently sends mail with `smtplib.SMTP` and optional `STARTTLS`. In practice that means port `587` with `SMTP_USE_TLS=true` is the supported path. Implicit SSL on port `465` is not currently supported by the app.
+
 ## Configuration Variables
 
 ```bash
@@ -69,5 +71,6 @@ SMTP_USE_TLS=true
 
 - **Authentication Failed**: Double-check your email and password. For Gmail, ensure you're using an [app-specific password](https://support.google.com/accounts/answer/185833).
 - **Connection Refused**: Verify the SMTP host and port are correct.
-- **TLS Issues**: If using port 465, set `SMTP_USE_TLS=false` (uses SSL instead).
+- **TLS Issues**: Prefer port `587` with `SMTP_USE_TLS=true`. Port `465` uses implicit SSL and does not match the app's current SMTP client setup.
+- **Gmail App Password Formatting**: If Google shows the app password with spaces, paste it into `.env` without spaces.
 - **Check Logs**: Enable `LOG_LEVEL=DEBUG` to see detailed SMTP connection logs.

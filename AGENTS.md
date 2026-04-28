@@ -18,12 +18,11 @@ Trip Intake                   ← merges structured fields with free text; valid
 Research Orchestrator         ← ReAct agent: decides which research tools to call
   │
   ├──────────┬──────────┬──────────┐
-  ▼          ▼          ▼          ▼
-Flight    Ground      Hotel      RAG
-Tool      Transport   Tool       Tool
-          Tool
-  │          │          │          │
-  └──────────┴──────────┴──────────┘
+  ▼          ▼          ▼
+Flight    Hotel      RAG
+Tool      Tool       Tool
+  │          │          │
+  └──────────┴──────────┘
              │
              ▼
       Budget Aggregator       ← sums costs, checks budget limit
@@ -61,7 +60,7 @@ Tool      Transport   Tool       Tool
 | **Node name** | `research` |
 | **Implementation** | `research_orchestrator(...)` |
 | **Purpose** | ReAct agent that dynamically chooses which research tools to call for the current trip |
-| **LLM** | User-selected OpenAI or Google Gemini chat model with tool calling |
+| **LLM** | User-selected OpenAI chat model with tool calling |
 | **Reads from state** | `trip_request`, `trip_legs` (for multi-city), `user_profile`, `llm_provider`, `llm_model` |
 | **Writes to state** | `flight_options`, `hotel_options`, `destination_info` (entry requirements only), `rag_sources`, research summary message; for multi-city: `flight_options_by_leg`, `hotel_options_by_leg` |
 | **Tool choices** | `search_flights`, `search_hotels`, `retrieve_knowledge`, `SubmitResearchResult` |
@@ -100,12 +99,12 @@ Tool      Transport   Tool       Tool
 | Field | Detail |
 |-------|--------|
 | **Callable name** | `retrieve_knowledge` |
-| **Purpose** | Search the local knowledge base for visa and entry requirement information |
+| **Purpose** | Search the local knowledge base for grounded travel guidance, primarily entry and visa information |
 | **Infrastructure** | `infrastructure/rag/vectorstore.retrieve` (ChromaDB) |
 | **Used by** | Research orchestrator for entry requirements; Trip Finaliser consumes the grounded result already prepared earlier |
 | **Behavior** | Optional tool inside both ReAct loops; may be skipped or called multiple times |
 | **Output** | Retrieved knowledge-base chunks that agents use to write grounded destination information |
-| **Knowledge base** | `knowledge_base/visa_requirements/*.md` |
+| **Knowledge base** | `knowledge_base/**/*.md` |
 
 #### RAG Retrieval Sketch
 
@@ -170,7 +169,7 @@ Notes:
 | **File** | `domain/nodes/trip_intake.py` |
 | **Node name** | `trip_intake` |
 | **Purpose** | Build trip request from structured form fields and/or free text, classify out-of-domain requests, and validate trip details |
-| **LLM** | User-selected OpenAI or Google Gemini chat model with tool calling |
+| **LLM** | User-selected OpenAI chat model with tool calling |
 | **Tool schema** | `EvaluateDomain`, `ExtractTripDetails` (single-destination), `ExtractMultiCityTrip` (multi-city), `ExtractPreferences` |
 | **Reads from state** | `structured_fields` (form inputs), `user_profile` (for defaults), `llm_provider`, `llm_model` |
 | **Writes to state** | `trip_request` — dict with origin, destination, dates, class, budget, stops, max_flight_price, airlines, etc.; `trip_legs` — list of leg dicts for multi-city trips |
@@ -188,7 +187,7 @@ Notes:
 | **Reads from state** | `trip_request`, `trip_legs`, `flight_options`, `hotel_options`, `flight_options_by_leg`, `hotel_options_by_leg` |
 | **Writes to state** | `budget` — dict with cost breakdown, total, within_budget flag, notes; for multi-city includes `per_leg_breakdown` |
 | **Multi-city** | Aggregates costs per leg (flight + hotel + daily expenses per destination) and calculates grand total |
-| **Daily estimate** | Configurable via `config.DEFAULT_DAILY_EXPENSE` (default $80/day) |
+| **Daily estimate** | Configurable via `settings.DEFAULT_DAILY_EXPENSE` (default $80/day) |
 
 ### HITL Review
 
@@ -233,7 +232,7 @@ Notes:
 | **File** | `domain/nodes/trip_finaliser.py` |
 | **Node name** | `finalise` |
 | **Purpose** | ReAct agent that generates a polished, professional itinerary document with grounded destination tips |
-| **LLM** | User-selected OpenAI or Google Gemini chat model with tool calling (temperature 0.5) |
+| **LLM** | User-selected OpenAI chat model with tool calling (temperature 0.5) |
 | **Tool choices** | `Itinerary` (single-destination), `MultiCityItinerary` (multi-city) |
 | **Reads from state** | `trip_request`, `trip_legs`, `selected_flight`, `selected_hotel`, `selected_flights`, `selected_hotels`, `destination_info`, `budget`, `user_feedback`, `attraction_candidates`, `rag_sources`, `llm_provider`, `llm_model` |
 | **Writes to state** | `final_itinerary` — complete markdown itinerary, `itinerary_data` — structured data, `rag_sources` — updated with any new sources |
@@ -258,7 +257,7 @@ Notes:
 ## State Schema
 
 Defined in `application/state.py` as `TravelState` (TypedDict).
-The state includes `structured_fields` (form inputs passed directly from the UI), `llm_provider` and `llm_model` so the user-selected OpenAI or Google Gemini model flows through the graph.
+The state includes `structured_fields` (form inputs passed directly from the UI), `llm_provider` and `llm_model` so the user-selected OpenAI model flows through the graph.
 The `messages` field uses `operator.add` for append-only accumulation across nodes.
 
 ### Multi-City State Fields

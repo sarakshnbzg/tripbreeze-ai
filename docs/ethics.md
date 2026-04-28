@@ -13,6 +13,7 @@ TripBreeze AI is a travel-planning assistant, not an authority on border control
 - Free-text trip requests are treated as untrusted input.
 - Intake prompts explicitly instruct the model to ignore embedded commands or role-play directives.
 - The intake layer strips obvious prompt-injection lines such as `ignore previous instructions`, `system:`, `assistant:`, and similar role-reset patterns before user text is inserted into prompts.
+- Final itinerary and research prompts also treat carried-forward trip fields and profile fields as untrusted input rather than executable instructions.
 - Golden and unit tests should cover adversarial inputs so this guardrail remains in place.
 
 ## Bias and Coverage Limits
@@ -33,12 +34,13 @@ Current mitigations:
 
 - User preferences and recent trip history are stored in Postgres for continuity across sessions.
 - Passwords are stored as bcrypt hashes rather than plaintext.
+- Authenticated API access uses server-side session records, HTTP-only cookies, CSRF tokens, and same-site cookie settings.
 - Trip history is capped to the most recent 10 trips in the profile layer.
 - A production deployment should pair this with explicit consent, clear deletion controls, and session management.
 
 ## Recommended Next Hardening Steps
 
 - Add a user-triggered profile deletion endpoint and UI action.
-- Add API rate limiting for search and transcription routes.
+- Expand rate limiting coverage and make limits configurable per environment.
 - Add end-to-end logging for LLM token usage, cost, and latency on every model call.
 - Expand evaluation sets with adversarial and out-of-coverage travel questions.

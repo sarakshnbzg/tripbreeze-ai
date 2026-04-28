@@ -1,6 +1,6 @@
 # TripBreeze AI ✈️
 
-TripBreeze AI is an agentic travel planner that turns a free-text trip request into a fully researched, budgeted, and weather-enriched itinerary. It orchestrates a multi-step AI pipeline — live flight and hotel search, visa and entry research, budget validation, and day-by-day itinerary generation — with a human-in-the-loop review step before anything gets locked in.
+TripBreeze AI is an agentic travel planner that turns a free-text trip request into a fully researched, budgeted, and weather-enriched itinerary. It orchestrates a multi-step AI pipeline for live flight and hotel search, grounded entry-requirement research, budget validation, and day-by-day itinerary generation, with a human-in-the-loop review step before anything gets locked in.
 
 Built on LangGraph with a FastAPI backend and Next.js frontend, it supports single-city and multi-city trips, remembers preferences across sessions, and streams results in real time.
 
@@ -23,11 +23,12 @@ Built on LangGraph with a FastAPI backend and Next.js frontend, it supports sing
 - 🎙️ Accepts trip requests by text or voice (Whisper transcription)
 - 🗣️ Parses free-text input — single-city or multi-city
 - 🔎 Searches live flights and hotels via SerpAPI
-- 🛂 Retrieves visa and entry guidance from a local RAG knowledge base
+- 🛂 Retrieves grounded entry guidance from a local RAG knowledge base
 - 💸 Checks the budget before committing to a plan
 - 🧑‍⚖️ Pauses for **human review** before finalising
 - 🌤️ Generates a day-by-day itinerary enriched with live weather
 - 🗂️ Saves user preferences and trip history in Postgres
+- 🔐 Uses session cookies, CSRF protection, and per-route rate limiting for authenticated API access
 
 ---
 
@@ -45,7 +46,7 @@ Next.js frontend  ──(HTTP + SSE)──▶  FastAPI backend
                                          └─ cancel
                                             │
                                       External services
-                                      OpenAI · Gemini · SerpAPI · Open-Meteo · SMTP
+                                      OpenAI · SerpAPI · Open-Meteo · SMTP
 ```
 
 Key files: [application/graph.py](application/graph.py) · [application/state.py](application/state.py) · [presentation/api.py](presentation/api.py) · [AGENTS.md](AGENTS.md)
@@ -57,7 +58,7 @@ Key files: [application/graph.py](application/graph.py) · [application/state.py
 | Layer | Tools |
 |---|---|
 | Backend | Python 3.13, FastAPI, LangGraph, LangChain |
-| LLMs | OpenAI, Google Gemini, Whisper |
+| LLMs | OpenAI chat models, Whisper |
 | Search & Weather | SerpAPI, Open-Meteo |
 | Retrieval | ChromaDB + BM25 hybrid RAG |
 | Database | Postgres |
@@ -82,6 +83,8 @@ SERPAPI_API_KEY=...
 DATABASE_URL=postgresql://user:pass@host/db?sslmode=require
 ```
 
+`DATABASE_URL` is required for auth, profiles, long-term memory, and restart-safe HITL review. Set `SESSION_SECRET` as well before deploying anywhere shared or public.
+
 All settings are typed and documented in [settings.py](settings.py).
 
 ### 2. Backend
@@ -92,7 +95,7 @@ uv run python scripts/rebuild_rag.py   # build RAG index
 uv run python app.py                   # starts on :8100
 ```
 
-Key endpoints: `GET /healthz` · `GET /docs` · `POST /api/search` · `GET /api/search/{id}/state`
+Key endpoints: `GET /healthz` · `GET /docs` · `POST /api/auth/login` · `POST /api/search` · `POST /api/transcribe` · `POST /api/itinerary/pdf`
 
 ### 3. Full Stack
 
@@ -160,7 +163,7 @@ Hallucination risk is reduced by grounding guidance in a local knowledge base, c
 - Restart-safe HITL review requires Postgres-backed checkpointing
 - Live search quality depends on SerpAPI quotas and source coverage
 - LLM research and finalisation can still be imperfect when source data is sparse or ambiguous
-- Auth is intentionally lightweight, not production-grade
+- Auth is suitable for demos and small deployments, but broader production hardening is still needed
 
 ---
 
