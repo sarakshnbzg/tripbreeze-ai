@@ -32,9 +32,9 @@ export function PlannerComposer({
   }
 
   const promptChips = [
-    "A relaxed 5-night food trip to Lisbon in September",
-    "A multi-city Europe route with direct flights when possible",
-    "A budget-friendly beach escape with a strong hotel shortlist",
+    "Fly from Vienna to Tokyo for 8 nights in October with a mid-range hotel near Shibuya.",
+    "Plan a summer trip from Berlin to Barcelona for 4 days with good flight times and a central hotel.",
+    "Help me plan a multi-city trip from Amsterdam to Rome and Florence with train-friendly routing.",
   ];
   const activeAdvancedFilters = [
     form.multiCity ? "Multi-city" : null,
@@ -47,7 +47,8 @@ export function PlannerComposer({
   ].filter(Boolean);
 
   return (
-    <div className="mt-6 rounded-[1.8rem] border border-line/70 bg-white/72 p-5 shadow-card sm:p-6">
+    <div className="relative mt-6 overflow-hidden rounded-[1.8rem] border border-line/70 bg-white/72 p-5 shadow-card sm:p-6">
+      <div className="planner-watermark" aria-hidden="true" />
       <div>
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -304,9 +305,9 @@ export function PlannerComposer({
             </div>
           ) : null}
 
-          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate">Currency</span>
+              <span className="mb-2 flex min-h-[3rem] items-end text-sm font-medium text-slate">Currency</span>
               <select
                 className="w-full rounded-full border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
                 value={form.currency}
@@ -320,7 +321,7 @@ export function PlannerComposer({
               </select>
             </label>
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate">Max Flight Duration (hours)</span>
+              <span className="mb-2 flex min-h-[3rem] items-end text-sm font-medium text-slate">Max Flight Duration (hours)</span>
               <input
                 type="number"
                 min={0}
@@ -333,7 +334,7 @@ export function PlannerComposer({
               />
             </label>
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate">Travel Class</span>
+              <span className="mb-2 flex min-h-[3rem] items-end text-sm font-medium text-slate">Travel Class</span>
               <select
                 className="w-full rounded-full border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
                 value={form.travelClass}
@@ -391,14 +392,14 @@ export function PlannerComposer({
         </div>
       </details>
 
-      <div className="mt-5 flex flex-col gap-4 rounded-[1.5rem] border border-line/70 bg-paper/66 p-4 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
-        <div className="min-w-0 flex-1">
+      <div className="mt-5 flex flex-col gap-4 rounded-[1.5rem] border border-line/70 bg-paper/66 p-4 lg:gap-5 xl:flex-row xl:items-center xl:justify-between">
+        <div className="min-w-0 xl:max-w-[42rem]">
           <div className="text-sm font-semibold text-ink">Run planner</div>
-          <div className="mt-1 text-sm text-slate lg:whitespace-nowrap">
+          <div className="mt-1 text-sm leading-7 text-slate">
             Search flights, hotels, budget fit, and entry requirements from your brief.
           </div>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:flex lg:flex-nowrap lg:shrink-0">
+        <div className="grid gap-3 sm:grid-cols-2 xl:flex xl:flex-nowrap xl:shrink-0">
           <Button
             onClick={onPlanTrip}
             disabled={loading !== null}

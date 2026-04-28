@@ -65,7 +65,6 @@ export function PlannerStage({
     <main className="min-w-0 flex-1">
       <Card className="relative overflow-hidden border-white/85 bg-white/88 p-4 shadow-shell sm:p-6 lg:p-8">
         <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-r from-sun/12 via-white/0 to-pine/10" />
-        <div className="planner-watermark" aria-hidden="true" />
         <div className="relative flex flex-col gap-4 border-b border-line/70 pb-5 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <div className="eyebrow-label">Travel planning workspace</div>
