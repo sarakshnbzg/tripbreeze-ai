@@ -1,6 +1,8 @@
 """Tests for presentation/api.py."""
 
 import asyncio
+import io
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -9,6 +11,9 @@ from fastapi.responses import Response
 
 from infrastructure.persistence import memory_store
 from presentation import api
+from presentation import api_routes_itinerary as itinerary_routes
+from presentation import api_routes_system as system_routes
+from presentation import api_security
 from presentation import auth as auth_module
 from presentation.auth import create_session_token, set_session_cookie
 from presentation import api_routes_auth as auth_routes
@@ -51,7 +56,17 @@ class TestAPIHelpers:
 class TestAPIEndpoints:
     def setup_method(self):
         auth_routes._AUTH_ATTEMPTS.clear()
+        api_security._RATE_LIMIT_ATTEMPTS.clear()
         memory_store._in_memory_sessions.clear()
+
+    @staticmethod
+    def _authenticated_request(user_id: str = "test_user", path: str = "/api/search"):
+        return SimpleNamespace(
+            state=SimpleNamespace(authenticated_user=user_id),
+            headers={},
+            client=SimpleNamespace(host="127.0.0.1"),
+            url=SimpleNamespace(path=path),
+        )
 
     def test_search_requires_authentication(self):
         response = client.post("/api/search", json={"user_id": "test_user", "llm_provider": "openai"})
@@ -71,6 +86,41 @@ class TestAPIEndpoints:
         assert response.status_code == 400
         assert response.json()["detail"] == "Provider unavailable"
 
+    def test_search_rate_limits_repeated_requests(self, monkeypatch):
+        monkeypatch.setattr(planning_routes, "get_provider_status", lambda provider: (True, ""))
+
+        class DummyLoop:
+            def run_in_executor(self, executor, fn, *args):
+                return None
+
+        monkeypatch.setattr(planning_routes.asyncio, "get_running_loop", lambda: DummyLoop())
+        request = self._authenticated_request(path="/api/search")
+        payload = api.SearchRequest(user_id="spoofed", free_text_query="Paris", llm_provider="openai")
+
+        for _ in range(10):
+            response = asyncio.run(planning_routes.search(payload, request))
+            assert response.status_code == 200
+
+        with pytest.raises(Exception) as exc_info:
+            asyncio.run(planning_routes.search(payload, request))
+
+        assert getattr(exc_info.value, "status_code", None) == 429
+        assert "Too many planning requests" in str(getattr(exc_info.value, "detail", ""))
+
+    def test_search_rejects_overly_large_text(self):
+        response = client.post(
+            "/api/search",
+            headers=auth_headers(),
+            json={
+                "user_id": "test_user",
+                "free_text_query": "a" * 5000,
+                "llm_provider": "openai",
+            },
+        )
+
+        assert response.status_code == 413
+        assert response.json()["detail"] == "Trip request text is too long."
+
     def test_login_sets_strict_http_only_cookie(self, monkeypatch):
         monkeypatch.setattr(auth_routes, "verify_user", lambda user_id, password: True)
         monkeypatch.setattr(auth_routes, "load_profile", lambda user_id: {"user_id": user_id})
@@ -85,6 +135,17 @@ class TestAPIEndpoints:
         assert "HttpOnly" in cookie_header
         assert "SameSite=strict" in cookie_header
         assert response.json()["csrf_token"]
+
+    def test_login_hides_internal_exception_details(self, monkeypatch):
+        monkeypatch.setattr(auth_routes, "verify_user", lambda user_id, password: (_ for _ in ()).throw(RuntimeError("database offline")))
+
+        response = client.post(
+            "/api/auth/login",
+            json={"user_id": "test_user", "password": "super-secret"},
+        )
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Login failed. Please try again later."
 
     def test_login_rate_limits_repeated_attempts(self, monkeypatch):
         monkeypatch.setattr(auth_routes, "verify_user", lambda user_id, password: False)
@@ -317,3 +378,79 @@ class TestAPIEndpoints:
 
         assert response.status_code == 200
         assert loop.calls == [planning_routes.run_post_review_sync]
+
+    def test_transcribe_rejects_oversized_upload(self):
+        huge_audio = io.BytesIO(b"x" * (10 * 1024 * 1024 + 1))
+        response = client.post(
+            "/api/transcribe",
+            headers=auth_headers(),
+            files={"file": ("audio.webm", huge_audio, "audio/webm")},
+        )
+
+        assert response.status_code == 413
+        assert response.json()["detail"] == "Audio upload is too large."
+
+    def test_transcribe_hides_internal_exception_details(self, monkeypatch):
+        class FakeOpenAI:
+            def OpenAI(self):
+                raise RuntimeError("provider down")
+
+        monkeypatch.setitem(sys.modules, "openai", FakeOpenAI())
+
+        response = client.post(
+            "/api/transcribe",
+            headers=auth_headers(),
+            files={"file": ("audio.webm", io.BytesIO(b"voice"), "audio/webm")},
+        )
+
+        assert response.status_code == 502
+        assert response.json()["detail"] == "Transcription failed. Please try again later."
+
+    def test_pdf_export_rejects_oversized_itinerary(self):
+        response = client.post(
+            "/api/itinerary/pdf",
+            headers=auth_headers(),
+            json={"final_itinerary": "x" * 200_001},
+        )
+
+        assert response.status_code == 413
+        assert response.json()["detail"] == "Final itinerary is too large to export."
+
+    def test_pdf_export_hides_internal_exception_details(self, monkeypatch):
+        monkeypatch.setattr(itinerary_routes, "generate_trip_pdf", lambda **kwargs: (_ for _ in ()).throw(RuntimeError("wkhtmltopdf missing")))
+
+        response = client.post(
+            "/api/itinerary/pdf",
+            headers=auth_headers(),
+            json={"final_itinerary": "Trip"},
+        )
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "PDF generation failed. Please try again later."
+
+    def test_itinerary_email_rate_limits_repeated_requests(self, monkeypatch):
+        monkeypatch.setattr(itinerary_routes, "generate_trip_pdf", lambda **kwargs: b"pdf")
+        monkeypatch.setattr(itinerary_routes, "send_itinerary_email", lambda **kwargs: (True, "sent"))
+
+        for _ in range(8):
+            response = client.post(
+                "/api/itinerary/email",
+                headers=auth_headers(),
+                json={
+                    "recipient_email": "sara@example.com",
+                    "final_itinerary": "Trip",
+                },
+            )
+            assert response.status_code == 200
+
+        blocked = client.post(
+            "/api/itinerary/email",
+            headers=auth_headers(),
+            json={
+                "recipient_email": "sara@example.com",
+                "final_itinerary": "Trip",
+            },
+        )
+
+        assert blocked.status_code == 429
+        assert blocked.json()["detail"] == "Too many itinerary email requests. Please wait a few minutes and try again."

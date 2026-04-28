@@ -10,6 +10,12 @@ from fastapi.responses import StreamingResponse
 
 from domain.agents.flight_agent import fetch_return_flights
 from infrastructure.llms.model_factory import get_provider_status
+from presentation.api_security import (
+    enforce_content_length,
+    enforce_json_size,
+    enforce_rate_limit,
+    enforce_text_length,
+)
 from presentation.auth import get_authenticated_user
 from presentation.api_models import ApproveRequest, ClarifyRequest, ReturnFlightRequest, SearchRequest
 from presentation.api_runtime import executor, get_graph
@@ -35,6 +41,30 @@ def _ensure_thread_owner(thread_id: str, authenticated_user: str) -> dict[str, A
 @router.post("/api/search")
 async def search(req: SearchRequest, request: Request):
     """Start trip planning. Returns an SSE stream of progress events."""
+    enforce_rate_limit(
+        "search",
+        request,
+        max_attempts=10,
+        window_seconds=300,
+        message="Too many planning requests. Please wait a few minutes and try again.",
+    )
+    enforce_content_length(
+        request,
+        max_bytes=100_000,
+        message="Planning request is too large.",
+    )
+    enforce_text_length(
+        "free_text_query",
+        req.free_text_query,
+        max_chars=4_000,
+        message="Trip request text is too long.",
+    )
+    enforce_json_size(
+        "structured_fields",
+        req.structured_fields,
+        max_chars=20_000,
+        message="Structured trip details are too large.",
+    )
     provider_ready, provider_message = get_provider_status(req.llm_provider)
     if not provider_ready:
         raise HTTPException(status_code=400, detail=provider_message)

@@ -13,6 +13,7 @@ from infrastructure.persistence.memory_store import (
     save_profile,
     verify_user,
 )
+from presentation.api_security import log_and_raise_api_error
 from presentation.auth import (
     clear_session_cookie,
     ensure_user_access,
@@ -79,10 +80,16 @@ async def login(req: LoginRequest, request: Request, response: Response):
     except HTTPException:
         raise
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail="Invalid login request.") from exc
     except Exception as exc:
-        logger.exception("Login failed")
-        raise HTTPException(status_code=500, detail=f"Login failed: {exc}") from exc
+        log_and_raise_api_error(
+            event="api.login_failed",
+            public_message="Login failed. Please try again later.",
+            exc=exc,
+            status_code=500,
+            path="/api/auth/login",
+            user_id=req.user_id.strip(),
+        )
 
     if not authenticated:
         raise HTTPException(status_code=401, detail="Invalid username or password")
@@ -105,10 +112,16 @@ async def register(req: RegisterRequest, request: Request, response: Response):
     except HTTPException:
         raise
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail="Invalid registration details.") from exc
     except Exception as exc:
-        logger.exception("Registration failed")
-        raise HTTPException(status_code=500, detail=f"Registration failed: {exc}") from exc
+        log_and_raise_api_error(
+            event="api.registration_failed",
+            public_message="Registration failed. Please try again later.",
+            exc=exc,
+            status_code=500,
+            path="/api/auth/register",
+            user_id=req.user_id.strip(),
+        )
 
     if not created:
         raise HTTPException(status_code=409, detail="Username is already taken")
@@ -142,10 +155,16 @@ async def get_profile(user_id: str, request: Request):
     except HTTPException:
         raise
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail="Invalid profile request.") from exc
     except Exception as exc:
-        logger.exception("Profile load failed")
-        raise HTTPException(status_code=500, detail=f"Profile load failed: {exc}") from exc
+        log_and_raise_api_error(
+            event="api.profile_load_failed",
+            public_message="Profile load failed. Please try again later.",
+            exc=exc,
+            status_code=500,
+            path="/api/profile/{user_id}",
+            user_id=user_id,
+        )
 
 
 @router.put("/api/profile/{user_id}")
@@ -162,10 +181,16 @@ async def update_profile(user_id: str, req: SaveProfileRequest, request: Request
     except HTTPException:
         raise
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail="Invalid profile update request.") from exc
     except Exception as exc:
-        logger.exception("Profile save failed")
-        raise HTTPException(status_code=500, detail=f"Profile save failed: {exc}") from exc
+        log_and_raise_api_error(
+            event="api.profile_save_failed",
+            public_message="Profile save failed. Please try again later.",
+            exc=exc,
+            status_code=500,
+            path="/api/profile/{user_id}",
+            user_id=user_id,
+        )
 
 
 @router.get("/api/reference-values/{category}")
@@ -174,5 +199,11 @@ async def reference_values(category: str):
     try:
         return {"category": category, "values": list_reference_values(category)}
     except Exception as exc:
-        logger.exception("Reference values load failed")
-        raise HTTPException(status_code=500, detail=f"Reference values load failed: {exc}") from exc
+        log_and_raise_api_error(
+            event="api.reference_values_failed",
+            public_message="Reference values are temporarily unavailable.",
+            exc=exc,
+            status_code=500,
+            path="/api/reference-values/{category}",
+            category=category,
+        )
