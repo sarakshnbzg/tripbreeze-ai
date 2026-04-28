@@ -70,6 +70,7 @@ class Settings(BaseSettings):
     langchain_api_key: str = Field("", alias="LANGCHAIN_API_KEY")
 
     log_level: str = Field("INFO", alias="LOG_LEVEL")
+    app_env: str = Field("development", alias="APP_ENV")
     api_host: str = Field("127.0.0.1", alias="API_HOST")
     api_port: int = Field(8100, alias="API_PORT", ge=1, le=65535)
     api_base_url: str | None = Field(None, alias="API_BASE_URL")
@@ -77,6 +78,7 @@ class Settings(BaseSettings):
     session_secret: str = Field("tripbreeze-dev-secret-change-me", alias="SESSION_SECRET")
     session_cookie_name: str = Field("tripbreeze_session", alias="SESSION_COOKIE_NAME")
     session_max_age_seconds: int = Field(60 * 60 * 24 * 7, alias="SESSION_MAX_AGE_SECONDS", gt=0)
+    session_idle_timeout_seconds: int = Field(60 * 60 * 24, alias="SESSION_IDLE_TIMEOUT_SECONDS", gt=0)
     session_cookie_secure: bool = Field(False, alias="SESSION_COOKIE_SECURE")
 
     @field_validator("rag_chunk_overlap")
@@ -96,6 +98,44 @@ class Settings(BaseSettings):
     @classmethod
     def normalize_log_level(cls, value: str) -> str:
         return str(value or "INFO").upper()
+
+    @field_validator("app_env")
+    @classmethod
+    def normalize_app_env(cls, value: str) -> str:
+        normalized = str(value or "development").strip().lower()
+        aliases = {
+            "dev": "development",
+            "prod": "production",
+        }
+        return aliases.get(normalized, normalized)
+
+    @field_validator("session_secret")
+    @classmethod
+    def validate_session_secret(cls, value: str, info) -> str:
+        secret = str(value or "")
+        app_env = str(info.data.get("app_env") or "development").strip().lower()
+        if app_env in {"production", "staging"}:
+            if secret == "tripbreeze-dev-secret-change-me":
+                raise ValueError("SESSION_SECRET must be changed before running in production or staging")
+            if len(secret) < 32:
+                raise ValueError("SESSION_SECRET must be at least 32 characters in production or staging")
+        return secret
+
+    @field_validator("session_cookie_secure")
+    @classmethod
+    def validate_session_cookie_secure(cls, value: bool, info) -> bool:
+        app_env = str(info.data.get("app_env") or "development").strip().lower()
+        if app_env in {"production", "staging"} and not value:
+            raise ValueError("SESSION_COOKIE_SECURE must be true in production or staging")
+        return value
+
+    @field_validator("session_idle_timeout_seconds")
+    @classmethod
+    def validate_session_idle_timeout(cls, value: int, info) -> int:
+        max_age = int(info.data.get("session_max_age_seconds") or 0)
+        if max_age and value > max_age:
+            raise ValueError("SESSION_IDLE_TIMEOUT_SECONDS must not exceed SESSION_MAX_AGE_SECONDS")
+        return value
 
     @field_validator("frontend_origins", mode="before")
     @classmethod
@@ -161,6 +201,7 @@ LANGCHAIN_PROJECT = settings.langchain_project
 LANGCHAIN_API_KEY = settings.langchain_api_key
 
 LOG_LEVEL = settings.log_level
+APP_ENV = settings.app_env
 API_HOST = settings.api_host
 API_PORT = settings.api_port
 API_BASE_URL = settings.resolved_api_base_url
@@ -168,4 +209,5 @@ FRONTEND_ORIGINS = settings.frontend_origins
 SESSION_SECRET = settings.session_secret
 SESSION_COOKIE_NAME = settings.session_cookie_name
 SESSION_MAX_AGE_SECONDS = settings.session_max_age_seconds
+SESSION_IDLE_TIMEOUT_SECONDS = settings.session_idle_timeout_seconds
 SESSION_COOKIE_SECURE = settings.session_cookie_secure

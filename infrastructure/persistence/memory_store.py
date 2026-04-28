@@ -9,7 +9,9 @@ import atexit
 import bcrypt
 import json
 import re
+import secrets
 import threading
+import time
 from functools import lru_cache
 
 from settings import MEMORY_DATABASE_URL
@@ -93,6 +95,8 @@ _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
 
 _pool = None
 _pool_lock = threading.Lock()
+_in_memory_sessions: dict[str, dict[str, int | str]] = {}
+_in_memory_sessions_lock = threading.Lock()
 
 
 def _get_pool():
@@ -144,6 +148,29 @@ def _get_pool():
                         password_hash TEXT NOT NULL,
                         salt TEXT NOT NULL
                     )
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS user_sessions (
+                        session_token TEXT PRIMARY KEY,
+                        user_id TEXT NOT NULL,
+                        expires_at BIGINT NOT NULL,
+                        last_seen_at BIGINT NOT NULL
+                    )
+                    """
+                )
+                cur.execute(
+                    """
+                    ALTER TABLE user_sessions
+                    ADD COLUMN IF NOT EXISTS last_seen_at BIGINT
+                    """
+                )
+                cur.execute(
+                    """
+                    UPDATE user_sessions
+                    SET last_seen_at = expires_at
+                    WHERE last_seen_at IS NULL
                     """
                 )
                 cur.execute(
@@ -518,6 +545,134 @@ def verify_user(user_id: str, password: str) -> bool:
         return False
     stored_hash, _salt = row
     return _verify_bcrypt_password(password, stored_hash)
+
+
+def _purge_expired_in_memory_sessions(idle_timeout_seconds: int | None = None) -> None:
+    now = int(time.time())
+    expired = [
+        token
+        for token, session in _in_memory_sessions.items()
+        if int(session["expires_at"]) <= now
+        or (
+            idle_timeout_seconds is not None
+            and now - int(session["last_seen_at"]) > int(idle_timeout_seconds)
+        )
+    ]
+    for token in expired:
+        _in_memory_sessions.pop(token, None)
+
+
+def create_user_session(
+    user_id: str,
+    ttl_seconds: int,
+    *,
+    idle_timeout_seconds: int | None = None,
+    rotate_existing: bool = False,
+) -> str:
+    """Create a new opaque session token for the user."""
+    safe_user_id = _sanitise_user_id(user_id)
+    now = int(time.time())
+    expires_at = now + int(ttl_seconds)
+    session_token = secrets.token_urlsafe(32)
+
+    if not MEMORY_DATABASE_URL:
+        with _in_memory_sessions_lock:
+            _purge_expired_in_memory_sessions(idle_timeout_seconds)
+            if rotate_existing:
+                stale_tokens = [
+                    token
+                    for token, session in _in_memory_sessions.items()
+                    if session["user_id"] == safe_user_id
+                ]
+                for token in stale_tokens:
+                    _in_memory_sessions.pop(token, None)
+            _in_memory_sessions[session_token] = {
+                "user_id": safe_user_id,
+                "expires_at": expires_at,
+                "last_seen_at": now,
+            }
+        return session_token
+
+    with _get_pool().connection() as conn:
+        with conn.cursor() as cur:
+            if rotate_existing:
+                cur.execute("DELETE FROM user_sessions WHERE user_id = %s", (safe_user_id,))
+            cur.execute(
+                """
+                INSERT INTO user_sessions (session_token, user_id, expires_at, last_seen_at)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (session_token, safe_user_id, expires_at, now),
+            )
+        conn.commit()
+    return session_token
+
+
+def get_user_for_session(session_token: str, *, idle_timeout_seconds: int | None = None) -> str | None:
+    """Resolve an opaque session token to a user id if still valid."""
+    token = str(session_token or "").strip()
+    if not token:
+        return None
+
+    now = int(time.time())
+    if not MEMORY_DATABASE_URL:
+        with _in_memory_sessions_lock:
+            _purge_expired_in_memory_sessions(idle_timeout_seconds)
+            entry = _in_memory_sessions.get(token)
+            if not entry:
+                return None
+            expires_at = int(entry["expires_at"])
+            last_seen_at = int(entry["last_seen_at"])
+            if expires_at <= now:
+                _in_memory_sessions.pop(token, None)
+                return None
+            if idle_timeout_seconds is not None and now - last_seen_at > int(idle_timeout_seconds):
+                _in_memory_sessions.pop(token, None)
+                return None
+            entry["last_seen_at"] = now
+            return str(entry["user_id"])
+
+    with _get_pool().connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT user_id, expires_at, last_seen_at FROM user_sessions WHERE session_token = %s",
+                (token,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            user_id, expires_at, last_seen_at = row
+            if int(expires_at) <= now:
+                cur.execute("DELETE FROM user_sessions WHERE session_token = %s", (token,))
+                conn.commit()
+                return None
+            if idle_timeout_seconds is not None and now - int(last_seen_at) > int(idle_timeout_seconds):
+                cur.execute("DELETE FROM user_sessions WHERE session_token = %s", (token,))
+                conn.commit()
+                return None
+            cur.execute(
+                "UPDATE user_sessions SET last_seen_at = %s WHERE session_token = %s",
+                (now, token),
+            )
+            conn.commit()
+    return str(user_id)
+
+
+def delete_user_session(session_token: str) -> None:
+    """Invalidate a specific session token."""
+    token = str(session_token or "").strip()
+    if not token:
+        return
+
+    if not MEMORY_DATABASE_URL:
+        with _in_memory_sessions_lock:
+            _in_memory_sessions.pop(token, None)
+        return
+
+    with _get_pool().connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM user_sessions WHERE session_token = %s", (token,))
+        conn.commit()
 
 
 def load_place_country(destination: str) -> str:

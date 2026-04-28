@@ -3,10 +3,14 @@
 import asyncio
 from types import SimpleNamespace
 
+import pytest
 from fastapi.testclient import TestClient
+from fastapi.responses import Response
 
+from infrastructure.persistence import memory_store
 from presentation import api
-from presentation.auth import create_session_token
+from presentation import auth as auth_module
+from presentation.auth import create_session_token, set_session_cookie
 from presentation import api_routes_auth as auth_routes
 from presentation import api_routes_planning as planning_routes
 
@@ -32,8 +36,18 @@ class TestAPIHelpers:
 
         assert event == 'event: node_start\ndata: {"label": "Planning"}\n\n'
 
+    def test_set_session_cookie_rejects_empty_secret(self, monkeypatch):
+        monkeypatch.setattr("presentation.auth.SESSION_SECRET", "")
+
+        with pytest.raises(RuntimeError, match="SESSION_SECRET"):
+            set_session_cookie(Response(), "test_user")
+
 
 class TestAPIEndpoints:
+    def setup_method(self):
+        auth_routes._AUTH_ATTEMPTS.clear()
+        memory_store._in_memory_sessions.clear()
+
     def test_search_requires_authentication(self):
         response = client.post("/api/search", json={"user_id": "test_user", "llm_provider": "openai"})
 
@@ -51,6 +65,93 @@ class TestAPIEndpoints:
 
         assert response.status_code == 400
         assert response.json()["detail"] == "Provider unavailable"
+
+    def test_login_sets_strict_http_only_cookie(self, monkeypatch):
+        monkeypatch.setattr(auth_routes, "verify_user", lambda user_id, password: True)
+        monkeypatch.setattr(auth_routes, "load_profile", lambda user_id: {"user_id": user_id})
+
+        response = client.post(
+            "/api/auth/login",
+            json={"user_id": "test_user", "password": "super-secret"},
+        )
+
+        assert response.status_code == 200
+        cookie_header = response.headers["set-cookie"]
+        assert "HttpOnly" in cookie_header
+        assert "SameSite=strict" in cookie_header
+
+    def test_login_rate_limits_repeated_attempts(self, monkeypatch):
+        monkeypatch.setattr(auth_routes, "verify_user", lambda user_id, password: False)
+
+        for _ in range(auth_routes._AUTH_RATE_LIMIT_MAX_ATTEMPTS):
+            response = client.post(
+                "/api/auth/login",
+                headers={"x-forwarded-for": "203.0.113.10"},
+                json={"user_id": "test_user", "password": "wrong"},
+            )
+            assert response.status_code == 401
+
+        blocked = client.post(
+            "/api/auth/login",
+            headers={"x-forwarded-for": "203.0.113.10"},
+            json={"user_id": "test_user", "password": "wrong"},
+        )
+
+        assert blocked.status_code == 429
+        assert "Too many authentication attempts" in blocked.json()["detail"]
+
+    def test_login_rotates_existing_sessions_for_user(self, monkeypatch):
+        monkeypatch.setattr(auth_routes, "verify_user", lambda user_id, password: True)
+        monkeypatch.setattr(auth_routes, "load_profile", lambda user_id: {"user_id": user_id})
+
+        stale_token = create_session_token("test_user")
+        stale_headers = {"Authorization": f"Bearer {stale_token}"}
+        allowed_before_login = client.get("/api/profile/test_user", headers=stale_headers)
+        assert allowed_before_login.status_code == 200
+
+        response = client.post(
+            "/api/auth/login",
+            json={"user_id": "test_user", "password": "super-secret"},
+        )
+
+        assert response.status_code == 200
+
+        denied_after_login = client.get("/api/profile/test_user", headers=stale_headers)
+        assert denied_after_login.status_code == 401
+        assert denied_after_login.json()["detail"] == "Authentication required"
+
+    def test_logout_invalidates_bearer_session(self, monkeypatch):
+        monkeypatch.setattr(auth_routes, "load_profile", lambda user_id: {"user_id": user_id})
+
+        token = create_session_token("test_user")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        response = client.post("/api/auth/logout", headers=headers)
+
+        assert response.status_code == 200
+
+        denied = client.get("/api/profile/test_user", headers=headers)
+        assert denied.status_code == 401
+        assert denied.json()["detail"] == "Authentication required"
+
+    def test_idle_session_expires_after_inactivity(self, monkeypatch):
+        monkeypatch.setattr(auth_routes, "load_profile", lambda user_id: {"user_id": user_id})
+        monkeypatch.setattr(auth_module, "SESSION_IDLE_TIMEOUT_SECONDS", 5)
+
+        clock = {"now": 1_000}
+        monkeypatch.setattr(memory_store.time, "time", lambda: clock["now"])
+
+        token = create_session_token("test_user")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        first = client.get("/api/profile/test_user", headers=headers)
+        assert first.status_code == 200
+
+        clock["now"] += 6
+
+        expired = client.get("/api/profile/test_user", headers=headers)
+        assert expired.status_code == 401
+        assert expired.json()["detail"] == "Authentication required"
 
     def test_get_profile_rejects_other_users(self, monkeypatch):
         monkeypatch.setattr(auth_routes, "load_profile", lambda user_id: {"user_id": user_id})

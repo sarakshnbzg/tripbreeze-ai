@@ -2,25 +2,26 @@
 
 from __future__ import annotations
 
-import base64
-import hashlib
-import hmac
-import json
-import time
 from typing import Final
 
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
+from infrastructure.persistence.memory_store import (
+    create_user_session,
+    delete_user_session,
+    get_user_for_session,
+)
 from settings import (
     SESSION_COOKIE_NAME,
     SESSION_COOKIE_SECURE,
+    SESSION_IDLE_TIMEOUT_SECONDS,
     SESSION_MAX_AGE_SECONDS,
     SESSION_SECRET,
 )
 
 SESSION_COOKIE_PATH: Final[str] = "/"
-SESSION_COOKIE_SAMESITE: Final[str] = "lax"
+SESSION_COOKIE_SAMESITE: Final[str] = "strict"
 PUBLIC_PATH_PREFIXES: Final[tuple[str, ...]] = (
     "/docs",
     "/openapi.json",
@@ -32,60 +33,31 @@ PUBLIC_PATH_PREFIXES: Final[tuple[str, ...]] = (
     "/api/reference-values/",
 )
 
-
-def _b64encode(data: bytes) -> str:
-    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
-
-
-def _b64decode(value: str) -> bytes:
-    padding = "=" * (-len(value) % 4)
-    return base64.urlsafe_b64decode(f"{value}{padding}")
-
-
-def _sign(payload: str) -> str:
-    signature = hmac.new(SESSION_SECRET.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).digest()
-    return _b64encode(signature)
-
-
 def create_session_token(user_id: str) -> str:
-    now = int(time.time())
-    payload = {
-        "sub": user_id,
-        "iat": now,
-        "exp": now + SESSION_MAX_AGE_SECONDS,
-    }
-    encoded_payload = _b64encode(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8"))
-    return f"{encoded_payload}.{_sign(encoded_payload)}"
+    return create_user_session(
+        user_id,
+        SESSION_MAX_AGE_SECONDS,
+        idle_timeout_seconds=SESSION_IDLE_TIMEOUT_SECONDS,
+        rotate_existing=False,
+    )
 
 
 def verify_session_token(token: str) -> str | None:
-    try:
-        encoded_payload, supplied_signature = token.split(".", 1)
-    except ValueError:
-        return None
-
-    expected_signature = _sign(encoded_payload)
-    if not hmac.compare_digest(supplied_signature, expected_signature):
-        return None
-
-    try:
-        payload = json.loads(_b64decode(encoded_payload))
-    except (ValueError, json.JSONDecodeError):
-        return None
-
-    user_id = payload.get("sub")
-    expires_at = payload.get("exp")
-    if not isinstance(user_id, str) or not user_id.strip():
-        return None
-    if not isinstance(expires_at, int) or expires_at < int(time.time()):
-        return None
-    return user_id
+    return get_user_for_session(token, idle_timeout_seconds=SESSION_IDLE_TIMEOUT_SECONDS)
 
 
 def set_session_cookie(response: Response, user_id: str) -> None:
+    if not SESSION_SECRET:
+        raise RuntimeError("SESSION_SECRET must be configured before issuing session cookies")
+    session_token = create_user_session(
+        user_id,
+        SESSION_MAX_AGE_SECONDS,
+        idle_timeout_seconds=SESSION_IDLE_TIMEOUT_SECONDS,
+        rotate_existing=True,
+    )
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
-        value=create_session_token(user_id),
+        value=session_token,
         httponly=True,
         secure=SESSION_COOKIE_SECURE,
         samesite=SESSION_COOKIE_SAMESITE,
@@ -104,6 +76,17 @@ def clear_session_cookie(response: Response) -> None:
     )
 
 
+def extract_session_token(request: Request) -> str:
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.startswith("Bearer "):
+        return auth_header[7:].strip()
+    return request.cookies.get(SESSION_COOKIE_NAME, "").strip()
+
+
+def invalidate_session_token(token: str) -> None:
+    delete_user_session(token)
+
+
 def get_authenticated_user(request: Request) -> str:
     user_id = getattr(request.state, "authenticated_user", "")
     if not user_id:
@@ -117,14 +100,10 @@ def ensure_user_access(requested_user_id: str, authenticated_user_id: str) -> No
 
 
 def extract_session_user(request: Request) -> str | None:
-    auth_header = request.headers.get("authorization", "")
-    if auth_header.startswith("Bearer "):
-        return verify_session_token(auth_header[7:].strip())
-
-    session_cookie = request.cookies.get(SESSION_COOKIE_NAME, "")
-    if session_cookie:
-        return verify_session_token(session_cookie)
-    return None
+    session_token = extract_session_token(request)
+    if not session_token:
+        return None
+    return verify_session_token(session_token)
 
 
 def is_public_path(path: str) -> bool:
