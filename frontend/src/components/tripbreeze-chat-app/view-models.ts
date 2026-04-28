@@ -30,6 +30,12 @@ export type ItineraryMapPoint = {
   mapsUrl?: string;
 };
 
+export type VisaBriefing = {
+  destination: string;
+  content: string;
+  trust: SourceTrust | null;
+};
+
 export type ItineraryViewModel = {
   finalItinerary: string;
   hasStructuredItinerary: boolean;
@@ -39,6 +45,7 @@ export type ItineraryViewModel = {
   primarySections: ItinerarySection[];
   secondarySections: ItinerarySection[];
   visaTrust: SourceTrust | null;
+  visaBriefings: VisaBriefing[];
   mapPoints: ItineraryMapPoint[];
   itineraryLegs: Array<Record<string, unknown>>;
   itineraryDays: Array<Record<string, unknown>>;
@@ -76,6 +83,12 @@ export function buildItineraryViewModel({
   const tripLegs = state?.trip_legs ?? [];
   const budgetLimit = Number(tripRequest.budget_limit ?? 0);
   const estimatedTotal = Number(budgetData.total_estimated_cost ?? 0);
+  const visaBriefings = buildVisaBriefings({
+    tripLegs,
+    destinationInfo: readString(state?.destination_info),
+    itineraryVisa,
+    parsedVisa,
+  });
 
   const snapshotItems = tripLegs.length
     ? buildMultiCitySnapshotItems({
@@ -116,7 +129,7 @@ export function buildItineraryViewModel({
     itineraryFlightDetails ? { key: "flight", title: "Flight details", content: itineraryFlightDetails } : null,
     itineraryHotelDetails ? { key: "hotel", title: "Hotel details", content: itineraryHotelDetails } : null,
     itineraryBudget ? { key: "budget", title: "Budget breakdown", content: itineraryBudget } : null,
-    parsedVisa.content ? { key: "visa", title: "Visa and entry", content: parsedVisa.content } : null,
+    parsedVisa.content && visaBriefings.length === 0 ? { key: "visa", title: "Visa and entry", content: parsedVisa.content } : null,
   ].filter((section): section is ItinerarySection => Boolean(section));
 
   const secondarySections = [
@@ -134,10 +147,78 @@ export function buildItineraryViewModel({
     primarySections,
     secondarySections,
     visaTrust: parsedVisa.trust,
+    visaBriefings,
     mapPoints,
     itineraryLegs,
     itineraryDays,
   };
+}
+
+function buildVisaBriefings({
+  tripLegs,
+  destinationInfo,
+  itineraryVisa,
+  parsedVisa,
+}: {
+  tripLegs: Array<Record<string, unknown>>;
+  destinationInfo: string;
+  itineraryVisa: string;
+  parsedVisa: { content: string; trust: SourceTrust | null };
+}): VisaBriefing[] {
+  if (tripLegs.length < 2) {
+    return [];
+  }
+
+  const fromDestinationInfo = parseMultiCityVisaBriefings(destinationInfo);
+  if (fromDestinationInfo.length) {
+    return fromDestinationInfo;
+  }
+
+  if (!parsedVisa.content && !itineraryVisa) {
+    return [];
+  }
+
+  return [
+    {
+      destination: "Entry requirements",
+      content: parsedVisa.content || itineraryVisa,
+      trust: parsedVisa.trust,
+    },
+  ];
+}
+
+function parseMultiCityVisaBriefings(destinationInfo: string): VisaBriefing[] {
+  if (!destinationInfo.trim()) {
+    return [];
+  }
+
+  return destinationInfo
+    .split(/\n\s*---\s*\n/)
+    .map((section) => section.trim())
+    .filter(Boolean)
+    .map((section) => {
+      const destinationMatch = section.match(/^###\s+(.+?)\s*$/m);
+      const entryHeadingMatch = section.match(/####\s+🛂 Entry Requirements\s*$/m);
+      if (!destinationMatch || !entryHeadingMatch || entryHeadingMatch.index === undefined) {
+        return null;
+      }
+
+      const destination = destinationMatch[1].trim();
+      const entryBody = section
+        .slice(entryHeadingMatch.index + entryHeadingMatch[0].length)
+        .trim();
+      const parsed = extractSourceTrust(entryBody);
+      if (!parsed.content && !parsed.trust) {
+        return null;
+      }
+
+      return {
+        destination,
+        content: parsed.content,
+        trust: parsed.trust,
+      } satisfies VisaBriefing;
+    })
+    .filter((briefing): briefing is VisaBriefing => Boolean(briefing));
 }
 
 function buildFallbackNotice(finaliserMetadata: Record<string, unknown>) {

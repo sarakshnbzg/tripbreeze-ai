@@ -84,6 +84,8 @@ export type TravelState = {
   itinerary_data?: Record<string, unknown>;
   flight_options?: TripOption[];
   hotel_options?: TripOption[];
+  search_inputs?: Record<string, unknown>;
+  search_inputs_by_leg?: Array<Record<string, unknown>>;
   selected_flight?: TripOption;
   selected_hotel?: TripOption;
   flight_options_by_leg?: TripOption[][];

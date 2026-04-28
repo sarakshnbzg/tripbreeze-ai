@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { buildStructuredFields, type PlannerForm } from "@/lib/planner";
+import {
+  buildStructuredFields,
+  resetPlannerFormForFreshFreeText,
+  resetPlannerFormAfterSubmit,
+  type PlannerForm,
+} from "@/lib/planner";
 
 function buildForm(overrides: Partial<PlannerForm> = {}): PlannerForm {
   return {
     freeText: "",
+    hasEditedStructuredInputs: false,
     origin: "Berlin",
     destination: "Vienna",
     departureDate: "2026-04-27",
@@ -90,5 +96,102 @@ describe("planner helpers", () => {
     const fields = buildStructuredFields(buildForm({ travelClass: "BUSINESS" }));
 
     expect(fields.travel_class).toBe("BUSINESS");
+  });
+
+  it("clears stale advanced filters after submit while preserving identity and model settings", () => {
+    const nextForm = resetPlannerFormAfterSubmit(
+      buildForm({
+        freeText: "Fly from Vienna to Tokyo",
+        destination: "Tokyo",
+        departureDate: "2026-10-04",
+        directOnly: true,
+        includeAirlines: "ANA",
+        excludeAirlines: "Ryanair",
+        maxFlightDurationHours: 10,
+        travelClass: "BUSINESS",
+        hotelStars: [4],
+        provider: "openai",
+        model: "gpt-4.1",
+        temperature: 0.6,
+      }),
+      {
+        authenticatedUser: "user-123",
+        homeCity: "Berlin",
+      },
+    );
+
+    expect(nextForm.freeText).toBe("");
+    expect(nextForm.destination).toBe("");
+    expect(nextForm.departureDate).toBe("");
+    expect(nextForm.directOnly).toBe(false);
+    expect(nextForm.includeAirlines).toBe("");
+    expect(nextForm.excludeAirlines).toBe("");
+    expect(nextForm.maxFlightDurationHours).toBe(0);
+    expect(nextForm.travelClass).toBe("ECONOMY");
+    expect(nextForm.hotelStars).toEqual([]);
+    expect(nextForm.userId).toBe("user-123");
+    expect(nextForm.origin).toBe("Berlin");
+    expect(nextForm.provider).toBe("openai");
+    expect(nextForm.model).toBe("gpt-4.1");
+    expect(nextForm.temperature).toBe(0.6);
+  });
+
+  it("starts a fresh free-text brief by clearing stale advanced filters on first input", () => {
+    const nextForm = resetPlannerFormForFreshFreeText(
+      buildForm({
+        directOnly: true,
+        hotelStars: [4],
+        includeAirlines: "ANA",
+        maxFlightDurationHours: 10,
+        model: "gpt-4.1",
+        temperature: 0.6,
+      }),
+      "Fly from Vienna to Tokyo for 8 nights in October.",
+    );
+
+    expect(nextForm.freeText).toBe("Fly from Vienna to Tokyo for 8 nights in October.");
+    expect(nextForm.directOnly).toBe(false);
+    expect(nextForm.hotelStars).toEqual([]);
+    expect(nextForm.includeAirlines).toBe("");
+    expect(nextForm.maxFlightDurationHours).toBe(0);
+    expect(nextForm.origin).toBe("Berlin");
+    expect(nextForm.model).toBe("gpt-4.1");
+    expect(nextForm.temperature).toBe(0.6);
+  });
+
+  it("treats a replaced free-text brief as a fresh query when no structured inputs were explicitly edited", () => {
+    const nextForm = resetPlannerFormForFreshFreeText(
+      buildForm({
+        freeText: "Old trip to Rome",
+        departureDate: "2026-05-01",
+        returnDate: "2026-05-05",
+        destination: "Rome",
+        directOnly: true,
+        hasEditedStructuredInputs: false,
+      }),
+      "Paris for 3 days, then Barcelona for 4 days, then fly home.",
+    );
+
+    expect(nextForm.freeText).toBe("Paris for 3 days, then Barcelona for 4 days, then fly home.");
+    expect(nextForm.departureDate).toBe("");
+    expect(nextForm.returnDate).toBe("");
+    expect(nextForm.destination).toBe("");
+    expect(nextForm.directOnly).toBe(false);
+    expect(nextForm.hasEditedStructuredInputs).toBe(false);
+  });
+
+  it("preserves structured inputs while editing a free-text brief when the user explicitly set them", () => {
+    const nextForm = resetPlannerFormForFreshFreeText(
+      buildForm({
+        freeText: "Trip to Rome",
+        departureDate: "2026-05-01",
+        hasEditedStructuredInputs: true,
+      }),
+      "Trip to Rome in early May",
+    );
+
+    expect(nextForm.freeText).toBe("Trip to Rome in early May");
+    expect(nextForm.departureDate).toBe("2026-05-01");
+    expect(nextForm.hasEditedStructuredInputs).toBe(true);
   });
 });

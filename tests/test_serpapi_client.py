@@ -236,6 +236,15 @@ class TestSearchFlightsParams:
         assert flight["duration"] == "2h 30m"
 
     @patch("infrastructure.apis.serpapi_client.GoogleSearch")
+    def test_hotel_area_is_included_in_hotel_query(self, mock_gs_cls):
+        mock_gs_cls.return_value.get_dict.return_value = {"properties": []}
+
+        search_hotels("Tokyo", "2025-06-01", "2025-06-08", hotel_area="Shibuya")
+
+        params = mock_gs_cls.call_args[0][0]
+        assert params["q"] == "hotels near Shibuya, Tokyo"
+
+    @patch("infrastructure.apis.serpapi_client.GoogleSearch")
     def test_round_trip_without_inline_return_details_is_labelled(self, mock_gs_cls):
         mock_gs_cls.return_value.get_dict.return_value = {
             "best_flights": [

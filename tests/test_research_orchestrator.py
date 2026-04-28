@@ -32,6 +32,13 @@ def _base_state():
     }
 
 
+def _search_tools_call(include_hotels: bool = True):
+    tool_calls = [{"name": "search_flights", "args": {}, "id": "call_flight"}]
+    if include_hotels:
+        tool_calls.append({"name": "search_hotels", "args": {}, "id": "call_hotel"})
+    return _make_ai_message(tool_calls=tool_calls)
+
+
 class TestUnknownToolCall:
     @patch("domain.nodes.research_orchestrator.retrieve")
     @patch("domain.nodes.research_orchestrator.search_hotels")
@@ -57,7 +64,9 @@ class TestUnknownToolCall:
 
         mock_llm = MagicMock()
         mock_llm.bind_tools.return_value = mock_llm
-        mock_llm.invoke.side_effect = [hallucinated_call, submit_call]
+        mock_sf.return_value = {"flight_options": [], "messages": [{"role": "assistant", "content": "No flights found."}]}
+        mock_sh.return_value = {"hotel_options": [], "messages": [{"role": "assistant", "content": "No hotels found."}]}
+        mock_llm.invoke.side_effect = [hallucinated_call, _search_tools_call(), submit_call]
         mock_create.return_value = mock_llm
 
         result = research_orchestrator(_base_state())
@@ -65,8 +74,7 @@ class TestUnknownToolCall:
         # Should not crash, and should produce a valid result
         assert result["current_step"] == "research_complete"
         assert "Research done." in result["messages"][0]["content"]
-        # LLM was called twice (hallucinated tool → retry → submit)
-        assert mock_llm.invoke.call_count == 2
+        assert mock_llm.invoke.call_count == 3
 
 
 class TestSubmitResearchResultToolMessage:
@@ -91,15 +99,66 @@ class TestSubmitResearchResultToolMessage:
 
         mock_llm = MagicMock()
         mock_llm.bind_tools.return_value = mock_llm
-        mock_llm.invoke.return_value = submit_call
+        mock_sf.return_value = {"flight_options": [], "messages": [{"role": "assistant", "content": "No flights found."}]}
+        mock_sh.return_value = {"hotel_options": [], "messages": [{"role": "assistant", "content": "No hotels found."}]}
+        mock_llm.invoke.side_effect = [_search_tools_call(), submit_call]
         mock_create.return_value = mock_llm
 
         result = research_orchestrator(_base_state())
 
         assert result["current_step"] == "research_complete"
         assert "### France (Schengen Area)" in result["destination_info"]
-        # Only one LLM call needed
-        assert mock_llm.invoke.call_count == 1
+        assert mock_llm.invoke.call_count == 2
+
+    @patch("domain.nodes.research_orchestrator.retrieve")
+    @patch("domain.nodes.research_orchestrator.search_hotels")
+    @patch("domain.nodes.research_orchestrator.search_flights")
+    @patch("domain.nodes.research_orchestrator.create_chat_model")
+    def test_requires_live_search_tools_before_llm_can_submit(
+        self, mock_create, mock_sf, mock_sh, mock_retrieve
+    ):
+        early_submit_call = _make_ai_message(
+            tool_calls=[{
+                "name": "SubmitResearchResult",
+                "args": {"summary": "All done."},
+                "id": "call_1",
+            }]
+        )
+        tool_call = _make_ai_message(
+            tool_calls=[
+                {"name": "search_flights", "args": {}, "id": "call_2"},
+                {"name": "search_hotels", "args": {}, "id": "call_3"},
+            ]
+        )
+        final_submit_call = _make_ai_message(
+            tool_calls=[{
+                "name": "SubmitResearchResult",
+                "args": {"summary": "All done."},
+                "id": "call_4",
+            }]
+        )
+
+        mock_sf.return_value = {
+            "flight_options": [{"airline": "Air France"}],
+            "messages": [{"role": "assistant", "content": "Found 1 flight."}],
+        }
+        mock_sh.return_value = {
+            "hotel_options": [{"name": "Paris Stay"}],
+            "messages": [{"role": "assistant", "content": "Found 1 hotel."}],
+        }
+
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+        mock_llm.invoke.side_effect = [early_submit_call, tool_call, final_submit_call]
+        mock_create.return_value = mock_llm
+
+        result = research_orchestrator(_base_state())
+
+        assert result["flight_options"] == [{"airline": "Air France"}]
+        assert result["hotel_options"] == [{"name": "Paris Stay"}]
+        mock_sf.assert_called_once()
+        mock_sh.assert_called_once()
+        assert mock_llm.invoke.call_count == 3
 
 
 class TestPreciseDestinationBriefing:
@@ -145,7 +204,9 @@ class TestPreciseDestinationBriefing:
 
         mock_llm = MagicMock()
         mock_llm.bind_tools.return_value = mock_llm
-        mock_llm.invoke.return_value = submit_call
+        mock_sf.return_value = {"flight_options": [], "messages": [{"role": "assistant", "content": "No flights found."}]}
+        mock_sh.return_value = {"hotel_options": [], "messages": [{"role": "assistant", "content": "No hotels found."}]}
+        mock_llm.invoke.side_effect = [_search_tools_call(), submit_call]
         mock_create.return_value = mock_llm
 
         result = research_orchestrator(
@@ -188,8 +249,12 @@ class TestPreciseDestinationBriefing:
 
         mock_llm = MagicMock()
         mock_llm.bind_tools.return_value = mock_llm
-        # One SubmitResearchResult response per leg.
-        mock_llm.invoke.side_effect = [submit_with_noisy_entry() for _ in range(2)]
+        mock_llm.invoke.side_effect = [
+            _search_tools_call(),
+            submit_with_noisy_entry(),
+            _search_tools_call(),
+            submit_with_noisy_entry(),
+        ]
         mock_create.return_value = mock_llm
 
         result = research_orchestrator(
@@ -230,8 +295,7 @@ class TestPreciseDestinationBriefing:
         assert result["destination_info"].index("### Barcelona") < result["destination_info"].index("### Madrid")
         assert "### Spain (Schengen Area)" in result["destination_info"]
         assert "Iran" not in result["destination_info"]
-        # The LLM ran once per leg.
-        assert mock_llm.invoke.call_count == 2
+        assert mock_llm.invoke.call_count == 4
 
     @patch("domain.nodes.research_orchestrator.retrieve")
     @patch("domain.nodes.research_orchestrator.search_hotels")
@@ -315,9 +379,11 @@ class TestRagTrace:
         mock_retrieve.return_value = [
             {"content": "US citizens can visit visa-free.", "source": "Visa Requirements"},
         ]
+        mock_sf.return_value = {"flight_options": [], "messages": [{"role": "assistant", "content": "No flights found."}]}
+        mock_sh.return_value = {"hotel_options": [], "messages": [{"role": "assistant", "content": "No hotels found."}]}
         mock_llm = MagicMock()
         mock_llm.bind_tools.return_value = mock_llm
-        mock_llm.invoke.side_effect = [call_rag, submit_call]
+        mock_llm.invoke.side_effect = [call_rag, _search_tools_call(), submit_call]
         mock_create.return_value = mock_llm
 
         result = research_orchestrator(

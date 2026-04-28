@@ -11,6 +11,12 @@ type ParsedSourceTrust = {
   trust: SourceTrust | null;
 };
 
+export type DestinationTrustSection = {
+  title: string;
+  content: string;
+  trust: SourceTrust | null;
+};
+
 function parseTrustLines(lines: string[]): SourceTrust | null {
   const values: Record<string, string> = {};
 
@@ -86,6 +92,33 @@ export function extractSourceTrust(markdown: string): ParsedSourceTrust {
   const content = [before, remainingLines].filter(Boolean).join("\n\n").trim();
 
   return { content, trust };
+}
+
+export function extractDestinationTrustSections(markdown: string): DestinationTrustSection[] {
+  const normalized = markdown.trim();
+  if (!normalized) {
+    return [];
+  }
+
+  return normalized
+    .split(/\n\s*---\s*\n/)
+    .map((section) => section.trim())
+    .filter(Boolean)
+    .map((section) => {
+      const titleMatch = section.match(/^###\s+(.+?)\s*$/m);
+      const parsed = extractSourceTrust(section);
+      const contentWithoutTitle = parsed.content.replace(/^###\s+.+?\s*$/m, "").trim();
+      if (!parsed.content && !parsed.trust) {
+        return null;
+      }
+
+      return {
+        title: titleMatch?.[1]?.trim() || "Destination",
+        content: contentWithoutTitle,
+        trust: parsed.trust,
+      } satisfies DestinationTrustSection;
+    })
+    .filter((section): section is DestinationTrustSection => Boolean(section));
 }
 
 function formatAuthority(authority: string) {

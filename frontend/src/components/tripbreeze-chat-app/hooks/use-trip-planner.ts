@@ -124,6 +124,7 @@ export function useTripPlanner({
     handleEmailItinerary,
   } = useTripPlannerActions({
     authenticatedUser,
+    homeCity: profile?.home_city ?? "",
     form,
     state,
     itinerary,

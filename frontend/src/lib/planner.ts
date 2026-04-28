@@ -4,6 +4,7 @@ import type { StreamEvent, TravelState, TripOption } from "@/lib/types";
 
 export type PlannerForm = {
   freeText: string;
+  hasEditedStructuredInputs: boolean;
   origin: string;
   destination: string;
   departureDate: string;
@@ -37,6 +38,7 @@ export type SelectionState = {
 
 export const defaultForm: PlannerForm = {
   freeText: "",
+  hasEditedStructuredInputs: false,
   origin: "",
   destination: "",
   departureDate: "",
@@ -67,6 +69,69 @@ export const defaultSelection: SelectionState = {
   byLegFlights: [],
   byLegHotels: [],
 };
+
+export function resetPlannerFormAfterSubmit(
+  current: PlannerForm,
+  {
+    authenticatedUser,
+    homeCity = "",
+  }: {
+    authenticatedUser?: string;
+    homeCity?: string;
+  } = {},
+): PlannerForm {
+  return {
+    ...defaultForm,
+    userId: authenticatedUser || current.userId || defaultForm.userId,
+    origin: homeCity.trim() || "",
+    provider: current.provider,
+    model: current.model,
+    temperature: current.temperature,
+    hasEditedStructuredInputs: false,
+  };
+}
+
+export function resetPlannerFormForFreshFreeText(current: PlannerForm, nextFreeText: string): PlannerForm {
+  const trimmedNext = nextFreeText.trim();
+  if (!trimmedNext) {
+    return {
+      ...current,
+      freeText: nextFreeText,
+      hasEditedStructuredInputs: false,
+    };
+  }
+
+  if (current.hasEditedStructuredInputs) {
+    return {
+      ...current,
+      freeText: nextFreeText,
+    };
+  }
+
+  if (current.freeText.trim()) {
+    return {
+      ...defaultForm,
+      userId: current.userId || defaultForm.userId,
+      origin: current.origin,
+      provider: current.provider,
+      model: current.model,
+      temperature: current.temperature,
+      freeText: nextFreeText,
+      hasEditedStructuredInputs: false,
+    };
+  }
+
+  return {
+    ...defaultForm,
+    userId: current.userId || defaultForm.userId,
+    origin: current.origin,
+    provider: current.provider,
+    model: current.model,
+    temperature: current.temperature,
+    freeText: nextFreeText,
+    hasEditedStructuredInputs: false,
+  };
+}
 
 export function formatCurrency(value: unknown, code = "EUR") {
   const amount = typeof value === "number" ? value : Number(value ?? 0);

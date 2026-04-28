@@ -23,6 +23,7 @@ VALID_INTERESTS = {
 }
 
 VALID_PACES = {"relaxed", "moderate", "packed"}
+VALID_HOTEL_BUDGET_TIERS = {"BUDGET", "MID_RANGE", "LUXURY"}
 _DURATION_PATTERN = re.compile(
     r"\bfor\s+(?:(?P<article>a|an|one)\s+)?(?P<count>\d+)?\s*(?P<unit>day|days|night|nights|week|weeks)\b",
     re.IGNORECASE,
@@ -30,6 +31,52 @@ _DURATION_PATTERN = re.compile(
 _CITY_STAY_PATTERN = re.compile(
     r"\b(?P<city>[A-Z][A-Za-z' -]*(?:\s+[A-Z][A-Za-z' -]*)*)\s+(?P<nights>\d+)\s*(?P<unit>day|days|night|nights)\b"
 )
+
+
+def _is_home_placeholder(value: str) -> bool:
+    normalized = re.sub(r"[^a-z]+", " ", (value or "").strip().lower()).strip()
+    return normalized in {
+        "home",
+        "back home",
+        "fly home",
+        "go home",
+        "return home",
+        "back to home",
+    }
+
+
+def _normalise_multi_city_destinations(
+    legs_raw: list[dict[str, Any]],
+    trip_origin: str,
+) -> list[dict[str, Any]]:
+    """Clean LLM/form multi-city legs into real stopover destinations only."""
+    cleaned: list[dict[str, Any]] = []
+    normalized_origin = str(trip_origin or "").strip()
+
+    for leg_data in legs_raw:
+        destination = str(leg_data.get("destination", "") or "").strip()
+        nights = int(leg_data.get("nights", 0) or 0)
+
+        if _is_home_placeholder(destination):
+            destination = normalized_origin
+
+        if not destination:
+            continue
+
+        if cleaned and destination.casefold() == str(cleaned[-1]["destination"]).casefold():
+            continue
+
+        # If the model already encoded "home" as the origin with zero nights,
+        # treat that as return intent rather than a standalone stopover leg.
+        if normalized_origin and destination.casefold() == normalized_origin.casefold() and nights <= 0:
+            continue
+
+        cleaned.append({
+            "destination": destination,
+            "nights": nights,
+        })
+
+    return cleaned
 
 
 def _normalise_interests(raw: object) -> list[str]:
@@ -50,6 +97,11 @@ def _normalise_interests(raw: object) -> list[str]:
 def _normalise_pace(raw: object) -> str:
     key = str(raw or "").strip().lower()
     return key if key in VALID_PACES else ""
+
+
+def _normalise_hotel_budget_tier(raw: object) -> str:
+    key = str(raw or "").strip().upper()
+    return key if key in VALID_HOTEL_BUDGET_TIERS else ""
 
 
 def _infer_stay_length_days(query: str) -> int | None:
@@ -179,6 +231,9 @@ def _build_trip_legs(
     if not trip_origin:
         logger.warning("Multi-city trip has no origin")
         return []
+    normalized_legs = _normalise_multi_city_destinations(list(legs_raw), str(trip_origin))
+    if not normalized_legs:
+        return []
 
     departure_date_str = multi_city_data.get("departure_date", "")
     if not departure_date_str:
@@ -194,8 +249,8 @@ def _build_trip_legs(
     legs: list[dict[str, Any]] = []
     current_city = trip_origin
 
-    for leg_data in legs_raw:
-        destination = leg_data.get("destination", "")
+    for leg_data in normalized_legs:
+        destination = str(leg_data.get("destination", "") or "").strip()
         nights = leg_data.get("nights", 0)
         if not destination:
             continue
@@ -244,12 +299,15 @@ def _build_trip_legs_from_form(
 
     if not (origin and departure_date_str and form_legs):
         return [], {}
+    normalized_legs = _normalise_multi_city_destinations(list(form_legs), str(origin))
+    if not normalized_legs:
+        return [], {}
 
     trip_legs: list[dict[str, Any]] = []
     current_date = date.fromisoformat(departure_date_str)
     current_city = origin
-    for leg_data in form_legs:
-        dest = leg_data.get("destination", "")
+    for leg_data in normalized_legs:
+        dest = str(leg_data.get("destination", "") or "").strip()
         nights = leg_data.get("nights", 0)
         if not dest:
             continue
@@ -636,6 +694,7 @@ def _apply_profile_defaults(raw_trip_data: dict[str, Any], profile: dict[str, An
 
 def _normalise_trip_data(raw_trip_data: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
     hotel_stars_user_specified = raw_trip_data.get("hotel_stars") not in (None, "", [])
+    stops_user_specified = raw_trip_data.get("stops") is not None
 
     departure_date = validate_future_date(raw_trip_data.get("departure_date") or "", "Departure date")
     return_date = validate_future_date(raw_trip_data.get("return_date") or "", "Return date")
@@ -672,8 +731,11 @@ def _normalise_trip_data(raw_trip_data: dict[str, Any], profile: dict[str, Any])
         "travel_class": raw_trip_data.get("travel_class") or "ECONOMY",
         "hotel_stars": _normalise_hotel_stars(raw_trip_data.get("hotel_stars"), profile),
         "hotel_stars_user_specified": hotel_stars_user_specified,
+        "hotel_budget_tier": _normalise_hotel_budget_tier(raw_trip_data.get("hotel_budget_tier")),
+        "hotel_area": str(raw_trip_data.get("hotel_area") or "").strip(),
         "preferences": raw_trip_data.get("preferences") or "",
         "stops": raw_trip_data.get("stops"),
+        "stops_user_specified": stops_user_specified,
         "max_flight_price": raw_trip_data.get("max_flight_price") or 0,
         "max_duration": raw_trip_data.get("max_duration") or 0,
         "bags": raw_trip_data.get("bags") or 0,

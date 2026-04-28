@@ -7,6 +7,17 @@ from infrastructure.logging_utils import get_logger
 logger = get_logger(__name__)
 
 
+def _api_hotel_stars(trip: dict) -> list[int]:
+    """Only apply star filters upstream when the user explicitly asked for them."""
+    if not trip.get("hotel_stars_user_specified"):
+        return []
+
+    hotel_stars = trip.get("hotel_stars", [])
+    if isinstance(hotel_stars, int):
+        hotel_stars = [hotel_stars]
+    return [star for star in hotel_stars if star in HOTEL_STARS]
+
+
 def _preferred_hotel_stars(trip: dict, user_profile: dict) -> list[int]:
     raw = trip.get("hotel_stars") or user_profile.get("preferred_hotel_stars") or []
     if isinstance(raw, int):
@@ -32,6 +43,14 @@ def _preferred_hotel_features(preferences: str) -> dict[str, tuple[str, ...]]:
     }
 
 
+def _hotel_area_text(trip: dict) -> str:
+    return str(trip.get("hotel_area") or "").strip().lower()
+
+
+def _hotel_budget_tier(trip: dict) -> str:
+    return str(trip.get("hotel_budget_tier") or "").strip().upper()
+
+
 def _hotel_text(hotel: dict) -> str:
     amenities = hotel.get("amenities") or []
     amenity_text = " ".join(str(item) for item in amenities)
@@ -47,6 +66,8 @@ def _rank_hotels_by_preferences(hotels: list[dict], trip: dict, user_profile: di
 
     preferred_stars = _preferred_hotel_stars(trip, user_profile)
     preferred_features = _preferred_hotel_features(trip.get("preferences", ""))
+    preferred_area = _hotel_area_text(trip)
+    budget_tier = _hotel_budget_tier(trip)
 
     ranked: list[dict] = []
     for hotel in hotels:
@@ -67,6 +88,26 @@ def _rank_hotels_by_preferences(hotels: list[dict], trip: dict, user_profile: di
                 distance = min(abs(hotel_class - star) for star in preferred_stars)
                 score += max(0, 20 - (distance * 8))
 
+        if budget_tier and hotel_class is not None:
+            if budget_tier == "BUDGET":
+                if hotel_class <= 3:
+                    score += 24
+                    reasons.append("fits budget hotel tier")
+                elif hotel_class == 4:
+                    score += 8
+            elif budget_tier == "MID_RANGE":
+                if hotel_class in {3, 4}:
+                    score += 28
+                    reasons.append("fits mid-range hotel tier")
+                elif hotel_class in {2, 5}:
+                    score += 8
+            elif budget_tier == "LUXURY":
+                if hotel_class == 5:
+                    score += 28
+                    reasons.append("fits luxury hotel tier")
+                elif hotel_class == 4:
+                    score += 12
+
         rating = hotel.get("rating")
         if isinstance(rating, (int, float)):
             score += int(float(rating) * 3)
@@ -76,6 +117,9 @@ def _rank_hotels_by_preferences(hotels: list[dict], trip: dict, user_profile: di
             score += max(0, 24 - int(float(total_price) / 120))
 
         hotel_text = _hotel_text(hotel)
+        if preferred_area and preferred_area in hotel_text:
+            score += 30
+            reasons.append(f"near {trip.get('hotel_area')}")
         for label, keywords in preferred_features.items():
             if any(keyword in hotel_text for keyword in keywords):
                 score += 12
@@ -122,10 +166,7 @@ def search_hotels(state: dict) -> dict:
         }
 
     try:
-        hotel_stars = trip.get("hotel_stars", [])
-        if isinstance(hotel_stars, int):
-            hotel_stars = [hotel_stars]
-        hotel_stars = [star for star in hotel_stars if star in HOTEL_STARS]
+        hotel_stars = _api_hotel_stars(trip)
 
         logger.info(
             "Searching hotels destination=%s check_in=%s check_out=%s travelers=%s stars=%s",
@@ -141,6 +182,7 @@ def search_hotels(state: dict) -> dict:
             check_out=check_out,
             adults=trip.get("num_travelers", 1),
             hotel_stars=hotel_stars,
+            hotel_area=trip.get("hotel_area", ""),
             currency=trip.get("currency", "EUR"),
         )
         hotels = _rank_hotels_by_preferences(hotels, trip, user_profile)
@@ -189,10 +231,7 @@ def search_leg_hotels(
         return []
 
     try:
-        hotel_stars = trip_request.get("hotel_stars", [])
-        if isinstance(hotel_stars, int):
-            hotel_stars = [hotel_stars]
-        hotel_stars = [star for star in hotel_stars if star in HOTEL_STARS]
+        hotel_stars = _api_hotel_stars(trip_request)
 
         logger.info(
             "Searching leg hotels destination=%s check_in=%s check_out=%s nights=%s travelers=%s stars=%s",
@@ -205,6 +244,7 @@ def search_leg_hotels(
             check_out=check_out,
             adults=trip_request.get("num_travelers", 1),
             hotel_stars=hotel_stars,
+            hotel_area=trip_request.get("hotel_area", ""),
             currency=trip_request.get("currency", "EUR"),
         )
         hotels = _rank_hotels_by_preferences(hotels, trip_request, user_profile or {})

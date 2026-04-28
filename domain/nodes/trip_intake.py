@@ -443,7 +443,7 @@ def trip_intake(state: TravelState) -> dict:
                 "stops", "max_flight_price", "max_duration", "bags", "emissions",
                 "layover_duration_min", "layover_duration_max",
                 "include_airlines", "exclude_airlines",
-                "hotel_stars", "travel_class", "interests", "pace",
+                "hotel_stars", "hotel_budget_tier", "hotel_area", "travel_class", "interests", "pace",
             ):
                 if _merge_has_value(key, parsed_query.get(key)) and not _merge_has_value(key, raw_trip_data.get(key)):
                     raw_trip_data[key] = parsed_query[key]
@@ -648,6 +648,10 @@ def trip_intake(state: TravelState) -> dict:
                 parsed_answer,
                 missing_fields,
             )
+            if inferred_multi_city_data and not trip_legs and raw_trip_data.get("departure_date"):
+                trip_legs = _finalise_inferred_multi_city_trip(raw_trip_data, inferred_multi_city_data, profile)
+                if trip_legs:
+                    is_multi_city = True
 
     if inferred_multi_city_data and not trip_legs and raw_trip_data.get("departure_date"):
         trip_legs = _finalise_inferred_multi_city_trip(raw_trip_data, inferred_multi_city_data, profile)
@@ -670,7 +674,7 @@ def trip_intake(state: TravelState) -> dict:
             "stops", "max_flight_price", "max_duration", "bags", "emissions",
             "layover_duration_min", "layover_duration_max",
             "include_airlines", "exclude_airlines",
-            "hotel_stars", "travel_class",
+            "hotel_stars", "hotel_budget_tier", "hotel_area", "travel_class",
             "interests", "pace",
         ):
             value = parsed.get(key)

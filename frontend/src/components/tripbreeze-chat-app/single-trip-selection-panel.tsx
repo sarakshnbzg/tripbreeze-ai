@@ -14,22 +14,24 @@ function ReviewSectionShell({
 }: {
   title: string;
   subtitle: string;
-  badge: string;
+  badge?: string;
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-[1.8rem] border border-white/80 bg-white/76 p-4 shadow-[0_18px_46px_rgba(16,33,43,0.06)] sm:p-5">
+    <section className="rounded-[1.65rem] border border-line/70 bg-white/78 p-4 sm:p-5">
       <div className="animate-soften-in">
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <div className="text-sm font-semibold text-ink">{title}</div>
-          <div className="mt-1 text-sm text-slate">{subtitle}</div>
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="text-base font-semibold text-ink">{title}</div>
+            <div className="mt-1 text-sm text-slate">{subtitle}</div>
+          </div>
+          {badge ? (
+            <div className="rounded-full border border-line/70 bg-paper/84 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate">
+              {badge}
+            </div>
+          ) : null}
         </div>
-        <div className="rounded-full border border-line/70 bg-paper/84 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate">
-          {badge}
-        </div>
-      </div>
-      {children}
+        {children}
       </div>
     </section>
   );
@@ -52,9 +54,8 @@ function OutboundFlightSection({
 }) {
   return (
     <ReviewSectionShell
-      title={isRoundTrip ? "Outbound flights" : "Flights"}
-      subtitle={isRoundTrip ? "Choose the outbound option that sets up the rest of the trip." : "Choose the flight that best fits timing, price, and comfort."}
-      badge={`${Math.min((state.flight_options ?? []).length, 5)} shown`}
+      title={isRoundTrip ? "1. Choose outbound flight" : "1. Choose flight"}
+      subtitle={isRoundTrip ? "Pick the outbound option first." : "Pick the flight that fits best."}
     >
       <div ref={outboundSectionRef} className="space-y-3">
         {(state.flight_options ?? []).length ? (
@@ -99,8 +100,8 @@ function ReturnFlightSection({
 }) {
   return (
     <ReviewSectionShell
-      title="Return flights"
-      subtitle="Return options line up with the outbound choice you picked above."
+      title="2. Choose return flight"
+      subtitle="Return options line up with the outbound choice above."
       badge={selectedReturnIndex !== null ? "Return selected" : "Pick 1"}
     >
       <div ref={returnSectionRef} className="space-y-3">
@@ -163,9 +164,9 @@ function HotelSelectionSection({
   if (canShowHotels) {
     return (
       <ReviewSectionShell
-        title="Hotels"
-        subtitle="Compare the stay options once the flight side of the trip is in place."
-        badge={selection.hotelIndex >= 0 ? "Hotel selected" : `${Math.min((state.hotel_options ?? []).length, 5)} shown`}
+        title={isRoundTrip ? "3. Choose hotel" : "2. Choose hotel"}
+        subtitle="Compare stay options for this trip."
+        badge={selection.hotelIndex >= 0 ? "Hotel selected" : undefined}
       >
         <div ref={hotelSectionRef} className="space-y-3">
           {isRoundTrip && returnOptionsLoading ? (
@@ -195,9 +196,8 @@ function HotelSelectionSection({
 
   return (
     <ReviewSectionShell
-      title="Hotels"
+      title={isRoundTrip ? "3. Choose hotel" : "2. Choose hotel"}
       subtitle="Hotel selection unlocks after you choose the right flight."
-      badge="Waiting"
     >
       <div ref={hotelSectionRef} className="space-y-3">
         <div className="rounded-[1.5rem] bg-mist/60 p-4 text-sm text-slate">

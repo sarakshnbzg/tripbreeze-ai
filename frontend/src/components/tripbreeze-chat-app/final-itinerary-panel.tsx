@@ -27,6 +27,7 @@ export function FinalItineraryPanel({
     primarySections: primaryItinerarySections,
     secondarySections: secondaryItinerarySections,
     visaTrust,
+    visaBriefings,
     mapPoints,
     itineraryLegs,
     itineraryDays,
@@ -164,6 +165,30 @@ export function FinalItineraryPanel({
       {visaTrust ? (
         <div className="animate-fade-up stagger-2 mb-4">
           <SourceTrustCard trust={visaTrust} />
+        </div>
+      ) : null}
+
+      {visaBriefings.length ? (
+        <div className="animate-fade-up stagger-2 mb-4">
+          <div className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate">Visa and entry</div>
+          <div className="space-y-4">
+            {visaBriefings.map((briefing) => (
+              <div
+                key={briefing.destination}
+                className="lift-card rounded-[1.6rem] border border-white/80 bg-white/80 p-4 sm:p-5"
+              >
+                <div className="text-base font-semibold text-ink">{briefing.destination}</div>
+                <div className="mt-3 text-sm leading-7 text-ink">
+                  {renderMarkdownContent(briefing.content) ?? briefing.content}
+                </div>
+                {briefing.trust ? (
+                  <div className="mt-4">
+                    <SourceTrustCard trust={briefing.trust} compact />
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
         </div>
       ) : null}
 

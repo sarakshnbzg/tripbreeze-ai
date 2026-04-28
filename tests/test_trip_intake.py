@@ -14,6 +14,7 @@ from domain.nodes.trip_intake import (
     _parse_preferences,
     trip_intake,
 )
+from domain.nodes.trip_intake_helpers import _build_trip_legs, _normalise_multi_city_destinations
 from domain.utils.sanitize import sanitise_untrusted_text as _sanitise_untrusted_user_text
 from domain.utils.dates import validate_future_date
 
@@ -79,6 +80,45 @@ class TestValidateFutureDate:
     def test_today_is_accepted(self):
         today = str(date.today())
         assert validate_future_date(today, "Test") == today
+
+
+class TestMultiCityHomeNormalization:
+    def test_normalise_multi_city_destinations_removes_home_placeholder_leg(self):
+        cleaned = _normalise_multi_city_destinations(
+            [
+                {"destination": "Paris", "nights": 3},
+                {"destination": "Barcelona", "nights": 4},
+                {"destination": "home", "nights": 0},
+            ],
+            "Berlin",
+        )
+
+        assert cleaned == [
+            {"destination": "Paris", "nights": 3},
+            {"destination": "Barcelona", "nights": 4},
+        ]
+
+    def test_build_trip_legs_treats_home_as_return_to_origin(self):
+        trip_legs = _build_trip_legs(
+            {
+                "origin": "Berlin",
+                "departure_date": _DEPARTURE,
+                "return_to_origin": True,
+                "legs": [
+                    {"destination": "Paris", "nights": 3},
+                    {"destination": "Barcelona", "nights": 4},
+                    {"destination": "home", "nights": 0},
+                ],
+            },
+            "Berlin",
+            {},
+        )
+
+        assert [(leg["origin"], leg["destination"]) for leg in trip_legs] == [
+            ("Berlin", "Paris"),
+            ("Paris", "Barcelona"),
+            ("Barcelona", "Berlin"),
+        ]
 
 
 class TestClassifyDomain:
@@ -416,6 +456,14 @@ class TestNormaliseTripData:
         assert result["num_travelers"] == 2
         assert result["budget_limit"] == 3000.0
 
+    def test_hotel_budget_tier_and_area_are_normalised(self):
+        result = _normalise_trip_data(
+            self._base_raw(hotel_budget_tier="mid_range", hotel_area=" Shibuya "),
+            {},
+        )
+        assert result["hotel_budget_tier"] == "MID_RANGE"
+        assert result["hotel_area"] == "Shibuya"
+
     def test_origin_falls_back_to_profile_home_city(self):
         result = _normalise_trip_data(self._base_raw(origin=""), {"home_city": "Berlin"})
         assert result["origin"] == "Berlin"
@@ -434,6 +482,13 @@ class TestNormaliseTripData:
         for stops_val in (0, 1, 2):
             result = _normalise_trip_data(self._base_raw(stops=stops_val), {})
             assert result["stops"] == stops_val
+
+    def test_stops_user_specified_flag(self):
+        result = _normalise_trip_data(self._base_raw(stops=0), {})
+        assert result["stops_user_specified"] is True
+
+        result = _normalise_trip_data(self._base_raw(stops=None), {})
+        assert result["stops_user_specified"] is False
 
     def test_stops_out_of_range_becomes_none(self):
         result = _normalise_trip_data(self._base_raw(stops=5), {})

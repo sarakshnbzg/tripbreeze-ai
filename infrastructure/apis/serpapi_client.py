@@ -371,6 +371,7 @@ def search_hotels(
     check_out: str,
     adults: int = 1,
     hotel_stars: list[int] | None = None,
+    hotel_area: str = "",
     currency: str = "EUR",
 ) -> list[dict]:
     """Query Google Hotels via SerpAPI and return normalised results."""
@@ -397,7 +398,11 @@ def search_hotels(
     )
     params = {
         "engine": "google_hotels",
-        "q": f"hotels in {destination}",
+        "q": (
+            f"hotels near {hotel_area}, {destination}"
+            if str(hotel_area or "").strip()
+            else f"hotels in {destination}"
+        ),
         "check_in_date": check_in,
         "check_out_date": check_out,
         "adults": min(adults, 9),

@@ -2,7 +2,11 @@
 
 from unittest.mock import patch
 
-from domain.agents.hotel_agent import _rank_hotels_by_preferences, search_hotels
+from domain.agents.hotel_agent import (
+    _rank_hotels_by_preferences,
+    search_hotels,
+    search_leg_hotels,
+)
 
 
 class TestSearchHotelsNode:
@@ -13,6 +17,7 @@ class TestSearchHotelsNode:
             "return_date": "2026-07-08",
             "num_travelers": 2,
             "hotel_stars": [4, 5],
+            "hotel_stars_user_specified": True,
             "currency": "EUR",
         }
         trip.update(trip_overrides)
@@ -64,8 +69,21 @@ class TestSearchHotelsNode:
         assert captured["check_out"] == "2026-07-08"
         assert captured["adults"] == 2
         assert captured["hotel_stars"] == [4, 5]
+        assert captured["hotel_area"] == ""
         assert captured["currency"] == "EUR"
         assert len(result["hotel_options"]) == 1
+
+    def test_hotel_area_is_passed_to_search(self):
+        captured = {}
+
+        def fake_api_search(**kwargs):
+            captured.update(kwargs)
+            return []
+
+        with patch("domain.agents.hotel_agent.api_search_hotels", side_effect=fake_api_search):
+            search_hotels(self._base_state(hotel_area="Shibuya"))
+
+        assert captured["hotel_area"] == "Shibuya"
 
     def test_api_exception_returns_error_message(self):
         with patch(
@@ -104,6 +122,23 @@ class TestSearchHotelsNode:
             search_hotels(state)
 
         assert captured["hotel_stars"] == [3]
+
+    def test_profile_stars_do_not_filter_live_hotel_search(self):
+        captured = {}
+
+        def fake_api_search(**kwargs):
+            captured.update(kwargs)
+            return []
+
+        state = self._base_state(
+            hotel_stars=[4, 5],
+            hotel_stars_user_specified=False,
+        )
+
+        with patch("domain.agents.hotel_agent.api_search_hotels", side_effect=fake_api_search):
+            search_hotels(state)
+
+        assert captured["hotel_stars"] == []
 
     def test_ranks_hotels_by_profile_stars_and_preference_keywords(self):
         hotels = [
@@ -151,3 +186,93 @@ class TestSearchHotelsNode:
 
         assert result["hotel_options"][0]["name"] == "Skyline Hotel"
         assert result["hotel_options"][0]["preference_score"] >= result["hotel_options"][1]["preference_score"]
+
+    def test_ranks_hotels_by_area_and_mid_range_tier(self):
+        hotels = [
+            {
+                "name": "Tokyo Grand Palace",
+                "description": "Luxury stay in Marunouchi",
+                "address": "Marunouchi, Tokyo",
+                "hotel_class": 5,
+                "rating": 9.0,
+                "total_price": 500,
+                "amenities": [],
+            },
+            {
+                "name": "Shibuya Stay",
+                "description": "Comfortable mid-range base",
+                "address": "Shibuya, Tokyo",
+                "hotel_class": 4,
+                "rating": 8.4,
+                "total_price": 280,
+                "amenities": [],
+            },
+        ]
+
+        ranked = _rank_hotels_by_preferences(
+            hotels,
+            {"hotel_area": "Shibuya", "hotel_budget_tier": "MID_RANGE"},
+            {},
+        )
+
+        assert ranked[0]["name"] == "Shibuya Stay"
+        assert "near Shibuya" in ranked[0]["preference_reasons"]
+        assert "fits mid-range hotel tier" in ranked[0]["preference_reasons"]
+
+
+class TestSearchLegHotels:
+    def test_profile_stars_do_not_filter_leg_hotel_search(self):
+        captured = {}
+
+        def fake_api_search(**kwargs):
+            captured.update(kwargs)
+            return []
+
+        leg = {
+            "destination": "Barcelona",
+            "departure_date": "2026-06-13",
+            "check_out_date": "2026-06-17",
+            "needs_hotel": True,
+            "nights": 4,
+            "leg_index": 1,
+        }
+        trip_request = {
+            "num_travelers": 1,
+            "hotel_stars": [4],
+            "hotel_stars_user_specified": False,
+            "currency": "EUR",
+        }
+
+        with patch("domain.agents.hotel_agent.api_search_hotels", side_effect=fake_api_search):
+            hotels = search_leg_hotels(leg, trip_request, user_profile={"preferred_hotel_stars": [4]})
+
+        assert hotels == []
+        assert captured["hotel_stars"] == []
+
+    def test_explicit_stars_still_filter_leg_hotel_search(self):
+        captured = {}
+
+        def fake_api_search(**kwargs):
+            captured.update(kwargs)
+            return []
+
+        leg = {
+            "destination": "Barcelona",
+            "departure_date": "2026-06-13",
+            "check_out_date": "2026-06-17",
+            "needs_hotel": True,
+            "nights": 4,
+            "leg_index": 1,
+        }
+        trip_request = {
+            "num_travelers": 1,
+            "hotel_stars": [4],
+            "hotel_stars_user_specified": True,
+            "currency": "EUR",
+        }
+
+        with patch("domain.agents.hotel_agent.api_search_hotels", side_effect=fake_api_search):
+            hotels = search_leg_hotels(leg, trip_request)
+
+        assert hotels == []
+        assert captured["hotel_stars"] == [4]

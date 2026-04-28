@@ -4,11 +4,33 @@ import { Button } from "@/components/ui/button";
 import { INTEREST_OPTIONS, PACE_OPTIONS } from "./constants";
 import {
   renderMarkdownContent,
+  readRecord,
+  readRecordArray,
   selectionLabel,
   sentenceLabel,
 } from "./helpers";
-import { extractSourceTrust, SourceTrustCard } from "./source-trust";
+import { extractDestinationTrustSections, extractSourceTrust, SourceTrustCard } from "./source-trust";
 import type { ReviewWorkspaceActions, ReviewWorkspaceModel, ReviewWorkspaceRefs } from "./workspace-types";
+
+function formatTitleCase(value: string) {
+  return value
+    .replaceAll("_", " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatTravelerCount(value: unknown) {
+  const count = Math.max(1, Number(value ?? 1));
+  return `${count} traveler${count === 1 ? "" : "s"}`;
+}
+
+function formatStopsSummary(value: unknown) {
+  const stops = Number(value);
+  if (!Number.isFinite(stops) || stops < 0) {
+    return "";
+  }
+  return stops === 0 ? "Direct only" : `${stops} stop max`;
+}
 
 function activeFlightFilters(state: ReviewWorkspaceModel["state"]) {
   const trip = (state?.trip_request ?? {}) as Record<string, unknown>;
@@ -16,7 +38,7 @@ function activeFlightFilters(state: ReviewWorkspaceModel["state"]) {
 
   const travelClass = String(trip.travel_class ?? "").trim();
   if (travelClass && travelClass !== "ECONOMY") {
-    filters.push(`${travelClass.replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase())} cabin`);
+    filters.push(`${formatTitleCase(travelClass)} cabin`);
   }
 
   const maxDuration = Number(trip.max_duration ?? 0);
@@ -27,7 +49,8 @@ function activeFlightFilters(state: ReviewWorkspaceModel["state"]) {
   }
 
   const stops = Number(trip.stops);
-  if (Number.isFinite(stops) && stops >= 0) {
+  const stopsUserSpecified = trip.stops_user_specified === true;
+  if (stopsUserSpecified && Number.isFinite(stops) && stops >= 0) {
     filters.push(stops === 0 ? "Direct only" : `${stops} stop max`);
   }
 
@@ -48,12 +71,40 @@ function activeFlightFilters(state: ReviewWorkspaceModel["state"]) {
   return filters;
 }
 
+function activeHotelFilters(state: ReviewWorkspaceModel["state"]) {
+  const trip = (state?.trip_request ?? {}) as Record<string, unknown>;
+  const filters: string[] = [];
+
+  const hotelBudgetTier = String(trip.hotel_budget_tier ?? "").trim();
+  if (hotelBudgetTier) {
+    filters.push(formatTitleCase(hotelBudgetTier));
+  }
+
+  const hotelArea = String(trip.hotel_area ?? "").trim();
+  if (hotelArea) {
+    filters.push(`Near ${hotelArea}`);
+  }
+
+  const hotelStarsUserSpecified = trip.hotel_stars_user_specified === true;
+  const hotelStars = Array.isArray(trip.hotel_stars)
+    ? trip.hotel_stars.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)
+    : [];
+  if (hotelStarsUserSpecified && hotelStars.length) {
+    const minStars = Math.min(...hotelStars);
+    filters.push(`${minStars}-star and up`);
+  }
+
+  return filters;
+}
+
 export function DestinationBriefingPanel({ destinationInfo }: { destinationInfo: unknown }) {
   if (!destinationInfo) {
     return null;
   }
 
-  const parsed = extractSourceTrust(String(destinationInfo));
+  const content = String(destinationInfo);
+  const parsed = extractSourceTrust(content);
+  const destinationSections = extractDestinationTrustSections(content).filter((section) => section.trust);
 
   return (
     <div className="panel-surface rounded-[1.85rem] p-5">
@@ -67,8 +118,27 @@ export function DestinationBriefingPanel({ destinationInfo }: { destinationInfo:
         </div>
       </div>
       <div className="space-y-4">
-        <div className="text-sm leading-7 text-ink">{renderMarkdownContent(parsed.content) ?? parsed.content}</div>
-        {parsed.trust ? <SourceTrustCard trust={parsed.trust} compact /> : null}
+        {destinationSections.length > 1 ? (
+          <div className="space-y-4">
+            {destinationSections.map((section) => (
+              <div key={`${section.title}-${section.trust?.sourceName ?? "trust"}`} className="space-y-3">
+                <div className="text-sm font-semibold text-ink">{section.title}</div>
+                {section.content ? (
+                  <div className="text-sm leading-7 text-ink">
+                    {renderMarkdownContent(section.content) ?? section.content}
+                  </div>
+                ) : null}
+                {section.trust ? <SourceTrustCard trust={section.trust} compact /> : null}
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {destinationSections.length <= 1 ? (
+          <>
+            <div className="text-sm leading-7 text-ink">{renderMarkdownContent(parsed.content) ?? parsed.content}</div>
+            {parsed.trust ? <SourceTrustCard trust={parsed.trust} compact /> : null}
+          </>
+        ) : null}
       </div>
     </div>
   );
@@ -92,6 +162,7 @@ export function ReviewWorkspaceHeader({ model }: { model: ReviewWorkspaceModel }
   }
 
   const filters = activeFlightFilters(state);
+  const hotelFilters = activeHotelFilters(state);
   const selectionSummary = state.trip_legs?.length
     ? `${completedMultiCityLegs} completed leg${completedMultiCityLegs === 1 ? "" : "s"} out of ${state.trip_legs.length}`
     : [
@@ -156,6 +227,12 @@ export function ReviewWorkspaceHeader({ model }: { model: ReviewWorkspaceModel }
         </div>
       ) : null}
 
+      {hotelFilters.length ? (
+        <div className="mb-5 rounded-[1.4rem] border border-line/70 bg-white/88 px-4 py-3 text-sm text-slate">
+          <span className="font-semibold text-ink">Hotel preferences:</span>{" "}
+          {hotelFilters.join(" • ")}
+        </div>
+      ) : null}
       {state.trip_legs?.length ? (
         <div className="mb-5 rounded-[1.4rem] border border-pine/12 bg-pine/8 px-4 py-3 text-sm text-slate">
           <span className="font-semibold text-ink">Multi-city progress:</span>{" "}

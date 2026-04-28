@@ -1,9 +1,11 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { SelectionState } from "@/lib/planner";
 import type { TravelState, TripOption } from "@/lib/types";
 
+import { MultiCitySelectionPanel } from "./multi-city-selection-panel";
 import { buildItineraryViewModel } from "./view-models";
 import { FinalItineraryPanel, ReviewPanel, type ReviewWorkspaceModel } from "./workspace";
 
@@ -90,6 +92,54 @@ function renderReviewPanel(overrides: Partial<ReviewWorkspaceModel> = {}) {
 }
 
 describe("workspace panels", () => {
+  it("moves to the next multi-city leg after the current leg is fully selected", () => {
+    vi.useFakeTimers();
+    let scrolledText = "";
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function scrollIntoViewMock(this: HTMLElement) {
+      scrolledText = this.textContent ?? "";
+    });
+
+    function Harness() {
+      const [selection, setSelection] = useState<SelectionState>(buildSelection({ byLegFlights: [], byLegHotels: [] }));
+
+      return (
+        <MultiCitySelectionPanel
+          state={{
+            trip_legs: [
+              { origin: "Berlin", destination: "Paris", departure_date: "2026-06-10", nights: 3, needs_hotel: true },
+              { origin: "Paris", destination: "Barcelona", departure_date: "2026-06-13", nights: 4, needs_hotel: true },
+            ],
+            flight_options_by_leg: [
+              [{ airline: "Outbound Air", outbound_summary: "Berlin to Paris", total_price: 180 }],
+              [{ airline: "Next Air", outbound_summary: "Paris to Barcelona", total_price: 170 }],
+            ],
+            hotel_options_by_leg: [
+              [{ name: "Paris Stay", total_price: 420 }],
+              [{ name: "Barcelona Stay", total_price: 510 }],
+            ],
+            flight_options: [],
+            hotel_options: [],
+          } as unknown as TravelState}
+          currencyCode="EUR"
+          selection={selection}
+          setSelection={setSelection}
+        />
+      );
+    }
+
+    render(<Harness />);
+
+    fireEvent.click(screen.getByRole("button", { name: /outbound air/i }));
+    fireEvent.click(screen.getByRole("button", { name: /paris stay/i }));
+    vi.runAllTimers();
+
+    expect(scrolledText).toContain("Leg 2: Paris to Barcelona");
+
+    HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    vi.useRealTimers();
+  });
+
   it("renders the destination briefing in the review workspace", () => {
     renderReviewPanel();
 
@@ -121,6 +171,47 @@ Passport required.
       "href",
       "https://france-visas.gouv.fr/",
     );
+  });
+
+  it("shows source trust for each destination in a multi-city review briefing", () => {
+    renderReviewPanel({
+      state: {
+        destination_info: `### Paris
+#### 🛂 Entry Requirements
+### France (Schengen Area)
+
+- **Documents needed:** Passport required.
+
+#### Source Trust
+- Source: France-Visas
+- Authority: official_government
+- Official link: https://france-visas.gouv.fr/
+- Last verified: 2026-04-28 (fresh)
+
+---
+
+### Barcelona
+#### 🛂 Entry Requirements
+### Spain (Schengen Area)
+
+- **Documents needed:** Passport required.
+
+#### Source Trust
+- Source: Spain MFA
+- Authority: official_government
+- Official link: https://www.exteriores.gob.es/
+- Last verified: 2026-04-28 (fresh)`,
+        flight_options: [],
+        hotel_options: [],
+        budget: {},
+      } as unknown as TravelState,
+    });
+
+    expect(screen.getAllByText("Paris").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Barcelona").length).toBeGreaterThan(0);
+    expect(screen.getByText("France-Visas")).toBeInTheDocument();
+    expect(screen.getByText("Spain MFA")).toBeInTheDocument();
+    expect(screen.getAllByText("Source trust")).toHaveLength(2);
   });
 
   it("lets the user choose a return option in round-trip review", () => {
@@ -230,6 +321,25 @@ Passport required.
     expect(screen.getByText("No flights found. Try different dates or cities.")).toBeInTheDocument();
   });
 
+  it("does not show defaulted profile filters as active request filters in review", () => {
+    renderReviewPanel({
+      state: {
+        trip_request: {
+          stops: 0,
+          stops_user_specified: false,
+          hotel_stars: [4],
+          hotel_stars_user_specified: false,
+        },
+        flight_options: [],
+        hotel_options: [],
+        budget: {},
+      } as unknown as TravelState,
+    });
+
+    expect(screen.queryByText(/Active flight filters:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Hotel preferences:/)).not.toBeInTheDocument();
+  });
+
   it("renders final itinerary snapshot, booking links, and day plan details", () => {
     render(
       <FinalItineraryPanel
@@ -258,6 +368,7 @@ Passport required.
             lastVerified: "2026-04-28 (fresh)",
             isStale: false,
           },
+          visaBriefings: [],
           mapPoints: [
             {
               latitude: 38.7223,
@@ -338,6 +449,7 @@ Passport required.
           primarySections: [],
           secondarySections: [],
           visaTrust: null,
+          visaBriefings: [],
           mapPoints: [],
           itineraryLegs: [],
           itineraryDays: [],
@@ -374,6 +486,7 @@ Passport required.
           primarySections: [],
           secondarySections: [],
           visaTrust: null,
+          visaBriefings: [],
           mapPoints: [],
           itineraryLegs: [],
           itineraryDays: [],
@@ -409,6 +522,7 @@ Passport required.
           primarySections: [],
           secondarySections: [],
           visaTrust: null,
+          visaBriefings: [],
           mapPoints: [],
           itineraryLegs: [],
           itineraryDays: [],
@@ -510,6 +624,121 @@ Passport required.
       lastVerified: "2026-04-28 (stale - please re-check official rules)",
       isStale: true,
     });
+    expect(viewModel.visaBriefings).toEqual([]);
+  });
+
+  it("builds multi-city visa briefings from the full destination info instead of a single collapsed itinerary field", () => {
+    const viewModel = buildItineraryViewModel({
+      state: {
+        trip_legs: [
+          { origin: "Berlin", destination: "Paris", departure_date: "2026-06-10", nights: 3, needs_hotel: true },
+          { origin: "Paris", destination: "Barcelona", departure_date: "2026-06-13", nights: 4, needs_hotel: true },
+        ],
+        destination_info: `### Paris
+#### 🛂 Entry Requirements
+### France (Schengen Area)
+
+- **Documents needed:** Passport and proof of onward travel.
+
+#### Source Trust
+- Source: France-Visas
+- Authority: official_government
+- Official link: https://france-visas.gouv.fr/
+- Last verified: 2026-04-28 (fresh)
+
+---
+
+### Barcelona
+#### 🛂 Entry Requirements
+### Spain (Schengen Area)
+
+- **Documents needed:** Same as France (Schengen rules apply).
+
+#### Source Trust
+- Source: Spain MFA
+- Authority: official_government
+- Official link: https://www.exteriores.gob.es/
+- Last verified: 2026-04-28 (fresh)`,
+        itinerary_data: {
+          visa_entry_info: "### Barcelona\nOnly the first destination made it through here.",
+        },
+      } as unknown as TravelState,
+      itinerary: "Trip ready",
+      currencyCode: "EUR",
+    });
+
+    expect(viewModel.primarySections).toEqual([]);
+    expect(viewModel.visaTrust).toEqual(null);
+    expect(viewModel.visaBriefings).toEqual([
+      expect.objectContaining({
+        destination: "Paris",
+        content: expect.stringContaining("France (Schengen Area)"),
+        trust: expect.objectContaining({ sourceName: "France-Visas" }),
+      }),
+      expect.objectContaining({
+        destination: "Barcelona",
+        content: expect.stringContaining("Spain (Schengen Area)"),
+        trust: expect.objectContaining({ sourceName: "Spain MFA" }),
+      }),
+    ]);
+  });
+
+  it("renders one visa briefing card per multi-city destination in the final itinerary", () => {
+    render(
+      <FinalItineraryPanel
+        viewModel={{
+          finalItinerary: "Trip ready",
+          hasStructuredItinerary: true,
+          fallbackNotice: null,
+          snapshotItems: [{ label: "Route", value: "Berlin -> Paris -> Barcelona" }],
+          bookingLinks: [],
+          primarySections: [],
+          secondarySections: [],
+          visaTrust: null,
+          visaBriefings: [
+            {
+              destination: "Paris",
+              content: "Passport required for France.",
+              trust: {
+                sourceName: "France-Visas",
+                authority: "official_government",
+                officialLink: "https://france-visas.gouv.fr/",
+                lastVerified: "2026-04-28 (fresh)",
+                isStale: false,
+              },
+            },
+            {
+              destination: "Barcelona",
+              content: "Passport required for Spain.",
+              trust: {
+                sourceName: "Spain MFA",
+                authority: "official_government",
+                officialLink: "https://www.exteriores.gob.es/",
+                lastVerified: "2026-04-28 (fresh)",
+                isStale: false,
+              },
+            },
+          ],
+          mapPoints: [],
+          itineraryLegs: [],
+          itineraryDays: [],
+        }}
+        shareState={{
+          loading: null,
+          emailAddress: "",
+          shareMessage: "",
+          setEmailAddress: vi.fn(),
+          onDownloadPdf: vi.fn(async () => undefined),
+          onEmailItinerary: vi.fn(async () => undefined),
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Visa and entry")).toBeInTheDocument();
+    expect(screen.getByText("Paris")).toBeInTheDocument();
+    expect(screen.getByText("Barcelona")).toBeInTheDocument();
+    expect(screen.getByText("France-Visas")).toBeInTheDocument();
+    expect(screen.getByText("Spain MFA")).toBeInTheDocument();
   });
 
   it("omits generic travel logistics from trip map points", () => {

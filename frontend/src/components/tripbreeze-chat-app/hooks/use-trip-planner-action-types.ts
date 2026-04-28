@@ -8,6 +8,7 @@ import type { PlannerLoadingState } from "../ui-types";
 
 export type UseTripPlannerActionParams = {
   authenticatedUser: string;
+  homeCity: string;
   form: PlannerForm;
   state: TravelState | null;
   itinerary: string;

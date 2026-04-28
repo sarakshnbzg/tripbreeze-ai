@@ -1,7 +1,7 @@
 import { AudioLines, LoaderCircle, Plus, Send, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import type { PlannerForm } from "@/lib/planner";
+import { resetPlannerFormForFreshFreeText, type PlannerForm } from "@/lib/planner";
 
 import { HotelStarTierPicker } from "./controls";
 import { CURRENCIES, TRAVEL_CLASSES } from "./constants";
@@ -31,10 +31,19 @@ export function PlannerComposer({
     return null;
   }
 
+  const updateStructuredForm = (
+    updater: (current: PlannerForm) => PlannerForm,
+  ) => {
+    setForm((current) => ({
+      ...updater(current),
+      hasEditedStructuredInputs: true,
+    }));
+  };
+
   const promptChips = [
-    "Fly from Vienna to Tokyo for 8 nights in October with a mid-range hotel near Shibuya.",
-    "Plan a summer trip from Berlin to Barcelona for 4 days with good flight times and a central hotel.",
-    "Help me plan a multi-city trip from Amsterdam to Rome and Florence with train-friendly routing.",
+    "I want to fly from London to Tokyo from 2026-06-10 to 2026-06-17 for 2 travelers with a budget of 3000 EUR.",
+    "Paris for 3 days, then Barcelona for 4 days, then fly home.",
+    "Business class, exclude Ryanair, keep the flight under 10 hours.",
   ];
   const activeAdvancedFilters = [
     form.multiCity ? "Multi-city" : null,
@@ -63,14 +72,16 @@ export function PlannerComposer({
           className="mt-4 h-36 w-full rounded-[1.8rem] border border-line/80 bg-white px-5 py-4 text-sm leading-7 outline-none transition focus:border-coral focus:shadow-[0_0_0_4px_rgba(215,108,78,0.12)]"
           placeholder="Describe your trip..."
           value={form.freeText}
-          onChange={(event) => setForm((current) => ({ ...current, freeText: event.target.value }))}
+          onChange={(event) =>
+            setForm((current) => resetPlannerFormForFreshFreeText(current, event.target.value))
+          }
         />
         <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:flex xl:flex-wrap">
           {promptChips.slice(0, 2).map((chip) => (
             <button
               key={chip}
               type="button"
-              onClick={() => setForm((current) => ({ ...current, freeText: chip }))}
+              onClick={() => setForm((current) => resetPlannerFormForFreshFreeText(current, chip))}
               className="rounded-full border border-white/80 bg-white/80 px-4 py-2 text-sm text-slate transition hover:border-coral/35 hover:text-ink"
             >
               {chip}
@@ -113,7 +124,7 @@ export function PlannerComposer({
                   list="cities"
                   className="w-full rounded-full border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
                   value={form.origin}
-                  onChange={(event) => setForm((current) => ({ ...current, origin: event.target.value }))}
+                  onChange={(event) => updateStructuredForm((current) => ({ ...current, origin: event.target.value }))}
                 />
               </label>
               {!form.multiCity ? (
@@ -123,7 +134,7 @@ export function PlannerComposer({
                     list="cities"
                     className="w-full rounded-full border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
                     value={form.destination}
-                    onChange={(event) => setForm((current) => ({ ...current, destination: event.target.value }))}
+                    onChange={(event) => updateStructuredForm((current) => ({ ...current, destination: event.target.value }))}
                   />
                 </label>
               ) : null}
@@ -133,7 +144,7 @@ export function PlannerComposer({
                   type="date"
                   className="w-full rounded-full border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
                   value={form.departureDate}
-                  onChange={(event) => setForm((current) => ({ ...current, departureDate: event.target.value }))}
+                  onChange={(event) => updateStructuredForm((current) => ({ ...current, departureDate: event.target.value }))}
                 />
               </label>
               {!form.multiCity ? form.oneWay ? (
@@ -145,7 +156,7 @@ export function PlannerComposer({
                     max={30}
                     className="w-full rounded-full border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
                     value={form.numNights}
-                    onChange={(event) => setForm((current) => ({ ...current, numNights: Number(event.target.value || 7) }))}
+                    onChange={(event) => updateStructuredForm((current) => ({ ...current, numNights: Number(event.target.value || 7) }))}
                   />
                 </label>
               ) : (
@@ -155,7 +166,7 @@ export function PlannerComposer({
                     type="date"
                     className="w-full rounded-full border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
                     value={form.returnDate}
-                    onChange={(event) => setForm((current) => ({ ...current, returnDate: event.target.value }))}
+                    onChange={(event) => updateStructuredForm((current) => ({ ...current, returnDate: event.target.value }))}
                   />
                 </label>
               ) : null}
@@ -166,7 +177,7 @@ export function PlannerComposer({
                   min={1}
                   className="w-full rounded-full border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
                   value={form.travelers}
-                  onChange={(event) => setForm((current) => ({ ...current, travelers: Number(event.target.value || 1) }))}
+                  onChange={(event) => updateStructuredForm((current) => ({ ...current, travelers: Number(event.target.value || 1) }))}
                 />
               </label>
               <label className="block">
@@ -176,7 +187,7 @@ export function PlannerComposer({
                   min={0}
                   className="w-full rounded-full border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
                   value={form.budgetLimit}
-                  onChange={(event) => setForm((current) => ({ ...current, budgetLimit: Number(event.target.value || 0) }))}
+                  onChange={(event) => updateStructuredForm((current) => ({ ...current, budgetLimit: Number(event.target.value || 0) }))}
                 />
               </label>
             </div>
@@ -188,7 +199,7 @@ export function PlannerComposer({
                 type="checkbox"
                 checked={form.multiCity}
                 onChange={(event) =>
-                  setForm((current) => ({
+                  updateStructuredForm((current) => ({
                     ...current,
                     multiCity: event.target.checked,
                     destination: event.target.checked ? "" : current.destination,
@@ -203,7 +214,7 @@ export function PlannerComposer({
                 type="checkbox"
                 checked={form.oneWay}
                 onChange={(event) =>
-                  setForm((current) => ({
+                  updateStructuredForm((current) => ({
                     ...current,
                     oneWay: event.target.checked,
                     returnDate: !current.multiCity && event.target.checked ? "" : current.returnDate,
@@ -216,7 +227,7 @@ export function PlannerComposer({
               <input
                 type="checkbox"
                 checked={form.directOnly}
-                onChange={(event) => setForm((current) => ({ ...current, directOnly: event.target.checked }))}
+                onChange={(event) => updateStructuredForm((current) => ({ ...current, directOnly: event.target.checked }))}
               />
               Direct flights only
             </label>
@@ -239,7 +250,7 @@ export function PlannerComposer({
                       className="w-full rounded-full border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
                       value={leg.destination}
                       onChange={(event) =>
-                        setForm((current) => ({
+                        updateStructuredForm((current) => ({
                           ...current,
                           multiCityLegs: current.multiCityLegs.map((item, itemIndex) =>
                             itemIndex === index ? { ...item, destination: event.target.value } : item,
@@ -257,7 +268,7 @@ export function PlannerComposer({
                       className="w-full rounded-full border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
                       value={leg.nights}
                       onChange={(event) =>
-                        setForm((current) => ({
+                        updateStructuredForm((current) => ({
                           ...current,
                           multiCityLegs: current.multiCityLegs.map((item, itemIndex) =>
                             itemIndex === index ? { ...item, nights: Number(event.target.value || 1) } : item,
@@ -267,9 +278,9 @@ export function PlannerComposer({
                     />
                   </label>
                   <button
-                    type="button"
-                    onClick={() =>
-                      setForm((current) => ({
+                  type="button"
+                  onClick={() =>
+                      updateStructuredForm((current) => ({
                         ...current,
                         multiCityLegs:
                           current.multiCityLegs.length > 1
@@ -289,7 +300,7 @@ export function PlannerComposer({
                 variant="secondary"
                 size="sm"
                 onClick={() =>
-                  setForm((current) => ({
+                  updateStructuredForm((current) => ({
                     ...current,
                     multiCityLegs:
                       current.multiCityLegs.length >= 5
@@ -311,7 +322,7 @@ export function PlannerComposer({
               <select
                 className="w-full rounded-full border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
                 value={form.currency}
-                onChange={(event) => setForm((current) => ({ ...current, currency: event.target.value }))}
+                onChange={(event) => updateStructuredForm((current) => ({ ...current, currency: event.target.value }))}
               >
                 {CURRENCIES.map((currency) => (
                   <option key={currency} value={currency}>
@@ -329,7 +340,7 @@ export function PlannerComposer({
                 className="w-full rounded-full border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
                 value={form.maxFlightDurationHours}
                 onChange={(event) =>
-                  setForm((current) => ({ ...current, maxFlightDurationHours: Number(event.target.value || 0) }))
+                  updateStructuredForm((current) => ({ ...current, maxFlightDurationHours: Number(event.target.value || 0) }))
                 }
               />
             </label>
@@ -338,7 +349,7 @@ export function PlannerComposer({
               <select
                 className="w-full rounded-full border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
                 value={form.travelClass}
-                onChange={(event) => setForm((current) => ({ ...current, travelClass: event.target.value }))}
+                onChange={(event) => updateStructuredForm((current) => ({ ...current, travelClass: event.target.value }))}
               >
                 {TRAVEL_CLASSES.map((travelClass) => (
                   <option key={travelClass} value={travelClass}>
@@ -354,7 +365,7 @@ export function PlannerComposer({
             <input
               className="w-full rounded-full border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
               value={form.preferences}
-              onChange={(event) => setForm((current) => ({ ...current, preferences: event.target.value }))}
+              onChange={(event) => updateStructuredForm((current) => ({ ...current, preferences: event.target.value }))}
             />
           </label>
 
@@ -364,7 +375,7 @@ export function PlannerComposer({
               className="w-full rounded-full border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
               placeholder="e.g. Ryanair, easyJet"
               value={form.excludeAirlines}
-              onChange={(event) => setForm((current) => ({ ...current, excludeAirlines: event.target.value }))}
+              onChange={(event) => updateStructuredForm((current) => ({ ...current, excludeAirlines: event.target.value }))}
             />
           </label>
 
@@ -374,7 +385,7 @@ export function PlannerComposer({
               className="w-full rounded-full border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
               placeholder="e.g. Lufthansa, Air France"
               value={form.includeAirlines}
-              onChange={(event) => setForm((current) => ({ ...current, includeAirlines: event.target.value }))}
+              onChange={(event) => updateStructuredForm((current) => ({ ...current, includeAirlines: event.target.value }))}
             />
           </label>
 
@@ -383,7 +394,7 @@ export function PlannerComposer({
             helper="Choose one or more tiers like 4-star and up, or leave it on Any."
             thresholds={compressStarPreferences(form.hotelStars)}
             onChange={(thresholds) =>
-              setForm((current) => ({
+              updateStructuredForm((current) => ({
                 ...current,
                 hotelStars: expandStarThresholds(thresholds),
               }))

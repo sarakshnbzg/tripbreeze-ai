@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import { ModelSettingsPanel } from "@/components/tripbreeze-chat-app/model-settings-panel";
 import { PlannerComposer } from "@/components/tripbreeze-chat-app/planner-composer";
 import { FinalItineraryPanel, ReviewPanel } from "@/components/tripbreeze-chat-app/workspace";
-import { buildResolvedRequestSummary } from "@/components/tripbreeze-chat-app/helpers";
+import { buildResolvedRequestDataPoints, buildResolvedRequestSummary } from "@/components/tripbreeze-chat-app/helpers";
 import {
   ClarificationPanel,
   MessageFeed,
@@ -62,10 +62,15 @@ export function PlannerStage({
     reviewWorkspaceModel.currencyCode,
     originalUserMessage?.content ?? "",
   );
+  const resolvedRequestDataPoints = buildResolvedRequestDataPoints(
+    reviewWorkspaceModel.state,
+    reviewWorkspaceModel.currencyCode,
+  );
   const shouldShowMessageFeed = messages.length > 0 && !hasReviewWorkspace && !itinerary;
   const shouldShowRequestSummary = (hasReviewWorkspace || Boolean(itinerary)) && resolvedRequestSummary;
   const shouldShowReviewProgress = recentPlanningUpdates.length > 0 && !(hasReviewWorkspace || itinerary);
   const shouldShowCompactProgress = (hasReviewWorkspace || Boolean(itinerary)) && recentPlanningUpdates.length > 0;
+  const shouldDeferProgressUntilAfterClarification = Boolean(clarificationQuestion);
 
   return (
     <main className="min-w-0 flex-1">
@@ -113,7 +118,17 @@ export function PlannerStage({
           {shouldShowRequestSummary ? (
             <div className="rounded-[1.75rem] border border-line/80 bg-paper/92 px-5 py-4 text-sm leading-7 text-ink shadow-sm">
               <div className="eyebrow-label mb-2">Your request</div>
-              {resolvedRequestSummary}
+              <div>{resolvedRequestSummary}</div>
+              {resolvedRequestDataPoints.length ? (
+                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {resolvedRequestDataPoints.map((item) => (
+                    <div key={`${item.label}-${item.value}`} className="rounded-[1.2rem] border border-line/70 bg-white/72 px-4 py-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate">{item.label}</div>
+                      <div className="mt-1 text-sm font-medium text-ink">{item.value}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -121,7 +136,7 @@ export function PlannerStage({
             <TranscriptPanel title="Clarifications" messages={clarificationTranscript} />
           ) : null}
 
-          {shouldShowReviewProgress ? (
+          {shouldShowReviewProgress && !shouldDeferProgressUntilAfterClarification ? (
             <PlanningProgressPanel
               recentPlanningUpdates={recentPlanningUpdates}
               showPlanningProgress={showPlanningProgress}
@@ -152,6 +167,15 @@ export function PlannerStage({
           handleClarification={handleClarification}
           loading={loading}
         />
+
+        {shouldShowReviewProgress && shouldDeferProgressUntilAfterClarification ? (
+          <PlanningProgressPanel
+            recentPlanningUpdates={recentPlanningUpdates}
+            showPlanningProgress={showPlanningProgress}
+            setShowPlanningProgress={setShowPlanningProgress}
+            loading={loading}
+          />
+        ) : null}
 
         <PlannerComposer
           form={form}

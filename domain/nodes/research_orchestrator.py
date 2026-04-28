@@ -118,6 +118,91 @@ def _per_leg_trip_request(leg: dict, base_trip_request: dict) -> dict:
     return leg_tr
 
 
+def _can_search_flights(trip_request: dict) -> bool:
+    return bool(
+        str(trip_request.get("origin", "")).strip()
+        and str(trip_request.get("destination", "")).strip()
+        and str(trip_request.get("departure_date", "")).strip()
+    )
+
+
+def _can_search_hotels(trip_request: dict, *, allows_hotel_research: bool) -> bool:
+    if not allows_hotel_research:
+        return False
+    return bool(
+        str(trip_request.get("destination", "")).strip()
+        and str(trip_request.get("departure_date", "")).strip()
+        and (
+            str(trip_request.get("return_date", "")).strip()
+            or str(trip_request.get("check_out_date", "")).strip()
+        )
+    )
+
+
+def _tool_status_message(result: dict, fallback: str) -> str:
+    messages = result.get("messages") or []
+    if isinstance(messages, list) and messages:
+        last_message = messages[-1]
+        if isinstance(last_message, dict):
+            content = last_message.get("content")
+            if isinstance(content, str) and content.strip():
+                return content
+    return fallback
+
+
+def _required_research_tools(trip_request: dict, *, allows_hotel_research: bool) -> list[str]:
+    required: list[str] = []
+    if _can_search_flights(trip_request):
+        required.append("search_flights")
+    if _can_search_hotels(trip_request, allows_hotel_research=allows_hotel_research):
+        required.append("search_hotels")
+    return required
+
+
+def _build_flight_search_inputs(trip_request: dict) -> dict[str, Any]:
+    include_airlines = trip_request.get("include_airlines")
+    exclude_airlines = trip_request.get("exclude_airlines")
+    return {
+        "origin": str(trip_request.get("origin", "")).strip(),
+        "destination": str(trip_request.get("destination", "")).strip(),
+        "departure_date": str(trip_request.get("departure_date", "")).strip(),
+        "return_date": str(trip_request.get("return_date", "")).strip(),
+        "num_travelers": int(trip_request.get("num_travelers", 1) or 1),
+        "travel_class": str(trip_request.get("travel_class", "")).strip(),
+        "stops": trip_request.get("stops"),
+        "stops_user_specified": trip_request.get("stops_user_specified") is True,
+        "max_duration": trip_request.get("max_duration"),
+        "include_airlines": include_airlines if isinstance(include_airlines, list) else [],
+        "exclude_airlines": exclude_airlines if isinstance(exclude_airlines, list) else [],
+        "currency": str(trip_request.get("currency", "EUR")).strip() or "EUR",
+    }
+
+
+def _build_hotel_search_inputs(trip_request: dict, *, allows_hotel_research: bool) -> dict[str, Any]:
+    destination = str(trip_request.get("destination", "")).strip()
+    check_in = str(trip_request.get("departure_date", "")).strip()
+    check_out = str(trip_request.get("return_date", "") or trip_request.get("check_out_date", "")).strip()
+    hotel_area = str(trip_request.get("hotel_area", "")).strip()
+    hotel_stars = trip_request.get("hotel_stars")
+    if isinstance(hotel_stars, int):
+        hotel_stars = [hotel_stars]
+    hotel_stars = hotel_stars if isinstance(hotel_stars, list) else []
+    return {
+        "destination": destination,
+        "query": f"hotels near {hotel_area}, {destination}" if hotel_area and destination else (f"hotels in {destination}" if destination else ""),
+        "check_in": check_in,
+        "check_out": check_out,
+        "num_travelers": int(trip_request.get("num_travelers", 1) or 1),
+        "hotel_stars": [star for star in hotel_stars if isinstance(star, int)],
+        "hotel_stars_user_specified": trip_request.get("hotel_stars_user_specified") is True,
+        "hotel_budget_tier": str(trip_request.get("hotel_budget_tier", "")).strip(),
+        "hotel_area": hotel_area,
+        "currency": str(trip_request.get("currency", "EUR")).strip() or "EUR",
+        "can_search": allows_hotel_research and bool(destination and check_in and check_out),
+        "needs_hotel": allows_hotel_research,
+    }
+
+
 def _run_react_research(
     *,
     state: TravelState,
@@ -138,14 +223,26 @@ def _run_react_research(
         "rag_sources": [],
         "rag_trace": [],
         "node_errors": [],
+        "search_inputs": {},
     }
-
     tool_state = {
         "trip_request": trip_request,
         "user_profile": user_profile,
         "messages": [],
     }
     allows_hotel_research = leg_context is None or bool(leg_context.get("needs_hotel", True))
+    required_tools = _required_research_tools(
+        trip_request,
+        allows_hotel_research=allows_hotel_research,
+    )
+    collected["search_inputs"] = {
+        "flight": _build_flight_search_inputs(trip_request),
+        "hotel": _build_hotel_search_inputs(
+            trip_request,
+            allows_hotel_research=allows_hotel_research,
+        ),
+    }
+    called_tools: set[str] = set()
 
     @tool("search_flights")
     def search_flights_tool() -> str:
@@ -167,7 +264,7 @@ def _run_react_research(
         return json.dumps(
             {
                 "flight_count": len(collected["flight_options"] or []),
-                "status": result.get("messages", [{}])[-1].get("content", "Flight search complete."),
+                "status": _tool_status_message(result, "Flight search complete."),
             }
         )
 
@@ -207,7 +304,7 @@ def _run_react_research(
         return json.dumps(
             {
                 "hotel_count": len(collected["hotel_options"] or []),
-                "status": result.get("messages", [{}])[-1].get("content", "Hotel search complete."),
+                "status": _tool_status_message(result, "Hotel search complete."),
             }
         )
 
@@ -270,6 +367,11 @@ def _run_react_research(
                 "When you are done, call `SubmitResearchResult` exactly once. "
                 "If you used `retrieve_knowledge`, include a concise destination briefing in `destination_briefing`."
             ),
+            (
+                "If enough trip details are present, do not finish early: "
+                "call `search_flights` before `SubmitResearchResult` when origin, destination, and departure date are available. "
+                "Call `search_hotels` before `SubmitResearchResult` when destination, check-in, and check-out are available for a leg that needs accommodation."
+            ),
         ]
     )
     messages = [
@@ -301,6 +403,22 @@ def _run_react_research(
         token_usage.append(extract_token_usage(response, model=model, node="research_orchestrator"))
 
         if not getattr(response, "tool_calls", None):
+            missing_required_tools = [tool_name for tool_name in required_tools if tool_name not in called_tools]
+            if missing_required_tools:
+                logger.info(
+                    "Research orchestrator received no tool calls but still requires tools: %s",
+                    missing_required_tools,
+                )
+                messages.append(
+                    HumanMessage(
+                        content=(
+                            "Before finishing, call these required tools for the current trip: "
+                            + ", ".join(missing_required_tools)
+                            + "."
+                        )
+                    )
+                )
+                continue
             final_response = response.content if isinstance(response.content, str) else ""
             logger.info("Research orchestrator completed without further tool calls")
             break
@@ -316,6 +434,21 @@ def _run_react_research(
                 iteration=iteration + 1,
             )
             if tool_name == "SubmitResearchResult":
+                missing_required_tools = [required_tool for required_tool in required_tools if required_tool not in called_tools]
+                if missing_required_tools:
+                    logger.info(
+                        "Research orchestrator blocked final submit until required tools are called: %s",
+                        missing_required_tools,
+                    )
+                    messages.append(ToolMessage(
+                        content=(
+                            "Error: call these required tools before submitting the research result: "
+                            + ", ".join(missing_required_tools)
+                            + "."
+                        ),
+                        tool_call_id=tool_call["id"],
+                    ))
+                    continue
                 final_result = tool_call.get("args", {})
                 final_response = final_result.get("summary", "")
                 messages.append(ToolMessage(
@@ -334,6 +467,7 @@ def _run_react_research(
             try:
                 tool_started_at = time.perf_counter()
                 tool_result = tools_by_name[tool_name].invoke(tool_call.get("args", {}))
+                called_tools.add(tool_name)
                 logger.info(
                     "Research orchestrator tool completed iteration=%s tool=%s elapsed_ms=%.2f",
                     iteration + 1,
@@ -383,6 +517,7 @@ def _run_react_research(
         "rag_sources": collected.get("rag_sources") or [],
         "rag_trace": collected.get("rag_trace") or [],
         "node_errors": collected.get("node_errors") or [],
+        "search_inputs": collected.get("search_inputs") or {},
         "token_usage": token_usage,
         "summary": summary,
     }
@@ -399,6 +534,7 @@ def _research_multi_city_legs(state: TravelState) -> dict:
 
     flight_options_by_leg: list[list[dict]] = []
     hotel_options_by_leg: list[list[dict]] = []
+    search_inputs_by_leg: list[dict[str, Any]] = []
     aggregated_rag_sources: list[str] = []
     aggregated_rag_trace: list[dict[str, Any]] = list(state.get("rag_trace", []))
     aggregated_token_usage: list[dict] = []
@@ -436,6 +572,7 @@ def _research_multi_city_legs(state: TravelState) -> dict:
 
         flight_options_by_leg.append(leg_result.get("flight_options") or [])
         hotel_options_by_leg.append(leg_result.get("hotel_options") or [])
+        search_inputs_by_leg.append(leg_result.get("search_inputs") or {})
         aggregated_token_usage.extend(leg_result.get("token_usage") or [])
         aggregated_rag_trace.extend(leg_result.get("rag_trace") or [])
         aggregated_node_errors.extend(leg_result.get("node_errors") or [])
@@ -498,9 +635,11 @@ def _research_multi_city_legs(state: TravelState) -> dict:
     return {
         "flight_options_by_leg": flight_options_by_leg,
         "hotel_options_by_leg": hotel_options_by_leg,
+        "search_inputs_by_leg": search_inputs_by_leg,
         # Backward compat: populate legacy fields with first leg.
         "flight_options": flight_options_by_leg[0] if flight_options_by_leg else [],
         "hotel_options": hotel_options_by_leg[0] if hotel_options_by_leg else [],
+        "search_inputs": search_inputs_by_leg[0] if search_inputs_by_leg else {},
         "destination_info": destination_info,
         "rag_used": aggregated_rag_used,
         "rag_sources": aggregated_rag_sources,
@@ -563,6 +702,7 @@ def research_orchestrator(state: TravelState) -> dict:
     return {
         "flight_options": result.get("flight_options") or [],
         "hotel_options": result.get("hotel_options") or [],
+        "search_inputs": result.get("search_inputs") or {},
         "destination_info": result.get("destination_info") or "",
         "rag_used": bool(result.get("rag_used")),
         "rag_sources": result.get("rag_sources") or [],

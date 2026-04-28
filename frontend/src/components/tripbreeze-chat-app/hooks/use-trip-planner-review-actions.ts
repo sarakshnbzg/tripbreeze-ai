@@ -5,6 +5,7 @@ import {
 } from "@/lib/api";
 import {
   buildStructuredFields,
+  resetPlannerFormAfterSubmit,
   selectedOption,
 } from "@/lib/planner";
 import type { ApproveRequest } from "@/lib/types";
@@ -19,6 +20,7 @@ import type { UseTripPlannerActionParams } from "./use-trip-planner-action-types
 
 export function useTripPlannerReviewActions({
   authenticatedUser,
+  homeCity,
   form,
   state,
   clarificationAnswer,
@@ -94,14 +96,18 @@ export function useTripPlannerReviewActions({
 
     const userMessage = buildUserMessage(form);
     setMessages((current) => [...current, { role: "user", content: userMessage }]);
-    setForm((current) => ({ ...current, freeText: "" }));
+    setForm((current) => resetPlannerFormAfterSubmit(current, { authenticatedUser, homeCity }));
 
     try {
+      const structuredFields =
+        form.freeText.trim() && !form.hasEditedStructuredInputs
+          ? {}
+          : buildStructuredFields(form);
       await streamSearch(
         {
           user_id: authenticatedUser,
           free_text_query: form.freeText || undefined,
-          structured_fields: buildStructuredFields(form),
+          structured_fields: structuredFields,
           llm_provider: form.provider,
           llm_model: form.model,
           llm_temperature: form.temperature,
