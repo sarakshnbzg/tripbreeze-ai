@@ -2,6 +2,7 @@
 
 import json
 
+from domain.utils.sanitize import sanitise_untrusted_text
 from infrastructure.apis.geocoding_client import geocode_address
 from infrastructure.apis.serpapi_client import fetch_hotel_address
 from infrastructure.apis.weather_client import fetch_weather_for_trip
@@ -267,7 +268,7 @@ def _finalise_multi_city(state: dict) -> dict:
     destination_info = state.get("destination_info", "") or ""
     budget = state.get("budget", {})
     user_profile = state.get("user_profile", {})
-    feedback = state.get("user_feedback", "") or "None"
+    feedback = sanitise_untrusted_text(state.get("user_feedback", "") or "", context="trip_finaliser") or "None"
     attraction_candidates = state.get("attraction_candidates", []) or []
     rag_sources: list[str] = list(state.get("rag_sources", []))
     rag_trace: list[dict] = list(state.get("rag_trace", []))
@@ -486,7 +487,7 @@ def _finalise_single_city(state: dict) -> dict:
         destination_info=state.get("destination_info", "") or "No destination info available",
         budget=json.dumps(state.get("budget", {}), indent=2) if state.get("budget") else "No budget info",
         traveler_preferences=_traveler_preference_context(trip_request, user_profile),
-        feedback=state.get("user_feedback", "") or "None",
+        feedback=sanitise_untrusted_text(state.get("user_feedback", "") or "", context="trip_finaliser") or "None",
         **plan_ctx,
     )
     final_result, token_usage, _messages, diagnostics = _run_finaliser_react_loop(

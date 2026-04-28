@@ -12,9 +12,9 @@ from domain.nodes.trip_intake import (
     _normalise_hotel_stars,
     _normalise_trip_data,
     _parse_preferences,
-    _sanitise_untrusted_user_text,
     trip_intake,
 )
+from domain.utils.sanitize import sanitise_untrusted_text as _sanitise_untrusted_user_text
 from domain.utils.dates import validate_future_date
 
 # Future dates used across test fixtures

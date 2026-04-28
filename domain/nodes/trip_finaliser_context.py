@@ -3,6 +3,7 @@
 import json
 
 from application.workflow_types import WorkflowStep
+from domain.utils.sanitize import sanitise_untrusted_text
 from domain.nodes.trip_finaliser_support import (
     _build_multi_city_daily_plans,
     _multi_city_flight_summary,
@@ -150,7 +151,7 @@ def _traveler_preference_context(trip_request: dict, user_profile: dict) -> str:
     requested_hotel_stars = ", ".join(str(star) for star in trip_request.get("hotel_stars", []) or []) or "not specified"
     interests = ", ".join(trip_request.get("interests", []) or []) or "not specified"
     pace = trip_request.get("pace") or "moderate"
-    preferences = trip_request.get("preferences") or "none"
+    preferences = sanitise_untrusted_text(trip_request.get("preferences") or "", context="traveler_preferences") or "none"
     return (
         f"Travel class: {trip_request.get('travel_class') or user_profile.get('travel_class') or 'not specified'}\n"
         f"Preferred airlines: {preferred_airlines}\n"
