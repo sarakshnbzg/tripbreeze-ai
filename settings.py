@@ -74,6 +74,10 @@ class Settings(BaseSettings):
     api_port: int = Field(8100, alias="API_PORT", ge=1, le=65535)
     api_base_url: str | None = Field(None, alias="API_BASE_URL")
     frontend_origins: list[str] = Field(default_factory=lambda: list(_DEFAULT_FRONTEND_ORIGINS), alias="FRONTEND_ORIGINS")
+    session_secret: str = Field("tripbreeze-dev-secret-change-me", alias="SESSION_SECRET")
+    session_cookie_name: str = Field("tripbreeze_session", alias="SESSION_COOKIE_NAME")
+    session_max_age_seconds: int = Field(60 * 60 * 24 * 7, alias="SESSION_MAX_AGE_SECONDS", gt=0)
+    session_cookie_secure: bool = Field(False, alias="SESSION_COOKIE_SECURE")
 
     @field_validator("rag_chunk_overlap")
     @classmethod
@@ -161,3 +165,7 @@ API_HOST = settings.api_host
 API_PORT = settings.api_port
 API_BASE_URL = settings.resolved_api_base_url
 FRONTEND_ORIGINS = settings.frontend_origins
+SESSION_SECRET = settings.session_secret
+SESSION_COOKIE_NAME = settings.session_cookie_name
+SESSION_MAX_AGE_SECONDS = settings.session_max_age_seconds
+SESSION_COOKIE_SECURE = settings.session_cookie_secure

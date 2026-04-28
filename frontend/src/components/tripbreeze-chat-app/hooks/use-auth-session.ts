@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { getProfile, logout } from "@/lib/api";
 import type { PlannerForm } from "@/lib/planner";
 import type { UserProfile } from "@/lib/types";
 
@@ -21,14 +22,24 @@ export function useAuthSession({
     }
     try {
       const parsedProfile = JSON.parse(savedProfile) as UserProfile;
-      setAuthenticatedUser(savedUser);
+      void getProfile(savedUser)
+        .then((result) => {
+          setAuthenticatedUser(result.user_id);
+          setProfile(result.profile);
+          setForm((current) => ({
+            ...current,
+            userId: result.user_id,
+            origin: result.profile.home_city ?? "",
+          }));
+          setEmailAddress(result.user_id);
+          window.localStorage.setItem("tripbreeze_user", result.user_id);
+          window.localStorage.setItem("tripbreeze_profile", JSON.stringify(result.profile));
+        })
+        .catch(() => {
+          window.localStorage.removeItem("tripbreeze_user");
+          window.localStorage.removeItem("tripbreeze_profile");
+        });
       setProfile(parsedProfile);
-      setForm((current) => ({
-        ...current,
-        userId: savedUser,
-        origin: parsedProfile.home_city ?? "",
-      }));
-      setEmailAddress(savedUser);
     } catch {
       window.localStorage.removeItem("tripbreeze_user");
       window.localStorage.removeItem("tripbreeze_profile");
@@ -49,6 +60,7 @@ export function useAuthSession({
     setProfile(null);
     window.localStorage.removeItem("tripbreeze_user");
     window.localStorage.removeItem("tripbreeze_profile");
+    void logout().catch(() => undefined);
   }
 
   return {

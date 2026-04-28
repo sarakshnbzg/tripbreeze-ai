@@ -5,11 +5,12 @@ import queue
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from domain.agents.flight_agent import fetch_return_flights
 from infrastructure.llms.model_factory import get_provider_status
+from presentation.auth import get_authenticated_user
 from presentation.api_models import ApproveRequest, ClarifyRequest, ReturnFlightRequest, SearchRequest
 from presentation.api_runtime import executor, get_graph
 from presentation.api_sse import queue_to_sse, run_clarification_sync, run_planning_sync, run_post_review_sync
@@ -17,16 +18,31 @@ from presentation.api_sse import queue_to_sse, run_clarification_sync, run_plann
 router = APIRouter()
 
 
+def _ensure_thread_owner(thread_id: str, authenticated_user: str) -> dict[str, Any]:
+    graph = get_graph()
+    config = {"configurable": {"thread_id": thread_id}}
+    state_snapshot = graph.get_state(config)
+    if not state_snapshot or not state_snapshot.values:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    state_values = dict(state_snapshot.values)
+    owner = state_values.get("user_id")
+    if owner != authenticated_user:
+        raise HTTPException(status_code=403, detail="You may only access your own planning session")
+    return state_values
+
+
 @router.post("/api/search")
-async def search(req: SearchRequest):
+async def search(req: SearchRequest, request: Request):
     """Start trip planning. Returns an SSE stream of progress events."""
     provider_ready, provider_message = get_provider_status(req.llm_provider)
     if not provider_ready:
         raise HTTPException(status_code=400, detail=provider_message)
 
+    authenticated_user = get_authenticated_user(request)
     thread_id = str(uuid.uuid4())
     initial_state: dict[str, Any] = {
-        "user_id": req.user_id,
+        "user_id": authenticated_user,
         "llm_provider": req.llm_provider,
         "llm_model": req.llm_model,
         "llm_temperature": req.llm_temperature,
@@ -52,21 +68,17 @@ async def search(req: SearchRequest):
 
 
 @router.get("/api/search/{thread_id}/state")
-async def get_state(thread_id: str):
+async def get_state(thread_id: str, request: Request):
     """Return the current graph state for a given thread (used for HITL review)."""
-    graph = get_graph()
-    config = {"configurable": {"thread_id": thread_id}}
-    state_snapshot = graph.get_state(config)
-    if not state_snapshot or not state_snapshot.values:
-        raise HTTPException(status_code=404, detail="Thread not found")
-    result = dict(state_snapshot.values)
+    result = _ensure_thread_owner(thread_id, get_authenticated_user(request))
     result["thread_id"] = thread_id
     return result
 
 
 @router.post("/api/search/{thread_id}/return-flights")
-async def return_flights(thread_id: str, req: ReturnFlightRequest):
+async def return_flights(thread_id: str, req: ReturnFlightRequest, request: Request):
     """Fetch return flight options for a selected outbound departure token."""
+    _ensure_thread_owner(thread_id, get_authenticated_user(request))
     time_window = tuple(req.return_time_window) if req.return_time_window and len(req.return_time_window) == 2 else None
     results = await asyncio.get_running_loop().run_in_executor(
         executor,
@@ -86,11 +98,12 @@ async def return_flights(thread_id: str, req: ReturnFlightRequest):
 
 
 @router.post("/api/search/{thread_id}/clarify")
-async def clarify(thread_id: str, req: ClarifyRequest):
+async def clarify(thread_id: str, req: ClarifyRequest, request: Request):
     """Resume trip planning after the user answers a clarification question. Returns an SSE stream."""
     if not req.answer.strip():
         raise HTTPException(status_code=400, detail="Answer cannot be empty")
 
+    _ensure_thread_owner(thread_id, get_authenticated_user(request))
     q: queue.Queue = queue.Queue()
     asyncio.get_running_loop().run_in_executor(executor, run_clarification_sync, q, thread_id, req.answer.strip())
 
@@ -102,12 +115,13 @@ async def clarify(thread_id: str, req: ClarifyRequest):
 
 
 @router.post("/api/search/{thread_id}/approve")
-async def approve(thread_id: str, req: ApproveRequest):
+async def approve(thread_id: str, req: ApproveRequest, request: Request):
     """Approve HITL selections and stream the final itinerary via SSE."""
     provider_ready, provider_message = get_provider_status(req.llm_provider)
     if not provider_ready:
         raise HTTPException(status_code=400, detail=provider_message)
 
+    _ensure_thread_owner(thread_id, get_authenticated_user(request))
     state_updates: dict[str, Any] = {
         "user_approved": req.feedback_type != "revise_plan",
         "user_feedback": req.user_feedback,

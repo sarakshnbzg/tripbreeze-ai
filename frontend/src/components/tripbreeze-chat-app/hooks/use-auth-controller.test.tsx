@@ -4,7 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAuthController } from "./use-auth-controller";
 
 vi.mock("@/lib/api", () => ({
+  getProfile: vi.fn(),
   login: vi.fn(),
+  logout: vi.fn(),
   register: vi.fn(),
   saveProfile: vi.fn(),
 }));

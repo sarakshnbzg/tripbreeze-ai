@@ -7,6 +7,7 @@ This module now assembles routers and re-exports key helpers used by tests.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from presentation.auth import auth_middleware
 from settings import FRONTEND_ORIGINS
 from presentation import (
     api_routes_auth,
@@ -44,6 +45,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.middleware("http")(auth_middleware)
 
 app.include_router(api_routes_system.router)
 app.include_router(api_routes_auth.router)

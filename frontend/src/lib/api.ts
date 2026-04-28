@@ -10,6 +10,13 @@ import type {
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "http://127.0.0.1:8100";
 
+function apiFetch(input: string, init?: RequestInit): Promise<Response> {
+  return fetch(input, {
+    credentials: "include",
+    ...init,
+  });
+}
+
 async function readSseStream(
   response: Response,
   onEvent: (event: StreamEvent) => void,
@@ -67,7 +74,7 @@ export async function streamSearch(
   request: SearchRequest,
   onEvent: (event: StreamEvent) => void,
 ): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/api/search`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/search`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
@@ -80,7 +87,7 @@ export async function streamClarify(
   answer: string,
   onEvent: (event: StreamEvent) => void,
 ): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/api/search/${threadId}/clarify`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/search/${threadId}/clarify`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ answer }),
@@ -93,7 +100,7 @@ export async function streamApprove(
   request: ApproveRequest,
   onEvent: (event: StreamEvent) => void,
 ): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/api/search/${threadId}/approve`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/search/${threadId}/approve`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
@@ -116,7 +123,7 @@ export async function fetchReturnFlights(
   },
 ): Promise<Array<Record<string, unknown>>> {
   return parseJsonResponse<Array<Record<string, unknown>>>(
-    await fetch(`${API_BASE_URL}/api/search/${encodeURIComponent(threadId)}/return-flights`, {
+    await apiFetch(`${API_BASE_URL}/api/search/${encodeURIComponent(threadId)}/return-flights`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(params),
@@ -134,7 +141,7 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
 
 export async function login(userId: string, password: string): Promise<AuthResponse> {
   return parseJsonResponse<AuthResponse>(
-    await fetch(`${API_BASE_URL}/api/auth/login`, {
+    await apiFetch(`${API_BASE_URL}/api/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ user_id: userId, password }),
@@ -144,7 +151,7 @@ export async function login(userId: string, password: string): Promise<AuthRespo
 
 export async function register(userId: string, password: string, profile: UserProfile): Promise<AuthResponse> {
   return parseJsonResponse<AuthResponse>(
-    await fetch(`${API_BASE_URL}/api/auth/register`, {
+    await apiFetch(`${API_BASE_URL}/api/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ user_id: userId, password, profile }),
@@ -152,9 +159,23 @@ export async function register(userId: string, password: string, profile: UserPr
   );
 }
 
+export async function logout(): Promise<void> {
+  await parseJsonResponse<{ success: boolean }>(
+    await apiFetch(`${API_BASE_URL}/api/auth/logout`, {
+      method: "POST",
+    }),
+  );
+}
+
+export async function getProfile(userId: string): Promise<AuthResponse> {
+  return parseJsonResponse<AuthResponse>(
+    await apiFetch(`${API_BASE_URL}/api/profile/${encodeURIComponent(userId)}`),
+  );
+}
+
 export async function saveProfile(userId: string, profile: UserProfile): Promise<AuthResponse> {
   return parseJsonResponse<AuthResponse>(
-    await fetch(`${API_BASE_URL}/api/profile/${encodeURIComponent(userId)}`, {
+    await apiFetch(`${API_BASE_URL}/api/profile/${encodeURIComponent(userId)}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ profile }),
@@ -164,7 +185,7 @@ export async function saveProfile(userId: string, profile: UserProfile): Promise
 
 export async function getReferenceValues(category: string): Promise<string[]> {
   const payload = await parseJsonResponse<{ category: string; values: string[] }>(
-    await fetch(`${API_BASE_URL}/api/reference-values/${encodeURIComponent(category)}`, {
+    await apiFetch(`${API_BASE_URL}/api/reference-values/${encodeURIComponent(category)}`, {
       cache: "force-cache",
     }),
   );
@@ -175,7 +196,7 @@ export async function transcribeAudio(blob: Blob, filename = "recording.webm"): 
   const formData = new FormData();
   formData.append("file", blob, filename);
   const payload = await parseJsonResponse<{ text: string }>(
-    await fetch(`${API_BASE_URL}/api/transcribe`, {
+    await apiFetch(`${API_BASE_URL}/api/transcribe`, {
       method: "POST",
       body: formData,
     }),
@@ -184,7 +205,7 @@ export async function transcribeAudio(blob: Blob, filename = "recording.webm"): 
 }
 
 export async function downloadItineraryPdf(finalItinerary: string, graphState: Record<string, unknown>, fileName = "trip_itinerary.pdf"): Promise<Blob> {
-  const response = await fetch(`${API_BASE_URL}/api/itinerary/pdf`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/itinerary/pdf`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -208,7 +229,7 @@ export async function emailItinerary(
   graphState: Record<string, unknown>,
 ): Promise<{ success: boolean; message: string }> {
   return parseJsonResponse<{ success: boolean; message: string }>(
-    await fetch(`${API_BASE_URL}/api/itinerary/email`, {
+    await apiFetch(`${API_BASE_URL}/api/itinerary/email`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
