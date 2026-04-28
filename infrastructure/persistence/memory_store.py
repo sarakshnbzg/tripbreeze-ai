@@ -397,6 +397,8 @@ def update_profile_from_trip(user_id: str, trip_data: dict) -> dict:
             "destination": trip_data["destination"],
             "dates": f"{trip_data.get('departure_date', '')} – {trip_data.get('return_date', '')}",
         }
+        if trip_data.get("trip_legs"):
+            trip_entry["trip_legs"] = trip_data["trip_legs"]
         if trip_data.get("final_itinerary"):
             trip_entry["final_itinerary"] = trip_data["final_itinerary"]
         if trip_data.get("pdf_state"):

@@ -50,10 +50,11 @@ def memory_updater(state: TravelState) -> dict:
         log_event(logger, "workflow.memory_update_skipped", user_id=user_id, reason="missing_trip")
         return {"current_step": WorkflowStep.DONE}
 
+    trip_legs = state.get("trip_legs") or []
     trip_data = {
         "destination": _build_history_destination_label({
             **trip,
-            "trip_legs": state.get("trip_legs", []),
+            "trip_legs": trip_legs,
         }),
         "departure_date": trip.get("departure_date", ""),
         "return_date": trip.get("return_date", ""),
@@ -61,9 +62,12 @@ def memory_updater(state: TravelState) -> dict:
         "travel_class": trip.get("travel_class", ""),
         "passport_country": state.get("user_profile", {}).get("passport_country", ""),
         "final_itinerary": state.get("final_itinerary", ""),
+        "trip_legs": trip_legs,
         "pdf_state": {
             "selected_flight": state.get("selected_flight", {}),
             "selected_hotel": state.get("selected_hotel", {}),
+            "selected_flights": state.get("selected_flights", []),
+            "selected_hotels": state.get("selected_hotels", []),
             "budget": state.get("budget", {}),
         },
     }
