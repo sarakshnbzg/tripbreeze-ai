@@ -391,19 +391,28 @@ export function PlannerComposer({
         </div>
       </details>
 
-      <div className="mt-5 flex flex-col gap-4 rounded-[1.5rem] border border-line/70 bg-paper/66 p-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
+      <div className="mt-5 flex flex-col gap-4 rounded-[1.5rem] border border-line/70 bg-paper/66 p-4 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
+        <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold text-ink">Run planner</div>
-          <div className="mt-1 text-sm text-slate">
+          <div className="mt-1 text-sm text-slate lg:whitespace-nowrap">
             Search flights, hotels, budget fit, and entry requirements from your brief.
           </div>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:flex">
-          <Button onClick={onPlanTrip} disabled={loading !== null} className="min-w-[10rem] justify-center">
+        <div className="grid gap-3 sm:grid-cols-2 lg:flex lg:flex-nowrap lg:shrink-0">
+          <Button
+            onClick={onPlanTrip}
+            disabled={loading !== null}
+            className="min-w-[9.5rem] justify-center whitespace-nowrap px-5 py-2.5"
+          >
           {loading === "planning" ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
           Search Trip
           </Button>
-          <Button variant="secondary" onClick={onVoiceInput} disabled={loading === "voice"} className="justify-center">
+          <Button
+            variant="secondary"
+            onClick={onVoiceInput}
+            disabled={loading === "voice"}
+            className="min-w-[8.5rem] justify-center whitespace-nowrap px-4 py-2.5"
+          >
             {loading === "voice" ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <AudioLines className="mr-2 h-4 w-4" />}
             {recording ? "Stop Recording" : "Voice Input"}
           </Button>
