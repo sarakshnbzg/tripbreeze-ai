@@ -61,7 +61,6 @@ export function PlannerStage({
   const shouldShowReviewProgress = recentPlanningUpdates.length > 0 && !(hasReviewWorkspace || itinerary);
   const shouldShowCompactProgress = (hasReviewWorkspace || Boolean(itinerary)) && recentPlanningUpdates.length > 0;
   const currentStage = itinerary ? "finalize" : hasReviewWorkspace ? "review" : "plan";
-  const compactHero = hasReviewWorkspace || Boolean(itinerary);
   const stageItems = [
     {
       key: "plan",
@@ -125,73 +124,41 @@ export function PlannerStage({
         </div>
 
         <div className="relative mt-6 space-y-5">
-          <section className={`panel-surface travel-grid rounded-[2rem] ${compactHero ? "p-4 sm:p-5" : "p-5 sm:p-6"}`}>
-            <div className={`flex flex-col ${compactHero ? "gap-4" : "gap-5"} xl:flex-row xl:items-end xl:justify-between`}>
-              <div className="max-w-2xl">
-                <div className="eyebrow-label">Guided workspace</div>
-                <h2 className={`section-title mt-2 text-ink ${compactHero ? "text-[1.65rem] sm:text-[2.1rem]" : "text-[1.9rem] sm:text-3xl"}`}>
-                  Build the trip in stages, then turn it into something shareable.
-                </h2>
-                <p className={`body-copy mt-3 text-sm ${compactHero ? "hidden sm:block" : ""}`}>
-                  Start with a quick travel brief, review the shortlisted options, and finish with a polished itinerary.
-                </p>
+          <section className="rounded-[1.6rem] border border-line/70 bg-paper/84 px-4 py-4 sm:px-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <div className="eyebrow-label">This trip</div>
+                <div className="mt-2 flex flex-wrap gap-2 text-sm text-ink">
+                  {tripSummaryItems.map((item) => (
+                    <span key={item.label} className="rounded-full border border-line/70 bg-white px-3 py-2 font-semibold">
+                      {item.label}: {item.value}
+                    </span>
+                  ))}
+                </div>
               </div>
-              <div className="grid grid-cols-3 gap-2 sm:gap-3 xl:min-w-[28rem]">
-                {tripSummaryItems.map((item) => (
-                  <div key={item.label} className="rounded-[1.25rem] border border-white/80 bg-white/78 p-3 sm:rounded-[1.4rem] sm:p-4">
-                    <div className="eyebrow-label">{item.label}</div>
-                    <div className="mt-2 text-xs font-semibold text-ink sm:text-sm">{item.value}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
 
-            <div className={`mt-4 grid grid-cols-3 gap-2 sm:mt-5 sm:gap-3`}>
-              {stageItems.map((item, index) => {
-                const isActive = item.key === currentStage;
-                const isComplete =
-                  (item.key === "plan" && (hasReviewWorkspace || Boolean(itinerary))) ||
-                  (item.key === "review" && Boolean(itinerary));
-                return (
-                  <div
-                    key={item.key}
-                    className={`rounded-[1.2rem] border p-3 transition sm:rounded-[1.5rem] sm:p-4 ${
-                      isActive
-                        ? "border-pine/25 bg-pine/10 shadow-[0_18px_44px_rgba(24,77,71,0.12)]"
-                        : isComplete
-                          ? "border-coral/20 bg-coral/8"
-                          : "border-white/80 bg-white/70"
-                    }`}
-                  >
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex items-start gap-2 sm:gap-3">
-                        <div
-                          className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold sm:h-9 sm:w-9 sm:text-sm ${
-                            isActive ? "bg-pine text-white" : isComplete ? "bg-coral text-white" : "bg-mist text-ink"
-                          }`}
-                        >
-                          {index + 1}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="text-xs font-semibold text-ink sm:text-sm">{item.label}</div>
-                          <div className="hidden text-xs text-slate sm:block">{item.description}</div>
-                        </div>
-                      </div>
-                      <span
-                        className={`self-start rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] sm:px-3 sm:text-[11px] sm:tracking-[0.16em] ${
-                          isActive
-                            ? "bg-pine text-white"
-                            : isComplete
-                              ? "bg-coral text-white"
-                              : "bg-white text-slate"
-                        }`}
-                      >
-                        {isActive ? "Current" : isComplete ? "Done" : "Next"}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
+              <div className="flex flex-wrap gap-2">
+                {stageItems.map((item, index) => {
+                  const isActive = item.key === currentStage;
+                  const isComplete =
+                    (item.key === "plan" && (hasReviewWorkspace || Boolean(itinerary))) ||
+                    (item.key === "review" && Boolean(itinerary));
+                  return (
+                    <span
+                      key={item.key}
+                      className={`rounded-full px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] ${
+                        isActive
+                          ? "bg-pine text-white"
+                          : isComplete
+                            ? "bg-coral/12 text-coral"
+                            : "border border-line/70 bg-white text-slate"
+                      }`}
+                    >
+                      {index + 1}. {item.label}
+                    </span>
+                  );
+                })}
+              </div>
             </div>
           </section>
 

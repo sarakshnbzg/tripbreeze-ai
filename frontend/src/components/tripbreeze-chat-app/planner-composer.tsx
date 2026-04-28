@@ -47,20 +47,17 @@ export function PlannerComposer({
   ].filter(Boolean);
 
   return (
-    <div className="mt-6 rounded-[2rem] border border-pine/12 bg-[linear-gradient(180deg,rgba(255,250,244,0.98),rgba(244,239,231,0.86))] p-5 shadow-focus sm:p-6">
+    <div className="mt-6 rounded-[1.8rem] border border-line/70 bg-white/72 p-5 shadow-card sm:p-6">
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(18rem,0.9fr)] xl:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.8fr)]">
         <div>
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate">Step 1</div>
+              <div className="eyebrow-label">Plan a trip</div>
               <h3 className="mt-2 font-display text-3xl text-ink">Start with the trip brief</h3>
-            </div>
-            <div className="hidden rounded-full border border-white/80 bg-white/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate sm:block">
-              Quick start
             </div>
           </div>
           <p className="mt-3 max-w-2xl text-sm leading-7 text-slate">
-            Describe the kind of trip you want, then add only the details that matter. The planner can work from a simple sentence or a fully refined brief.
+            Describe the kind of trip you want, then add details only if you need them.
           </p>
           <textarea
             className="mt-4 h-36 w-full rounded-[1.8rem] border border-line/80 bg-white px-5 py-4 text-sm leading-7 outline-none transition focus:border-coral focus:shadow-[0_0_0_4px_rgba(215,108,78,0.12)]"
@@ -69,7 +66,7 @@ export function PlannerComposer({
             onChange={(event) => setForm((current) => ({ ...current, freeText: event.target.value }))}
           />
           <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:flex xl:flex-wrap">
-            {promptChips.map((chip) => (
+            {promptChips.slice(0, 2).map((chip) => (
               <button
                 key={chip}
                 type="button"
@@ -82,8 +79,8 @@ export function PlannerComposer({
           </div>
         </div>
 
-        <div className="rounded-[1.75rem] border border-white/80 bg-white/72 p-4">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate">Trip essentials</div>
+        <div className="rounded-[1.6rem] border border-line/70 bg-paper/72 p-4">
+          <div className="eyebrow-label">Trip essentials</div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-1">
             <label className="block">
               <span className="mb-2 block text-sm font-medium text-slate">From</span>
@@ -161,13 +158,13 @@ export function PlannerComposer({
         </div>
       </div>
 
-      <details className="mt-5 rounded-[1.8rem] border border-white/75 bg-white/74 p-4">
+      <details className="mt-5 rounded-[1.6rem] border border-line/70 bg-paper/70 p-4">
         <summary className="cursor-pointer list-none">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="text-sm font-semibold text-ink">Advanced trip filters</div>
               <div className="mt-1 text-sm text-slate">
-                Fine-tune airlines, flight rules, hotel preferences, and multi-city routing.
+                Fine-tune airlines, timing, hotel preferences, and multi-city routing.
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -396,11 +393,11 @@ export function PlannerComposer({
         </div>
       </details>
 
-      <div className="mt-5 flex flex-col gap-4 rounded-[1.6rem] border border-white/75 bg-white/62 p-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="mt-5 flex flex-col gap-4 rounded-[1.5rem] border border-line/70 bg-paper/66 p-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <div className="text-sm font-semibold text-ink">Run planner</div>
           <div className="mt-1 text-sm text-slate">
-            TripBreeze will search flights, hotels, budget fit, and entry requirements from your brief.
+            Search flights, hotels, budget fit, and entry requirements from your brief.
           </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:flex">
