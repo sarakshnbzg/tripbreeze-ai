@@ -20,13 +20,16 @@ class TestChromaDirForProvider:
 class TestMetadataExtraction:
     def test_extracts_visa_metadata_and_topics(self):
         metadata = _extract_doc_metadata(
-            "knowledge_base/visa_requirements.md",
-            "## France (Schengen Area)\n- **US citizens:** Visa-free for up to 90 days.\n- **Documents needed:** Passport valid 3+ months beyond stay.",
+            "knowledge_base/visa_requirements/france.md",
+            "---\ncountry: France\nsource_name: TripBreeze travel knowledge base\nsource_authority: manual_summary\nlast_verified: 2026-04-28\nreview_interval_days: 30\n---\n## France (Schengen Area)\n- **US citizens:** Visa-free for up to 90 days.\n- **Documents needed:** Passport valid 3+ months beyond stay.",
         )
 
         assert metadata["source_type"] == "visa_requirements"
         assert metadata["city"] == ""
         assert metadata["country"] == "France"
+        assert metadata["source_name"] == "TripBreeze travel knowledge base"
+        assert metadata["source_authority"] == "manual_summary"
+        assert metadata["last_verified"] == "2026-04-28"
         assert "entry_requirements" in metadata["topics"]
 
 
@@ -83,14 +86,14 @@ class TestMetadataAwareRetrieval:
         )
         exact_doc = FakeDoc(
             "## France (Schengen Area)\n- **US citizens:** Visa-free for up to 90 days.\n- **Documents needed:** Passport valid 3+ months beyond stay.",
-            "knowledge_base/visa_requirements.md",
+            "knowledge_base/visa_requirements/france.md",
             source_type="visa_requirements",
             country="France",
             heading="France (Schengen Area)",
         )
         noisy_doc = FakeDoc(
             "## Vietnam\n- **US citizens:** Visa required.\n- **Documents needed:** Passport valid 6+ months.",
-            "knowledge_base/visa_requirements.md",
+            "knowledge_base/visa_requirements/vietnam.md",
             source_type="visa_requirements",
             country="Vietnam",
             heading="Vietnam",

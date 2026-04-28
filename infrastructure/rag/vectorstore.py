@@ -6,7 +6,9 @@ import re
 import shutil
 import threading
 import time
+from datetime import date
 from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
@@ -122,6 +124,13 @@ PASSPORT_ENTITY_PATTERNS = (
     r"\btravelers with a passport from\s+([a-z][a-z\s\-]{1,40})\b",
 )
 
+TRUST_SOURCE_TYPE_SCORES: dict[str, float] = {
+    "official_government": 2.5,
+    "official_tourism_board": 1.5,
+    "embassy": 1.75,
+    "manual_summary": 0.5,
+}
+
 def _normalise_text(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", (value or "").lower()).strip()
 
@@ -129,6 +138,49 @@ def _normalise_text(value: str) -> str:
 def _extract_heading(page_content: str) -> str:
     match = re.search(r"^##\s+(.+)$", page_content or "", flags=re.MULTILINE)
     return match.group(1).strip() if match else ""
+
+
+def _split_frontmatter(page_content: str) -> tuple[dict[str, str], str]:
+    text = page_content or ""
+    if not text.startswith("---\n"):
+        return {}, text
+    lines = text.splitlines()
+    metadata: dict[str, str] = {}
+    end_index = None
+    for index, line in enumerate(lines[1:], start=1):
+        if line.strip() == "---":
+            end_index = index
+            break
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        metadata[key.strip()] = value.strip().strip("\"'")
+    if end_index is None:
+        return {}, text
+    body = "\n".join(lines[end_index + 1 :]).lstrip()
+    return metadata, body
+
+
+def _trust_metadata(metadata: dict[str, str]) -> dict[str, str]:
+    source_authority = str(metadata.get("source_authority", metadata.get("source_type", ""))).strip()
+    last_verified = str(metadata.get("last_verified", "")).strip()
+    review_interval_days = str(metadata.get("review_interval_days", "")).strip()
+    is_stale = ""
+    if last_verified:
+        try:
+            verified_date = date.fromisoformat(last_verified)
+            interval = int(review_interval_days or 30)
+            is_stale = str((date.today() - verified_date).days > interval).lower()
+        except ValueError:
+            is_stale = "true"
+    return {
+        "source_name": str(metadata.get("source_name", "")).strip(),
+        "source_url": str(metadata.get("source_url", "")).strip(),
+        "source_authority": source_authority,
+        "last_verified": last_verified,
+        "review_interval_days": review_interval_days,
+        "is_stale": is_stale,
+    }
 
 
 COUNTRY_KEYED_SOURCE_TYPES: tuple[str, ...] = (
@@ -171,16 +223,19 @@ def _detect_topics(page_content: str, source_type: str) -> list[str]:
 
 
 def _extract_doc_metadata(source_path: str, page_content: str) -> dict[str, str | list[str]]:
-    heading = _extract_heading(page_content)
-    source_stem = _normalise_text(source_path.split("/")[-1].replace(".md", ""))
-    source_type = source_stem.replace(" ", "_")
+    frontmatter, body = _split_frontmatter(page_content)
+    heading = _extract_heading(body)
+    path = Path(source_path)
+    source_type = _normalise_text(path.parent.name if path.parent.name != KNOWLEDGE_BASE_DIR.name else path.stem).replace(" ", "_")
     city = ""
     country = ""
 
-    if source_type in COUNTRY_KEYED_SOURCE_TYPES and heading:
-        country = heading.split("(", 1)[0].strip()
+    if source_type in COUNTRY_KEYED_SOURCE_TYPES:
+        country = str(frontmatter.get("country", "")).strip()
+        if not country and heading:
+            country = heading.split("(", 1)[0].strip()
 
-    topics = _detect_topics(page_content, source_type)
+    topics = _detect_topics(body, source_type)
 
     metadata: dict[str, str | list[str]] = {
         "source_type": source_type,
@@ -188,6 +243,7 @@ def _extract_doc_metadata(source_path: str, page_content: str) -> dict[str, str 
         "city": city,
         "country": country,
     }
+    metadata.update({key: value for key, value in _trust_metadata(frontmatter).items() if value})
     if topics:
         metadata["topics"] = topics
     return metadata
@@ -197,16 +253,22 @@ def _extract_doc_metadata(source_path: str, page_content: str) -> dict[str, str 
 def _known_places() -> list[tuple[str, str, str]]:
     places: list[tuple[str, str, str]] = []
     seen: set[tuple[str, str, str]] = set()
-    for path in sorted(KNOWLEDGE_BASE_DIR.glob("*.md")):
-        source_type = path.stem.replace(" ", "_")
+    for path in sorted(KNOWLEDGE_BASE_DIR.rglob("*.md")):
+        source_type = (path.parent.name if path.parent != KNOWLEDGE_BASE_DIR else path.stem).replace(" ", "_")
         if source_type not in COUNTRY_KEYED_SOURCE_TYPES:
             continue
         text = path.read_text(encoding="utf-8")
-        for match in re.finditer(r"^##\s+(.+)$", text, flags=re.MULTILINE):
+        frontmatter, body = _split_frontmatter(text)
+        countries = []
+        if frontmatter.get("country"):
+            countries.append(str(frontmatter["country"]).strip())
+        for match in re.finditer(r"^##\s+(.+)$", body, flags=re.MULTILINE):
             heading = match.group(1).strip()
             country = heading.split("(", 1)[0].strip()
             if not country:
                 continue
+            countries.append(country)
+        for country in countries:
             entry = (_normalise_text(country), "country", country)
             if entry in seen:
                 continue
@@ -532,6 +594,13 @@ def _score_doc(
     if allowed_source_types and str(metadata.get("source_type", "")) in allowed_source_types:
         score += 1.0
 
+    score += TRUST_SOURCE_TYPE_SCORES.get(str(metadata.get("source_authority", "")).strip(), 0)
+
+    if str(metadata.get("is_stale", "")).strip().lower() == "false":
+        score += 1.5
+    elif str(metadata.get("is_stale", "")).strip().lower() == "true":
+        score -= 0.75
+
     if query_country and doc_country == query_country:
         score += 3.0
     elif query_country and query_country in heading:
@@ -643,7 +712,7 @@ def _load_and_split_docs() -> list:
 
         loader = DirectoryLoader(
             str(KNOWLEDGE_BASE_DIR),
-            glob="*.md",
+            glob="**/*.md",
             loader_cls=TextLoader,
             loader_kwargs={"encoding": "utf-8"},
         )
@@ -658,6 +727,8 @@ def _load_and_split_docs() -> list:
         chunks = splitter.split_documents(docs)
         for chunk in chunks:
             source_path = str(chunk.metadata.get("source", ""))
+            frontmatter, body = _split_frontmatter(chunk.page_content)
+            chunk.page_content = body
             chunk.metadata.update(_extract_doc_metadata(source_path, chunk.page_content))
         _cached_chunks = chunks
         logger.info("Split knowledge base into %s chunks", len(_cached_chunks))
@@ -716,11 +787,11 @@ def _build_vectorstore(
 
 
 def _source_label(source_path: str) -> str:
-    """Turn a file path like 'knowledge_base/visa_requirements.md' into 'Visa Requirements'."""
-    from pathlib import Path
-
-    stem = Path(source_path).stem  # e.g. "visa_requirements"
-    return stem.replace("_", " ").title()
+    """Turn a KB file path into a stable user-facing source label."""
+    path = Path(source_path)
+    if path.parent and path.parent.name != KNOWLEDGE_BASE_DIR.name:
+        return path.parent.name.replace("_", " ").title()
+    return path.stem.replace("_", " ").title()
 
 
 def retrieve(
@@ -825,6 +896,11 @@ def retrieve(
         {
             "content": doc.page_content,
             "source": _source_label(doc.metadata.get("source", "Unknown")),
+            "source_name": str(doc.metadata.get("source_name", "") or ""),
+            "source_url": str(doc.metadata.get("source_url", "") or ""),
+            "source_authority": str(doc.metadata.get("source_authority", "") or ""),
+            "last_verified": str(doc.metadata.get("last_verified", "") or ""),
+            "is_stale": str(doc.metadata.get("is_stale", "") or ""),
         }
         for doc in docs[:k]
     ]

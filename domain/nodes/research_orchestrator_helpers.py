@@ -2,6 +2,7 @@
 
 import re
 import sys
+from datetime import date
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -14,7 +15,7 @@ DESTINATION_INFO_SECTIONS = (
     ("entry_requirements", "🛂 Entry Requirements"),
 )
 
-_VISA_REQUIREMENTS_PATH = KNOWLEDGE_BASE_DIR / "visa_requirements.md"
+_VISA_REQUIREMENTS_DIR = KNOWLEDGE_BASE_DIR / "visa_requirements"
 
 
 def resolve_destination_country(destination: str) -> str:
@@ -48,6 +49,82 @@ def _section_body(markdown: str, heading: str) -> str:
     pattern = rf"^##\s+{re.escape(heading)}\s*$\n(.*?)(?=^##\s+|\Z)"
     match = re.search(pattern, markdown, flags=re.MULTILINE | re.DOTALL)
     return match.group(1).strip() if match else ""
+
+
+def _split_frontmatter(markdown: str) -> tuple[dict[str, str], str]:
+    text = markdown or ""
+    if not text.startswith("---\n"):
+        return {}, text
+    lines = text.splitlines()
+    metadata: dict[str, str] = {}
+    end_index = None
+    for index, line in enumerate(lines[1:], start=1):
+        if line.strip() == "---":
+            end_index = index
+            break
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        metadata[key.strip()] = value.strip().strip("\"'")
+    if end_index is None:
+        return {}, text
+    body = "\n".join(lines[end_index + 1 :]).lstrip()
+    return metadata, body
+
+
+def _normalise_country_slug(country: str) -> str:
+    return _normalise_label(country).replace(" ", "_")
+
+
+@lru_cache(maxsize=1)
+def _visa_country_file_map() -> dict[str, Path]:
+    mapping: dict[str, Path] = {}
+    if not _VISA_REQUIREMENTS_DIR.exists():
+        return mapping
+    for path in sorted(_VISA_REQUIREMENTS_DIR.glob("*.md")):
+        frontmatter, body = _split_frontmatter(_read_text(path))
+        country = str(frontmatter.get("country", "")).strip()
+        if not country:
+            heading = _extract_heading(body)
+            if heading:
+                country = heading.split("(", 1)[0].strip()
+        if country:
+            mapping[_normalise_label(country)] = path
+    return mapping
+
+
+def _extract_heading(markdown: str) -> str:
+    match = re.search(r"^##\s+(.+)$", markdown or "", flags=re.MULTILINE)
+    return match.group(1).strip() if match else ""
+
+
+def _source_trust_block(metadata: dict[str, str]) -> str:
+    source_name = str(metadata.get("source_name", "")).strip()
+    source_url = str(metadata.get("source_url", "")).strip()
+    source_authority = str(metadata.get("source_authority", "")).strip()
+    last_verified = str(metadata.get("last_verified", "")).strip()
+    review_interval_days = str(metadata.get("review_interval_days", "")).strip() or "30"
+    if not any([source_name, source_url, source_authority, last_verified]):
+        return ""
+
+    freshness_line = ""
+    if last_verified:
+        try:
+            stale = (date.today() - date.fromisoformat(last_verified)).days > int(review_interval_days)
+            freshness_line = (
+                f"- Last verified: {last_verified} ({'stale - please re-check official rules' if stale else 'fresh'})"
+            )
+        except ValueError:
+            freshness_line = f"- Last verified: {last_verified}"
+
+    parts = [
+        "#### Source Trust",
+        *([f"- Source: {source_name}"] if source_name else []),
+        *([f"- Authority: {source_authority.replace('_', ' ').title()}"] if source_authority else []),
+        *([f"- Official link: {source_url}"] if source_url else []),
+        *([freshness_line] if freshness_line else []),
+    ]
+    return "\n".join(parts)
 
 
 def _resolve_passport_country(trip_request: dict[str, Any], user_profile: dict[str, Any]) -> str:
@@ -122,21 +199,13 @@ def _lookup_entry_requirements(destination: str, passport_country: str) -> str:
     if not country:
         return ""
 
-    visa_markdown = _read_text(_VISA_REQUIREMENTS_PATH)
-    visa_heading = ""
-    country_key = _normalise_label(country)
-
-    for match in re.finditer(r"^##\s+(.+)$", visa_markdown, flags=re.MULTILINE):
-        heading = match.group(1).strip()
-        heading_country = heading.split("(", 1)[0].strip()
-        if _normalise_label(heading_country) == country_key:
-            visa_heading = heading
-            break
-
+    visa_path = _visa_country_file_map().get(_normalise_label(country))
+    if not visa_path:
+        return ""
+    frontmatter, body = _split_frontmatter(_read_text(visa_path))
+    visa_heading = _extract_heading(body)
     if not visa_heading:
         return ""
-
-    body = _section_body(visa_markdown, visa_heading)
     selected_lines: list[str] = []
     passport_key = _normalise_label(passport_country)
 
@@ -160,8 +229,11 @@ def _lookup_entry_requirements(destination: str, passport_country: str) -> str:
 
     if not selected_lines:
         return ""
-
-    return f"### {visa_heading}\n" + "\n".join(selected_lines)
+    trust_block = _source_trust_block(frontmatter)
+    parts = [f"### {visa_heading}", "\n".join(selected_lines)]
+    if trust_block:
+        parts.append(trust_block)
+    return "\n\n".join(parts)
 
 
 def _maybe_use_precise_destination_info(

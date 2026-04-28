@@ -105,7 +105,7 @@ Tool      Transport   Tool       Tool
 | **Used by** | Research orchestrator for entry requirements; Trip Finaliser consumes the grounded result already prepared earlier |
 | **Behavior** | Optional tool inside both ReAct loops; may be skipped or called multiple times |
 | **Output** | Retrieved knowledge-base chunks that agents use to write grounded destination information |
-| **Knowledge base** | `knowledge_base/visa_requirements.md` |
+| **Knowledge base** | `knowledge_base/visa_requirements/*.md` |
 
 #### RAG Retrieval Sketch
 
