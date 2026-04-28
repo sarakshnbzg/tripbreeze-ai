@@ -40,7 +40,7 @@ export function useAuthController({
 }: {
   authenticatedUser: string;
   profile: UserProfile | null;
-  persistAuth: (userId: string, profile: UserProfile) => void;
+  persistAuth: (userId: string, profile: UserProfile, csrfToken?: string) => void;
   setLoading: React.Dispatch<React.SetStateAction<PlannerLoadingState>>;
   setError: React.Dispatch<React.SetStateAction<string>>;
 }) {
@@ -67,7 +67,7 @@ export function useAuthController({
     setLoading("auth");
     try {
       const result = await login(loginForm.userId.trim(), loginForm.password);
-      persistAuth(result.user_id, result.profile);
+      persistAuth(result.user_id, result.profile, result.csrf_token);
     } catch (authError) {
       setError(safeErrorMessage(authError));
     } finally {
@@ -100,7 +100,7 @@ export function useAuthController({
           registerForm.returnWindowEnd,
         ],
       });
-      persistAuth(result.user_id, result.profile);
+      persistAuth(result.user_id, result.profile, result.csrf_token);
     } catch (authError) {
       setError(safeErrorMessage(authError));
     } finally {
@@ -118,7 +118,7 @@ export function useAuthController({
     setLoading("saving");
     try {
       const result = await saveProfile(authenticatedUser, profile);
-      persistAuth(result.user_id, result.profile);
+      persistAuth(result.user_id, result.profile, result.csrf_token);
       setProfileSaveMessage("Profile saved.");
     } catch (saveError) {
       setProfileSaveMessage("");

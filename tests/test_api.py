@@ -19,7 +19,12 @@ client = TestClient(api.app)
 
 
 def auth_headers(user_id: str = "test_user") -> dict[str, str]:
-    return {"Authorization": f"Bearer {create_session_token(user_id)}"}
+    token = create_session_token(user_id)
+    csrf_token = memory_store.get_csrf_token_for_session(token)
+    return {
+        "Authorization": f"Bearer {token}",
+        "x-csrf-token": csrf_token or "",
+    }
 
 
 class DummyGraph:
@@ -79,6 +84,7 @@ class TestAPIEndpoints:
         cookie_header = response.headers["set-cookie"]
         assert "HttpOnly" in cookie_header
         assert "SameSite=strict" in cookie_header
+        assert response.json()["csrf_token"]
 
     def test_login_rate_limits_repeated_attempts(self, monkeypatch):
         monkeypatch.setattr(auth_routes, "verify_user", lambda user_id, password: False)
@@ -124,7 +130,10 @@ class TestAPIEndpoints:
         monkeypatch.setattr(auth_routes, "load_profile", lambda user_id: {"user_id": user_id})
 
         token = create_session_token("test_user")
-        headers = {"Authorization": f"Bearer {token}"}
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "x-csrf-token": memory_store.get_csrf_token_for_session(token) or "",
+        }
 
         response = client.post("/api/auth/logout", headers=headers)
 
@@ -133,6 +142,36 @@ class TestAPIEndpoints:
         denied = client.get("/api/profile/test_user", headers=headers)
         assert denied.status_code == 401
         assert denied.json()["detail"] == "Authentication required"
+
+    def test_update_profile_rejects_missing_csrf_token(self, monkeypatch):
+        monkeypatch.setattr(auth_routes, "load_profile", lambda user_id: {"user_id": user_id})
+
+        token = create_session_token("test_user")
+        response = client.put(
+            "/api/profile/test_user",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"profile": {"home_city": "Berlin"}},
+        )
+
+        assert response.status_code == 403
+        assert response.json()["detail"] == "CSRF validation failed"
+
+    def test_update_profile_rejects_invalid_origin(self, monkeypatch):
+        monkeypatch.setattr(auth_routes, "load_profile", lambda user_id: {"user_id": user_id})
+
+        token = create_session_token("test_user")
+        response = client.put(
+            "/api/profile/test_user",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "x-csrf-token": memory_store.get_csrf_token_for_session(token) or "",
+                "origin": "https://evil.example",
+            },
+            json={"profile": {"home_city": "Berlin"}},
+        )
+
+        assert response.status_code == 403
+        assert response.json()["detail"] == "Invalid request origin"
 
     def test_idle_session_expires_after_inactivity(self, monkeypatch):
         monkeypatch.setattr(auth_routes, "load_profile", lambda user_id: {"user_id": user_id})

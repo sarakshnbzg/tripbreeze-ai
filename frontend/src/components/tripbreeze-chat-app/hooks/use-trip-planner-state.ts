@@ -18,7 +18,7 @@ type UseTripPlannerStateParams = {
   form: PlannerForm;
   state: TravelState | null;
   tokenUsageHistoryLimit: number;
-  persistAuth: (userId: string, profile: UserProfile) => void;
+  persistAuth: (userId: string, profile: UserProfile, csrfToken?: string) => void;
   clearAuthSession: () => void;
   setForm: Dispatch<SetStateAction<PlannerForm>>;
   setMessages: Dispatch<SetStateAction<ChatMessage[]>>;

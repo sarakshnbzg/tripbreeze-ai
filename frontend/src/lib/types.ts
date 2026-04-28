@@ -96,4 +96,5 @@ export type TravelState = {
 export type AuthResponse = {
   user_id: string;
   profile: UserProfile;
+  csrf_token: string;
 };

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { getProfile, logout } from "@/lib/api";
+import { clearStoredCsrfToken, getProfile, logout, storeCsrfToken } from "@/lib/api";
 import type { PlannerForm } from "@/lib/planner";
 import type { UserProfile } from "@/lib/types";
 
@@ -17,7 +17,8 @@ export function useAuthSession({
   useEffect(() => {
     const savedUser = window.localStorage.getItem("tripbreeze_user");
     const savedProfile = window.localStorage.getItem("tripbreeze_profile");
-    if (!savedUser || !savedProfile) {
+    const savedCsrfToken = window.localStorage.getItem("tripbreeze_csrf_token");
+    if (!savedUser || !savedProfile || !savedCsrfToken) {
       return;
     }
     try {
@@ -34,33 +35,41 @@ export function useAuthSession({
           setEmailAddress(result.user_id);
           window.localStorage.setItem("tripbreeze_user", result.user_id);
           window.localStorage.setItem("tripbreeze_profile", JSON.stringify(result.profile));
+          storeCsrfToken(result.csrf_token);
         })
         .catch(() => {
           window.localStorage.removeItem("tripbreeze_user");
           window.localStorage.removeItem("tripbreeze_profile");
+          clearStoredCsrfToken();
         });
       setProfile(parsedProfile);
     } catch {
       window.localStorage.removeItem("tripbreeze_user");
       window.localStorage.removeItem("tripbreeze_profile");
+      clearStoredCsrfToken();
     }
   }, [setEmailAddress, setForm]);
 
-  function persistAuth(userId: string, nextProfile: UserProfile) {
+  function persistAuth(userId: string, nextProfile: UserProfile, csrfToken?: string) {
     setAuthenticatedUser(userId);
     setProfile(nextProfile);
     setForm((current) => ({ ...current, userId, origin: nextProfile.home_city ?? current.origin }));
     setEmailAddress(userId);
     window.localStorage.setItem("tripbreeze_user", userId);
     window.localStorage.setItem("tripbreeze_profile", JSON.stringify(nextProfile));
+    if (csrfToken) {
+      storeCsrfToken(csrfToken);
+    }
   }
 
   function clearAuthSession() {
+    const csrfToken = window.localStorage.getItem("tripbreeze_csrf_token") ?? "";
     setAuthenticatedUser("");
     setProfile(null);
     window.localStorage.removeItem("tripbreeze_user");
     window.localStorage.removeItem("tripbreeze_profile");
-    void logout().catch(() => undefined);
+    clearStoredCsrfToken();
+    void logout(csrfToken).catch(() => undefined);
   }
 
   return {

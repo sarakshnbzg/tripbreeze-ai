@@ -156,7 +156,8 @@ def _get_pool():
                         session_token TEXT PRIMARY KEY,
                         user_id TEXT NOT NULL,
                         expires_at BIGINT NOT NULL,
-                        last_seen_at BIGINT NOT NULL
+                        last_seen_at BIGINT NOT NULL,
+                        csrf_token TEXT
                     )
                     """
                 )
@@ -168,9 +169,22 @@ def _get_pool():
                 )
                 cur.execute(
                     """
+                    ALTER TABLE user_sessions
+                    ADD COLUMN IF NOT EXISTS csrf_token TEXT
+                    """
+                )
+                cur.execute(
+                    """
                     UPDATE user_sessions
                     SET last_seen_at = expires_at
                     WHERE last_seen_at IS NULL
+                    """
+                )
+                cur.execute(
+                    """
+                    UPDATE user_sessions
+                    SET csrf_token = md5(random()::text || clock_timestamp()::text)
+                    WHERE csrf_token IS NULL
                     """
                 )
                 cur.execute(
@@ -568,12 +582,13 @@ def create_user_session(
     *,
     idle_timeout_seconds: int | None = None,
     rotate_existing: bool = False,
-) -> str:
+) -> tuple[str, str]:
     """Create a new opaque session token for the user."""
     safe_user_id = _sanitise_user_id(user_id)
     now = int(time.time())
     expires_at = now + int(ttl_seconds)
     session_token = secrets.token_urlsafe(32)
+    csrf_token = secrets.token_urlsafe(24)
 
     if not MEMORY_DATABASE_URL:
         with _in_memory_sessions_lock:
@@ -590,8 +605,9 @@ def create_user_session(
                 "user_id": safe_user_id,
                 "expires_at": expires_at,
                 "last_seen_at": now,
+                "csrf_token": csrf_token,
             }
-        return session_token
+        return session_token, csrf_token
 
     with _get_pool().connection() as conn:
         with conn.cursor() as cur:
@@ -599,17 +615,17 @@ def create_user_session(
                 cur.execute("DELETE FROM user_sessions WHERE user_id = %s", (safe_user_id,))
             cur.execute(
                 """
-                INSERT INTO user_sessions (session_token, user_id, expires_at, last_seen_at)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO user_sessions (session_token, user_id, expires_at, last_seen_at, csrf_token)
+                VALUES (%s, %s, %s, %s, %s)
                 """,
-                (session_token, safe_user_id, expires_at, now),
+                (session_token, safe_user_id, expires_at, now, csrf_token),
             )
         conn.commit()
-    return session_token
+    return session_token, csrf_token
 
 
-def get_user_for_session(session_token: str, *, idle_timeout_seconds: int | None = None) -> str | None:
-    """Resolve an opaque session token to a user id if still valid."""
+def get_session_details(session_token: str, *, idle_timeout_seconds: int | None = None) -> dict[str, str] | None:
+    """Resolve an opaque session token to session metadata if still valid."""
     token = str(session_token or "").strip()
     if not token:
         return None
@@ -630,18 +646,21 @@ def get_user_for_session(session_token: str, *, idle_timeout_seconds: int | None
                 _in_memory_sessions.pop(token, None)
                 return None
             entry["last_seen_at"] = now
-            return str(entry["user_id"])
+            return {
+                "user_id": str(entry["user_id"]),
+                "csrf_token": str(entry["csrf_token"]),
+            }
 
     with _get_pool().connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT user_id, expires_at, last_seen_at FROM user_sessions WHERE session_token = %s",
+                "SELECT user_id, expires_at, last_seen_at, csrf_token FROM user_sessions WHERE session_token = %s",
                 (token,),
             )
             row = cur.fetchone()
             if row is None:
                 return None
-            user_id, expires_at, last_seen_at = row
+            user_id, expires_at, last_seen_at, csrf_token = row
             if int(expires_at) <= now:
                 cur.execute("DELETE FROM user_sessions WHERE session_token = %s", (token,))
                 conn.commit()
@@ -655,7 +674,26 @@ def get_user_for_session(session_token: str, *, idle_timeout_seconds: int | None
                 (now, token),
             )
             conn.commit()
-    return str(user_id)
+    return {
+        "user_id": str(user_id),
+        "csrf_token": str(csrf_token or ""),
+    }
+
+
+def get_user_for_session(session_token: str, *, idle_timeout_seconds: int | None = None) -> str | None:
+    """Resolve an opaque session token to a user id if still valid."""
+    details = get_session_details(session_token, idle_timeout_seconds=idle_timeout_seconds)
+    if not details:
+        return None
+    return details["user_id"]
+
+
+def get_csrf_token_for_session(session_token: str, *, idle_timeout_seconds: int | None = None) -> str | None:
+    """Return the CSRF token bound to a valid session."""
+    details = get_session_details(session_token, idle_timeout_seconds=idle_timeout_seconds)
+    if not details:
+        return None
+    return details["csrf_token"]
 
 
 def delete_user_session(session_token: str) -> None:

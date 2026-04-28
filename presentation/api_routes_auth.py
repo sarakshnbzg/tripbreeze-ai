@@ -17,6 +17,7 @@ from presentation.auth import (
     clear_session_cookie,
     ensure_user_access,
     extract_session_token,
+    get_authenticated_csrf_token,
     get_authenticated_user,
     invalidate_session_token,
     set_session_cookie,
@@ -88,8 +89,8 @@ async def login(req: LoginRequest, request: Request, response: Response):
 
     user_id = req.user_id.strip()
     _clear_auth_rate_limit("login", request)
-    set_session_cookie(response, user_id)
-    return {"user_id": user_id, "profile": load_profile(user_id)}
+    csrf_token = set_session_cookie(response, user_id)
+    return {"user_id": user_id, "profile": load_profile(user_id), "csrf_token": csrf_token}
 
 
 @router.post("/api/auth/register")
@@ -114,8 +115,8 @@ async def register(req: RegisterRequest, request: Request, response: Response):
 
     user_id = req.user_id.strip()
     _clear_auth_rate_limit("register", request)
-    set_session_cookie(response, user_id)
-    return {"user_id": user_id, "profile": load_profile(user_id)}
+    csrf_token = set_session_cookie(response, user_id)
+    return {"user_id": user_id, "profile": load_profile(user_id), "csrf_token": csrf_token}
 
 
 @router.post("/api/auth/logout")
@@ -133,7 +134,11 @@ async def get_profile(user_id: str, request: Request):
     """Return a user's stored profile."""
     try:
         ensure_user_access(user_id, get_authenticated_user(request))
-        return {"user_id": user_id, "profile": load_profile(user_id)}
+        return {
+            "user_id": user_id,
+            "profile": load_profile(user_id),
+            "csrf_token": get_authenticated_csrf_token(request),
+        }
     except HTTPException:
         raise
     except ValueError as exc:
@@ -149,7 +154,11 @@ async def update_profile(user_id: str, req: SaveProfileRequest, request: Request
     try:
         ensure_user_access(user_id, get_authenticated_user(request))
         save_profile(user_id, req.profile)
-        return {"user_id": user_id, "profile": load_profile(user_id)}
+        return {
+            "user_id": user_id,
+            "profile": load_profile(user_id),
+            "csrf_token": get_authenticated_csrf_token(request),
+        }
     except HTTPException:
         raise
     except ValueError as exc:

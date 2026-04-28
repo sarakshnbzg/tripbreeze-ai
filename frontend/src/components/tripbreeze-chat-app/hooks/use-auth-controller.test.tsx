@@ -25,6 +25,7 @@ describe("useAuthController", () => {
     vi.mocked(saveProfile).mockResolvedValue({
       user_id: "sara",
       profile: { home_city: "Berlin" },
+      csrf_token: "csrf-123",
     });
 
     const { result } = renderHook(() =>
@@ -41,7 +42,7 @@ describe("useAuthController", () => {
       await result.current.handleSaveProfile();
     });
 
-    expect(persistAuth).toHaveBeenCalledWith("sara", { home_city: "Berlin" });
+    expect(persistAuth).toHaveBeenCalledWith("sara", { home_city: "Berlin" }, "csrf-123");
     expect(result.current.profileSaveMessage).toBe("Profile saved.");
   });
 
@@ -54,6 +55,7 @@ describe("useAuthController", () => {
     vi.mocked(saveProfile).mockResolvedValue({
       user_id: "sara",
       profile: { home_city: "Berlin" },
+      csrf_token: "csrf-123",
     });
 
     const { result } = renderHook(() =>

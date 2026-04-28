@@ -9,11 +9,44 @@ import type {
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "http://127.0.0.1:8100";
+const CSRF_STORAGE_KEY = "tripbreeze_csrf_token";
+const CSRF_HEADER_NAME = "x-csrf-token";
+
+function getStoredCsrfToken(): string {
+  if (typeof window === "undefined") {
+    return "";
+  }
+  return window.localStorage.getItem(CSRF_STORAGE_KEY) ?? "";
+}
+
+export function storeCsrfToken(token: string): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  if (token) {
+    window.localStorage.setItem(CSRF_STORAGE_KEY, token);
+  } else {
+    window.localStorage.removeItem(CSRF_STORAGE_KEY);
+  }
+}
+
+export function clearStoredCsrfToken(): void {
+  storeCsrfToken("");
+}
 
 function apiFetch(input: string, init?: RequestInit): Promise<Response> {
+  const method = (init?.method ?? "GET").toUpperCase();
+  const headers = new Headers(init?.headers);
+  if (!["GET", "HEAD", "OPTIONS"].includes(method) && !headers.has(CSRF_HEADER_NAME)) {
+    const csrfToken = getStoredCsrfToken();
+    if (csrfToken) {
+      headers.set(CSRF_HEADER_NAME, csrfToken);
+    }
+  }
   return fetch(input, {
     credentials: "include",
     ...init,
+    headers,
   });
 }
 
@@ -159,10 +192,12 @@ export async function register(userId: string, password: string, profile: UserPr
   );
 }
 
-export async function logout(): Promise<void> {
+export async function logout(csrfToken?: string): Promise<void> {
+  const headers = csrfToken ? { [CSRF_HEADER_NAME]: csrfToken } : undefined;
   await parseJsonResponse<{ success: boolean }>(
     await apiFetch(`${API_BASE_URL}/api/auth/logout`, {
       method: "POST",
+      headers,
     }),
   );
 }
