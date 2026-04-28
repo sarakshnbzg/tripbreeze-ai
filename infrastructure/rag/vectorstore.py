@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import shutil
+import threading
 import time
 from functools import lru_cache
 from typing import Any
@@ -31,9 +32,11 @@ from infrastructure.persistence.memory_store import list_place_aliases
 
 logger = get_logger(__name__)
 
-# Module-level caches
+# Module-level caches — guarded by locks for thread safety under FastAPI workers
 _cached_chunks: list | None = None
+_cached_chunks_lock = threading.Lock()
 _cached_vectorstores: dict[str, Chroma] = {}
+_cached_vectorstores_lock = threading.Lock()
 
 INTENT_KEYWORDS: dict[str, tuple[str, ...]] = {
     "entry_requirements": (
@@ -633,31 +636,32 @@ def _add_documents_with_quota_backoff(
 def _load_and_split_docs() -> list:
     """Load knowledge-base documents and split into chunks."""
     global _cached_chunks
-    if _cached_chunks is not None:
-        logger.info("Using cached RAG chunks count=%s", len(_cached_chunks))
+    with _cached_chunks_lock:
+        if _cached_chunks is not None:
+            logger.info("Using cached RAG chunks count=%s", len(_cached_chunks))
+            return _cached_chunks
+
+        loader = DirectoryLoader(
+            str(KNOWLEDGE_BASE_DIR),
+            glob="*.md",
+            loader_cls=TextLoader,
+            loader_kwargs={"encoding": "utf-8"},
+        )
+        docs = loader.load()
+        logger.info("Loaded %s knowledge base documents", len(docs))
+
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=RAG_CHUNK_SIZE,
+            chunk_overlap=RAG_CHUNK_OVERLAP,
+            separators=["\n## ", "\n### ", "\n\n", "\n", " "],
+        )
+        chunks = splitter.split_documents(docs)
+        for chunk in chunks:
+            source_path = str(chunk.metadata.get("source", ""))
+            chunk.metadata.update(_extract_doc_metadata(source_path, chunk.page_content))
+        _cached_chunks = chunks
+        logger.info("Split knowledge base into %s chunks", len(_cached_chunks))
         return _cached_chunks
-
-    loader = DirectoryLoader(
-        str(KNOWLEDGE_BASE_DIR),
-        glob="*.md",
-        loader_cls=TextLoader,
-        loader_kwargs={"encoding": "utf-8"},
-    )
-    docs = loader.load()
-    logger.info("Loaded %s knowledge base documents", len(docs))
-
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=RAG_CHUNK_SIZE,
-        chunk_overlap=RAG_CHUNK_OVERLAP,
-        separators=["\n## ", "\n### ", "\n\n", "\n", " "],
-    )
-    chunks = splitter.split_documents(docs)
-    for chunk in chunks:
-        source_path = str(chunk.metadata.get("source", ""))
-        chunk.metadata.update(_extract_doc_metadata(source_path, chunk.page_content))
-    _cached_chunks = chunks
-    logger.info("Split knowledge base into %s chunks", len(_cached_chunks))
-    return _cached_chunks
 
 
 def _chroma_dir_for_provider(provider: str | None):
@@ -673,41 +677,42 @@ def _build_vectorstore(
     global _cached_vectorstores
     chosen_provider, _ = normalise_llm_selection(provider, None)
 
-    if not force_rebuild and chosen_provider in _cached_vectorstores:
-        logger.info("Using cached vectorstore for provider=%s", chosen_provider)
-        return _cached_vectorstores[chosen_provider]
+    with _cached_vectorstores_lock:
+        if not force_rebuild and chosen_provider in _cached_vectorstores:
+            logger.info("Using cached vectorstore for provider=%s", chosen_provider)
+            return _cached_vectorstores[chosen_provider]
 
-    chroma_dir = _chroma_dir_for_provider(chosen_provider)
-    chroma_exists = chroma_dir.exists() and any(chroma_dir.iterdir())
-    logger.info(
-        "Preparing vectorstore provider=%s force_rebuild=%s chroma_exists=%s",
-        chosen_provider,
-        force_rebuild,
-        chroma_exists,
-    )
-    embeddings = create_embeddings(chosen_provider)
-
-    if chroma_exists and not force_rebuild:
-        logger.info("Loading existing Chroma vectorstore from %s", chroma_dir)
-        vs = Chroma(persist_directory=str(chroma_dir), embedding_function=embeddings)
-    else:
-        chunks = _load_and_split_docs()
-        if force_rebuild and chroma_dir.exists():
-            logger.info("Removing existing Chroma vectorstore at %s", chroma_dir)
-            shutil.rmtree(chroma_dir)
-        chroma_dir.parent.mkdir(parents=True, exist_ok=True)
-        vs = Chroma(
-            persist_directory=str(chroma_dir),
-            embedding_function=embeddings,
+        chroma_dir = _chroma_dir_for_provider(chosen_provider)
+        chroma_exists = chroma_dir.exists() and any(chroma_dir.iterdir())
+        logger.info(
+            "Preparing vectorstore provider=%s force_rebuild=%s chroma_exists=%s",
+            chosen_provider,
+            force_rebuild,
+            chroma_exists,
         )
-        _add_documents_with_quota_backoff(
-            vectorstore=vs,
-            chunks=chunks,
-            provider=chosen_provider,
-        )
+        embeddings = create_embeddings(chosen_provider)
 
-    _cached_vectorstores[chosen_provider] = vs
-    return vs
+        if chroma_exists and not force_rebuild:
+            logger.info("Loading existing Chroma vectorstore from %s", chroma_dir)
+            vs = Chroma(persist_directory=str(chroma_dir), embedding_function=embeddings)
+        else:
+            chunks = _load_and_split_docs()
+            if force_rebuild and chroma_dir.exists():
+                logger.info("Removing existing Chroma vectorstore at %s", chroma_dir)
+                shutil.rmtree(chroma_dir)
+            chroma_dir.parent.mkdir(parents=True, exist_ok=True)
+            vs = Chroma(
+                persist_directory=str(chroma_dir),
+                embedding_function=embeddings,
+            )
+            _add_documents_with_quota_backoff(
+                vectorstore=vs,
+                chunks=chunks,
+                provider=chosen_provider,
+            )
+
+        _cached_vectorstores[chosen_provider] = vs
+        return vs
 
 
 def _source_label(source_path: str) -> str:
