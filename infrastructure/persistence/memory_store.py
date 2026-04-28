@@ -9,6 +9,7 @@ import atexit
 import bcrypt
 import json
 import re
+import threading
 from functools import lru_cache
 
 from settings import MEMORY_DATABASE_URL
@@ -91,7 +92,7 @@ _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
 # ── Connection pool (lazy singleton) ────────────────────────────────
 
 _pool = None
-
+_pool_lock = threading.Lock()
 
 
 def _get_pool():
@@ -99,147 +100,150 @@ def _get_pool():
     global _pool
     if _pool is not None:
         return _pool
+    with _pool_lock:
+        if _pool is not None:
+            return _pool
 
-    if not MEMORY_DATABASE_URL:
-        raise RuntimeError(
-            "Long-term memory requires DATABASE_URL or NEON_DATABASE_URL in your environment or Streamlit secrets."
+        if not MEMORY_DATABASE_URL:
+            raise RuntimeError(
+                "Long-term memory requires DATABASE_URL or NEON_DATABASE_URL in your environment or Streamlit secrets."
+            )
+
+        try:
+            from psycopg_pool import ConnectionPool
+        except ImportError as exc:
+            raise RuntimeError(
+                "Postgres memory requires the `psycopg[binary]` and `psycopg-pool` packages. "
+                "Install dependencies with `uv sync`."
+            ) from exc
+
+        _pool = ConnectionPool(
+            conninfo=MEMORY_DATABASE_URL,
+            min_size=1,
+            max_size=5,
+            open=True,
+            check=ConnectionPool.check_connection,
         )
+        atexit.register(_pool.close)
 
-    try:
-        from psycopg_pool import ConnectionPool
-    except ImportError as exc:
-        raise RuntimeError(
-            "Postgres memory requires the `psycopg[binary]` and `psycopg-pool` packages. "
-            "Install dependencies with `uv sync`."
-        ) from exc
-
-    _pool = ConnectionPool(
-        conninfo=MEMORY_DATABASE_URL,
-        min_size=1,
-        max_size=5,
-        open=True,
-        check=ConnectionPool.check_connection,
-    )
-    atexit.register(_pool.close)
-
-    # Ensure schema exists (runs once at pool creation)
-    with _pool.connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                CREATE TABLE IF NOT EXISTS profiles (
-                    user_id TEXT PRIMARY KEY,
-                    profile_json JSONB NOT NULL
-                )
-                """
-            )
-            cur.execute(
-                """
-                CREATE TABLE IF NOT EXISTS user_credentials (
-                    user_id TEXT PRIMARY KEY,
-                    password_hash TEXT NOT NULL,
-                    salt TEXT NOT NULL
-                )
-                """
-            )
-            cur.execute(
-                """
-                CREATE TABLE IF NOT EXISTS place_aliases (
-                    normalized_name TEXT PRIMARY KEY,
-                    display_name TEXT NOT NULL,
-                    city_name TEXT NOT NULL,
-                    country_name TEXT NOT NULL,
-                    source TEXT NOT NULL DEFAULT 'manual'
-                )
-                """
-            )
-            for alias in _DEFAULT_PLACE_ALIASES:
+        # Ensure schema exists (runs once at pool creation)
+        with _pool.connection() as conn:
+            with conn.cursor() as cur:
                 cur.execute(
                     """
-                    INSERT INTO place_aliases (
-                        normalized_name,
-                        display_name,
-                        city_name,
-                        country_name,
-                        source
+                    CREATE TABLE IF NOT EXISTS profiles (
+                        user_id TEXT PRIMARY KEY,
+                        profile_json JSONB NOT NULL
                     )
-                    VALUES (%s, %s, %s, %s, %s)
-                    ON CONFLICT(normalized_name) DO NOTHING
-                    """,
-                    (
-                        alias["normalized_name"],
-                        alias["display_name"],
-                        alias["city_name"],
-                        alias["country_name"],
-                        "seed",
-                    ),
+                    """
                 )
-            cur.execute(
-                """
-                CREATE TABLE IF NOT EXISTS destination_daily_expenses (
-                    normalized_name TEXT PRIMARY KEY,
-                    display_name TEXT NOT NULL,
-                    daily_expense_eur DOUBLE PRECISION NOT NULL,
-                    source TEXT NOT NULL DEFAULT 'seed'
-                )
-                """
-            )
-            cur.execute(
-                """
-                CREATE TABLE IF NOT EXISTS reference_options (
-                    category TEXT NOT NULL,
-                    normalized_name TEXT NOT NULL,
-                    display_name TEXT NOT NULL,
-                    value_code TEXT,
-                    source TEXT NOT NULL DEFAULT 'seed',
-                    PRIMARY KEY (category, normalized_name)
-                )
-                """
-            )
-            for normalized_name, daily_expense_eur in DAILY_EXPENSE_BY_DESTINATION.items():
                 cur.execute(
                     """
-                    INSERT INTO destination_daily_expenses (
-                        normalized_name,
-                        display_name,
-                        daily_expense_eur,
-                        source
+                    CREATE TABLE IF NOT EXISTS user_credentials (
+                        user_id TEXT PRIMARY KEY,
+                        password_hash TEXT NOT NULL,
+                        salt TEXT NOT NULL
                     )
-                    VALUES (%s, %s, %s, %s)
-                    ON CONFLICT(normalized_name) DO NOTHING
-                    """,
-                    (
-                        normalized_name.strip().lower(),
-                        normalized_name.strip().title(),
-                        float(daily_expense_eur),
-                        "seed",
-                    ),
+                    """
                 )
-            for category, records in _REFERENCE_SEED_DATA.items():
-                for normalized_name, display_name, value_code in records:
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS place_aliases (
+                        normalized_name TEXT PRIMARY KEY,
+                        display_name TEXT NOT NULL,
+                        city_name TEXT NOT NULL,
+                        country_name TEXT NOT NULL,
+                        source TEXT NOT NULL DEFAULT 'manual'
+                    )
+                    """
+                )
+                for alias in _DEFAULT_PLACE_ALIASES:
                     cur.execute(
                         """
-                        INSERT INTO reference_options (
-                            category,
+                        INSERT INTO place_aliases (
                             normalized_name,
                             display_name,
-                            value_code,
+                            city_name,
+                            country_name,
                             source
                         )
                         VALUES (%s, %s, %s, %s, %s)
-                        ON CONFLICT(category, normalized_name) DO NOTHING
+                        ON CONFLICT(normalized_name) DO NOTHING
                         """,
                         (
-                            category,
-                            normalized_name,
-                            display_name,
-                            value_code,
+                            alias["normalized_name"],
+                            alias["display_name"],
+                            alias["city_name"],
+                            alias["country_name"],
                             "seed",
                         ),
                     )
-        conn.commit()
-    logger.info("Postgres connection pool initialised (min=1, max=5)")
-    return _pool
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS destination_daily_expenses (
+                        normalized_name TEXT PRIMARY KEY,
+                        display_name TEXT NOT NULL,
+                        daily_expense_eur DOUBLE PRECISION NOT NULL,
+                        source TEXT NOT NULL DEFAULT 'seed'
+                    )
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS reference_options (
+                        category TEXT NOT NULL,
+                        normalized_name TEXT NOT NULL,
+                        display_name TEXT NOT NULL,
+                        value_code TEXT,
+                        source TEXT NOT NULL DEFAULT 'seed',
+                        PRIMARY KEY (category, normalized_name)
+                    )
+                    """
+                )
+                for normalized_name, daily_expense_eur in DAILY_EXPENSE_BY_DESTINATION.items():
+                    cur.execute(
+                        """
+                        INSERT INTO destination_daily_expenses (
+                            normalized_name,
+                            display_name,
+                            daily_expense_eur,
+                            source
+                        )
+                        VALUES (%s, %s, %s, %s)
+                        ON CONFLICT(normalized_name) DO NOTHING
+                        """,
+                        (
+                            normalized_name.strip().lower(),
+                            normalized_name.strip().title(),
+                            float(daily_expense_eur),
+                            "seed",
+                        ),
+                    )
+                for category, records in _REFERENCE_SEED_DATA.items():
+                    for normalized_name, display_name, value_code in records:
+                        cur.execute(
+                            """
+                            INSERT INTO reference_options (
+                                category,
+                                normalized_name,
+                                display_name,
+                                value_code,
+                                source
+                            )
+                            VALUES (%s, %s, %s, %s, %s)
+                            ON CONFLICT(category, normalized_name) DO NOTHING
+                            """,
+                            (
+                                category,
+                                normalized_name,
+                                display_name,
+                                value_code,
+                                "seed",
+                            ),
+                        )
+            conn.commit()
+        logger.info("Postgres connection pool initialised (min=1, max=5)")
+        return _pool
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -388,34 +392,62 @@ def save_profile(user_id: str, profile: dict) -> None:
 
 
 def update_profile_from_trip(user_id: str, trip_data: dict) -> dict:
-    """Merge information learned from the latest trip into the profile."""
-    profile = load_profile(user_id)
+    """Merge information learned from the latest trip into the profile.
 
-    if trip_data.get("destination"):
-        past = profile.get("past_trips", [])
-        trip_entry = {
-            "destination": trip_data["destination"],
-            "dates": f"{trip_data.get('departure_date', '')} – {trip_data.get('return_date', '')}",
-        }
-        if trip_data.get("trip_legs"):
-            trip_entry["trip_legs"] = trip_data["trip_legs"]
-        if trip_data.get("final_itinerary"):
-            trip_entry["final_itinerary"] = trip_data["final_itinerary"]
-        if trip_data.get("pdf_state"):
-            trip_entry["pdf_state"] = trip_data["pdf_state"]
-        past.append(trip_entry)
-        profile["past_trips"] = past[-10:]
+    Runs as a single DB transaction with row-level locking to prevent
+    concurrent trip completions for the same user from overwriting each other.
+    """
+    safe_user_id = _sanitise_user_id(user_id)
+    with _get_pool().connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT profile_json FROM profiles WHERE user_id = %s FOR UPDATE",
+                (safe_user_id,),
+            )
+            row = cur.fetchone()
 
-    if trip_data.get("home_city") and not profile.get("home_city"):
-        profile["home_city"] = trip_data["home_city"]
+        if row is not None:
+            stored = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+            profile = {"user_id": safe_user_id, **_DEFAULT_PROFILE, **stored}
+        else:
+            profile = {"user_id": safe_user_id, **_DEFAULT_PROFILE}
 
-    if trip_data.get("travel_class"):
-        profile["travel_class"] = trip_data["travel_class"]
+        if trip_data.get("destination"):
+            past = profile.get("past_trips", [])
+            trip_entry = {
+                "destination": trip_data["destination"],
+                "dates": f"{trip_data.get('departure_date', '')} – {trip_data.get('return_date', '')}",
+            }
+            if trip_data.get("trip_legs"):
+                trip_entry["trip_legs"] = trip_data["trip_legs"]
+            if trip_data.get("final_itinerary"):
+                trip_entry["final_itinerary"] = trip_data["final_itinerary"]
+            if trip_data.get("pdf_state"):
+                trip_entry["pdf_state"] = trip_data["pdf_state"]
+            past.append(trip_entry)
+            profile["past_trips"] = past[-10:]
 
-    if trip_data.get("passport_country"):
-        profile["passport_country"] = trip_data["passport_country"]
+        if trip_data.get("home_city") and not profile.get("home_city"):
+            profile["home_city"] = trip_data["home_city"]
 
-    save_profile(user_id, profile)
+        if trip_data.get("travel_class"):
+            profile["travel_class"] = trip_data["travel_class"]
+
+        if trip_data.get("passport_country"):
+            profile["passport_country"] = trip_data["passport_country"]
+
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO profiles (user_id, profile_json)
+                VALUES (%s, %s::jsonb)
+                ON CONFLICT(user_id) DO UPDATE SET profile_json = excluded.profile_json
+                """,
+                (safe_user_id, json.dumps(profile)),
+            )
+        conn.commit()
+
+    logger.info("Saved profile for user_id=%s to Postgres", safe_user_id)
     return profile
 
 
