@@ -155,6 +155,7 @@ def search_hotels(state: dict) -> dict:
         return {
             "hotel_options": [],
             "messages": [{"role": "assistant", "content": f"Hotel search failed: {e}"}],
+            "node_errors": [{"node": "hotel_search", "message": str(e)}],
         }
 
 

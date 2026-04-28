@@ -117,6 +117,7 @@ def _run_react_research(
         "rag_used": False,
         "rag_sources": [],
         "rag_trace": [],
+        "node_errors": [],
     }
 
     tool_state = {
@@ -132,6 +133,7 @@ def _run_react_research(
         logger.info("Research orchestrator invoking search_flights tool")
         result = search_flights(tool_state)
         collected["flight_options"] = result.get("flight_options", [])
+        collected["node_errors"].extend(result.get("node_errors", []))
         return json.dumps(
             {
                 "flight_count": len(collected["flight_options"] or []),
@@ -154,6 +156,7 @@ def _run_react_research(
         logger.info("Research orchestrator invoking search_hotels tool")
         result = search_hotels(tool_state)
         collected["hotel_options"] = result.get("hotel_options", [])
+        collected["node_errors"].extend(result.get("node_errors", []))
         return json.dumps(
             {
                 "hotel_count": len(collected["hotel_options"] or []),
@@ -315,6 +318,7 @@ def _run_react_research(
         "rag_used": bool(collected.get("rag_used")),
         "rag_sources": collected.get("rag_sources") or [],
         "rag_trace": collected.get("rag_trace") or [],
+        "node_errors": collected.get("node_errors") or [],
         "token_usage": token_usage,
         "summary": summary,
     }
@@ -334,6 +338,7 @@ def _research_multi_city_legs(state: TravelState) -> dict:
     aggregated_rag_sources: list[str] = []
     aggregated_rag_trace: list[dict[str, Any]] = list(state.get("rag_trace", []))
     aggregated_token_usage: list[dict] = []
+    aggregated_node_errors: list[dict] = []
     aggregated_rag_used = False
     destination_sections_by_key: dict[str, str] = {}
     unique_destinations = _ordered_unique_destinations(trip_legs)
@@ -369,6 +374,7 @@ def _research_multi_city_legs(state: TravelState) -> dict:
         hotel_options_by_leg.append(leg_result.get("hotel_options") or [])
         aggregated_token_usage.extend(leg_result.get("token_usage") or [])
         aggregated_rag_trace.extend(leg_result.get("rag_trace") or [])
+        aggregated_node_errors.extend(leg_result.get("node_errors") or [])
         if leg_result.get("rag_used"):
             aggregated_rag_used = True
         for source in leg_result.get("rag_sources") or []:
@@ -435,6 +441,7 @@ def _research_multi_city_legs(state: TravelState) -> dict:
         "rag_used": aggregated_rag_used,
         "rag_sources": aggregated_rag_sources,
         "rag_trace": aggregated_rag_trace,
+        "node_errors": aggregated_node_errors,
         "token_usage": aggregated_token_usage,
         "messages": [{"role": "assistant", "content": summary}],
         "current_step": WorkflowStep.RESEARCH_COMPLETE,
@@ -496,6 +503,7 @@ def research_orchestrator(state: TravelState) -> dict:
         "rag_used": bool(result.get("rag_used")),
         "rag_sources": result.get("rag_sources") or [],
         "rag_trace": merged_rag_trace,
+        "node_errors": result.get("node_errors") or [],
         "token_usage": result.get("token_usage") or [],
         "messages": [{"role": "assistant", "content": result.get("summary", "")}],
         "current_step": WorkflowStep.RESEARCH_COMPLETE,

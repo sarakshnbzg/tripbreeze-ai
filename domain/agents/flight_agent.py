@@ -264,6 +264,7 @@ def search_flights(state: dict) -> dict:
         return {
             "flight_options": [],
             "messages": [{"role": "assistant", "content": f"Flight search failed: {e}"}],
+            "node_errors": [{"node": "flight_search", "message": str(e)}],
         }
 
 

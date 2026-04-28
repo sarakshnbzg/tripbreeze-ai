@@ -56,6 +56,11 @@ def attractions_research(state: TravelState) -> dict:
     except Exception as exc:
         logger.exception("attractions_research failed: %s", exc)
         candidates = []
+        return {
+            "attraction_candidates": [],
+            "current_step": WorkflowStep.ATTRACTIONS_COMPLETE,
+            "node_errors": [{"node": "attractions_research", "message": str(exc)}],
+        }
 
     logger.info("attractions_research finished candidates=%s", len(candidates))
 

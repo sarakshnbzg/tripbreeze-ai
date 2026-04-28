@@ -68,6 +68,10 @@ class TravelState(TypedDict, total=False):
     # Token usage tracking (append-only via operator.add)
     token_usage: Annotated[list[dict], operator.add]
 
+    # Non-fatal node errors (append-only via operator.add)
+    # Each entry: {"node": str, "message": str}
+    node_errors: Annotated[list[dict], operator.add]
+
     # Control flow
     current_step: str
     error: str
@@ -94,4 +98,5 @@ REVISION_RESET: dict = {
     "final_itinerary": "",
     "itinerary_data": {},
     "finaliser_metadata": {},
+    "node_errors": [],
 }
