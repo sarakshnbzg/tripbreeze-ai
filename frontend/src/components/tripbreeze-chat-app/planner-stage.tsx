@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { ModelSettingsPanel } from "@/components/tripbreeze-chat-app/model-settings-panel";
 import { PlannerComposer } from "@/components/tripbreeze-chat-app/planner-composer";
 import { FinalItineraryPanel, ReviewPanel } from "@/components/tripbreeze-chat-app/workspace";
+import { buildResolvedRequestSummary } from "@/components/tripbreeze-chat-app/helpers";
 import {
   ClarificationPanel,
   MessageFeed,
@@ -56,8 +57,13 @@ export function PlannerStage({
     itineraryView,
     itineraryShareState,
   } = models;
+  const resolvedRequestSummary = buildResolvedRequestSummary(
+    reviewWorkspaceModel.state,
+    reviewWorkspaceModel.currencyCode,
+    originalUserMessage?.content ?? "",
+  );
   const shouldShowMessageFeed = messages.length > 0 && !hasReviewWorkspace && !itinerary;
-  const shouldShowRequestSummary = (hasReviewWorkspace || Boolean(itinerary)) && originalUserMessage;
+  const shouldShowRequestSummary = (hasReviewWorkspace || Boolean(itinerary)) && resolvedRequestSummary;
   const shouldShowReviewProgress = recentPlanningUpdates.length > 0 && !(hasReviewWorkspace || itinerary);
   const shouldShowCompactProgress = (hasReviewWorkspace || Boolean(itinerary)) && recentPlanningUpdates.length > 0;
 
@@ -107,7 +113,7 @@ export function PlannerStage({
           {shouldShowRequestSummary ? (
             <div className="rounded-[1.75rem] border border-line/80 bg-paper/92 px-5 py-4 text-sm leading-7 text-ink shadow-sm">
               <div className="eyebrow-label mb-2">Your request</div>
-              {originalUserMessage?.content}
+              {resolvedRequestSummary}
             </div>
           ) : null}
 

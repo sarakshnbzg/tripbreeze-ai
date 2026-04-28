@@ -79,4 +79,16 @@ describe("planner helpers", () => {
       "Window seat if possible. Only include these airlines: Lufthansa. Exclude these airlines: Ryanair.",
     );
   });
+
+  it("does not send the default economy cabin as an active refinement", () => {
+    const fields = buildStructuredFields(buildForm({ travelClass: "ECONOMY" }));
+
+    expect(fields).not.toHaveProperty("travel_class");
+  });
+
+  it("sends travel class when the user chooses a non-default cabin", () => {
+    const fields = buildStructuredFields(buildForm({ travelClass: "BUSINESS" }));
+
+    expect(fields.travel_class).toBe("BUSINESS");
+  });
 });

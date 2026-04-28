@@ -690,6 +690,40 @@ class TestTripIntakeNode:
         assert "business" in interrupt_payload["question"].lower()
         assert interrupt_payload["conflict_field"] == "travel_class"
 
+    def test_profile_prefilled_origin_does_not_conflict_with_typed_origin(self):
+        domain_response = MagicMock()
+        domain_response.tool_calls = [{"args": {"in_domain": True, "reason": ""}}]
+
+        parse_response = MagicMock()
+        parse_response.tool_calls = [{
+            "args": {
+                "origin": "Vienna",
+                "destination": "Tokyo",
+                "departure_date": _DEPARTURE,
+                "return_date": _RETURN,
+            }
+        }]
+
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+
+        interrupt_mock = MagicMock()
+        state = self._base_state(
+            user_profile={"home_city": "Berlin"},
+            structured_fields={"origin": "Berlin"},
+            free_text_query="Fly from Vienna to Tokyo for 8 nights in October",
+        )
+
+        with patch("domain.nodes.trip_intake.create_chat_model", return_value=mock_llm):
+            with patch("domain.nodes.trip_intake.invoke_with_retry", side_effect=[domain_response, parse_response]):
+                with patch("domain.nodes.trip_intake.extract_token_usage", return_value=None):
+                    with patch("domain.nodes.trip_intake.interrupt", interrupt_mock):
+                        result = trip_intake(state)
+
+        trip = result["trip_request"]
+        assert trip["origin"] == "Vienna"
+        interrupt_mock.assert_not_called()
+
     def test_conflict_clarification_happens_before_missing_field_question(self):
         parse_response = MagicMock()
         parse_response.tool_calls = [{

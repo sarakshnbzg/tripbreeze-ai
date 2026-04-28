@@ -331,6 +331,27 @@ def _find_conflicting_field(
 
     return None
 
+
+def _remove_implicit_profile_origin(
+    structured_fields: dict[str, Any],
+    profile: dict[str, Any],
+    *,
+    free_text_query: str,
+    revision_mode: bool,
+) -> dict[str, Any]:
+    """Drop a profile-prefilled origin so typed free text can speak for itself."""
+    effective_fields = dict(structured_fields)
+    if revision_mode or not free_text_query.strip():
+        return effective_fields
+
+    profile_home_city = str(profile.get("home_city") or "").strip()
+    structured_origin = str(effective_fields.get("origin") or "").strip()
+    if profile_home_city and structured_origin and structured_origin.casefold() == profile_home_city.casefold():
+        effective_fields.pop("origin", None)
+
+    return effective_fields
+
+
 def trip_intake(state: TravelState) -> dict:
     """LangGraph node: build trip request from structured form fields and/or free text."""
     profile = state.get("user_profile", {})
@@ -338,6 +359,12 @@ def trip_intake(state: TravelState) -> dict:
     revision_baseline = state.get("revision_baseline", {})
     free_text_query = state.get("free_text_query", "")
     revision_mode = bool(revision_baseline)
+    effective_structured_fields = _remove_implicit_profile_origin(
+        structured_fields,
+        profile,
+        free_text_query=free_text_query,
+        revision_mode=revision_mode,
+    )
 
     token_usage: list[dict] = []
     model = state.get("llm_model")
@@ -345,9 +372,9 @@ def trip_intake(state: TravelState) -> dict:
     temperature = float(state.get("llm_temperature", 0))
 
     # Start with structured fields as the base
-    raw_trip_data = dict(revision_baseline or structured_fields)
+    raw_trip_data = dict(revision_baseline or effective_structured_fields)
 
-    has_structured_trip_signal = _has_structured_trip_signal(structured_fields)
+    has_structured_trip_signal = _has_structured_trip_signal(effective_structured_fields)
 
     if free_text_query.strip() and not revision_mode and not has_structured_trip_signal:
         llm = create_chat_model(provider, model, temperature=temperature)
@@ -386,9 +413,9 @@ def trip_intake(state: TravelState) -> dict:
     parsed_query_for_conflicts: dict[str, Any] = {}
 
     # Check for multi-city from structured form fields first
-    if structured_fields.get("multi_city_legs"):
+    if effective_structured_fields.get("multi_city_legs"):
         try:
-            trip_legs, trip_updates = _build_trip_legs_from_form(structured_fields, profile)
+            trip_legs, trip_updates = _build_trip_legs_from_form(effective_structured_fields, profile)
             if trip_legs:
                 is_multi_city = True
                 raw_trip_data.update(trip_updates)
@@ -474,7 +501,7 @@ def trip_intake(state: TravelState) -> dict:
         resolved_conflict_fields: set[str] = set()
         while True:
             conflict = _find_conflicting_field(
-                structured_fields,
+                effective_structured_fields,
                 parsed_query_for_conflicts,
                 is_multi_city=bool(trip_legs or inferred_multi_city_data),
                 resolved_fields=resolved_conflict_fields,
@@ -520,7 +547,7 @@ def trip_intake(state: TravelState) -> dict:
                     question,
                     free_text_query,
                     raw_trip_data,
-                    bool(trip_legs or inferred_multi_city_data or structured_fields.get("multi_city_legs")),
+                    bool(trip_legs or inferred_multi_city_data or effective_structured_fields.get("multi_city_legs")),
                     model=model,
                 )
                 parsed_answer = _apply_clarification_duration_fallback(

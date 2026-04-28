@@ -659,4 +659,40 @@ Passport required.
       }),
     ]);
   });
+
+  it("omits flexible nearby activity placeholder variants without relying on structured flags", () => {
+    const viewModel = buildItineraryViewModel({
+      state: {
+        itinerary_data: {
+          daily_plans: [
+            {
+              day_number: 5,
+              activities: [
+                {
+                  name: "Flexible Nearby Activity",
+                  latitude: -33.9249,
+                  longitude: 18.4241,
+                },
+                {
+                  name: "Senso-ji Temple",
+                  latitude: 35.7148,
+                  longitude: 139.7967,
+                },
+              ],
+            },
+          ],
+        },
+      } as unknown as TravelState,
+      itinerary: "Trip ready",
+      currencyCode: "EUR",
+    });
+
+    expect(viewModel.mapPoints).toEqual([
+      expect.objectContaining({
+        label: "Senso-ji Temple",
+        latitude: 35.7148,
+        longitude: 139.7967,
+      }),
+    ]);
+  });
 });

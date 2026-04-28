@@ -7,10 +7,40 @@ import type {
   UserProfile,
 } from "@/lib/types";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "http://127.0.0.1:8100";
+const DEFAULT_API_BASE_URL = "http://127.0.0.1:8100";
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost"]);
 const CSRF_STORAGE_KEY = "tripbreeze_csrf_token";
 const CSRF_HEADER_NAME = "x-csrf-token";
+
+export function resolveApiBaseUrl(
+  configuredBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL,
+  browserHostname?: string,
+): string {
+  const normalizedBaseUrl = configuredBaseUrl?.replace(/\/$/, "") ?? DEFAULT_API_BASE_URL;
+  const currentHostname =
+    browserHostname ?? (typeof window !== "undefined" ? window.location.hostname : "");
+  if (!currentHostname) {
+    return normalizedBaseUrl;
+  }
+
+  try {
+    const parsedUrl = new URL(normalizedBaseUrl);
+    if (
+      LOOPBACK_HOSTS.has(parsedUrl.hostname) &&
+      LOOPBACK_HOSTS.has(currentHostname) &&
+      parsedUrl.hostname !== currentHostname
+    ) {
+      parsedUrl.hostname = currentHostname;
+      return parsedUrl.toString().replace(/\/$/, "");
+    }
+  } catch {
+    return normalizedBaseUrl;
+  }
+
+  return normalizedBaseUrl;
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 
 function getStoredCsrfToken(): string {
   if (typeof window === "undefined") {

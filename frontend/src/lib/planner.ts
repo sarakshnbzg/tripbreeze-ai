@@ -157,7 +157,7 @@ export function buildStructuredFields(form: PlannerForm) {
   if (form.maxFlightDurationHours > 0) {
     fields.max_duration = Math.round(form.maxFlightDurationHours * 60);
   }
-  if (form.travelClass) {
+  if (form.travelClass && form.travelClass !== defaultForm.travelClass) {
     fields.travel_class = form.travelClass;
   }
   if (form.hotelStars.length) {

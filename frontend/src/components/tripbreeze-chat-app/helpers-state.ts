@@ -60,6 +60,29 @@ export function buildTripSummary(state: TravelState | null, currencyCode: string
     .join("  •  ");
 }
 
+export function buildResolvedRequestSummary(
+  state: TravelState | null,
+  currencyCode: string,
+  fallbackMessage = "",
+) {
+  const tripRequest = readRecord(state?.trip_request);
+  const tripLegs = state?.trip_legs ?? [];
+  const hasStructuredTrip =
+    tripLegs.length > 0 ||
+    [
+      tripRequest.origin,
+      tripRequest.destination,
+      tripRequest.departure_date,
+      tripRequest.return_date,
+    ].some((value) => readString(value));
+
+  if (hasStructuredTrip) {
+    return buildTripSummary(state, currencyCode);
+  }
+
+  return fallbackMessage.trim();
+}
+
 export function latestAssistantMessage(state: TravelState | null) {
   const message = [...(state?.messages ?? [])]
     .reverse()

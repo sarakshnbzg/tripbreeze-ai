@@ -15,7 +15,7 @@ function activeFlightFilters(state: ReviewWorkspaceModel["state"]) {
   const filters: string[] = [];
 
   const travelClass = String(trip.travel_class ?? "").trim();
-  if (travelClass) {
+  if (travelClass && travelClass !== "ECONOMY") {
     filters.push(`${travelClass.replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase())} cabin`);
   }
 

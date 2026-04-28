@@ -187,6 +187,9 @@ function isGenericLogisticsActivity(label: string): boolean {
     "hotel checkout",
     "departure",
     "depart ",
+    "flexible activity nearby",
+    "nearby flexible activity",
+    "flexible nearby activity",
   ];
 
   return genericPhrases.some((phrase) => normalized.includes(phrase));
