@@ -41,6 +41,8 @@ describe("PlannerStage", () => {
           setClarificationAnswer: vi.fn(),
           recording: false,
           error: "",
+          username: "",
+          homeCity: "",
         }}
         models={{
           availableModels: ["gpt-4o-mini"],

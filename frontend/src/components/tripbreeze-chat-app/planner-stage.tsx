@@ -48,6 +48,8 @@ export function PlannerStage({
     setClarificationAnswer,
     recording,
     error,
+    username,
+    homeCity,
   } = displayState;
   const {
     availableModels,
@@ -184,6 +186,8 @@ export function PlannerStage({
           loading={loading}
           recording={recording}
           error={error}
+          username={username}
+          homeCity={homeCity}
           onPlanTrip={() => void handlePlanTrip()}
           onVoiceInput={() => void handleVoiceInput()}
         />

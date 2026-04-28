@@ -15,6 +15,8 @@ export function PlannerComposer({
   loading,
   recording,
   error,
+  username,
+  homeCity,
   onPlanTrip,
   onVoiceInput,
 }: {
@@ -24,6 +26,8 @@ export function PlannerComposer({
   loading: PlannerLoadingState;
   recording: boolean;
   error: string;
+  username: string;
+  homeCity: string;
   onPlanTrip: () => void;
   onVoiceInput: () => void;
 }) {
@@ -40,8 +44,9 @@ export function PlannerComposer({
     }));
   };
 
+  const origin = homeCity || "London";
   const promptChips = [
-    "I want to fly from London to Tokyo from 2026-06-10 to 2026-06-17 for 2 travelers with a budget of 3000 EUR.",
+    `I want to fly from ${origin} to Tokyo from 2026-06-10 to 2026-06-17 for 2 travelers with a budget of 3000 EUR.`,
     "Paris for 3 days, then Barcelona for 4 days, then fly home.",
     "Business class, exclude Ryanair, keep the flight under 10 hours.",
   ];
@@ -62,11 +67,15 @@ export function PlannerComposer({
         <div className="flex items-center justify-between gap-3">
           <div>
             <div className="eyebrow-label">Plan a trip</div>
-            <h3 className="mt-2 font-display text-3xl text-ink">Start with the trip brief</h3>
+            <h3 className="mt-2 font-display text-3xl text-ink">
+              {username ? `Where to next, ${username}?` : "Start with the trip brief"}
+            </h3>
           </div>
         </div>
         <p className="mt-3 max-w-2xl text-sm leading-7 text-slate">
-          Describe the kind of trip you want. If you prefer, you can add structured details below.
+          {homeCity
+            ? `Flying from ${homeCity}? Describe your trip and we'll handle the rest — or add structured details below.`
+            : "Describe the kind of trip you want. If you prefer, you can add structured details below."}
         </p>
         <textarea
           className="mt-4 h-36 w-full rounded-[1.8rem] border border-line/80 bg-white px-5 py-4 text-sm leading-7 outline-none transition focus:border-coral focus:shadow-[0_0_0_4px_rgba(215,108,78,0.12)]"

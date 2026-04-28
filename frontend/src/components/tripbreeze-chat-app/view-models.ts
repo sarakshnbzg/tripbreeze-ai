@@ -257,6 +257,12 @@ function isGenericLogisticsActivity(label: string): boolean {
   }
 
   const genericPhrases = [
+    "flight to ",
+    "fly to ",
+    "flight from ",
+    "fly from ",
+    "travel to ",
+    "travel from ",
     "airport transfer",
     "transfer to airport",
     "station transfer",

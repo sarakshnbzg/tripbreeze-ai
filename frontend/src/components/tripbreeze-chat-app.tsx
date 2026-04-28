@@ -243,6 +243,8 @@ export function TripBreezeChatApp() {
     setClarificationAnswer,
     recording,
     error,
+    username: authenticatedUser,
+    homeCity: profile?.home_city ?? "",
   };
   const plannerStageModels: PlannerStageModels = {
     availableModels,

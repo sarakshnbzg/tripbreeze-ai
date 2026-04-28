@@ -426,7 +426,7 @@ class TestClarificationDurationFallback:
         assert result["trip_legs"][0]["destination"] == "Paris"
         assert result["trip_legs"][1]["destination"] == "London"
         assert result["trip_request"]["departure_date"] == departure_date
-        assert result["trip_request"]["return_date"] == result["trip_legs"][-1]["departure_date"]
+        assert result["trip_request"]["return_date"] == result["trip_legs"][-1]["check_out_date"]
         assert result["trip_request"]["num_travelers"] == 2
 
 

@@ -39,6 +39,7 @@ from domain.nodes.trip_intake_helpers import (
     _normalise_trip_data,
     _repair_invalid_duration_dates,
     _recover_multi_city_trip,
+    _legs_return_date,
 )
 from application.state import TravelState
 from application.workflow_types import WorkflowStep
@@ -454,8 +455,7 @@ def trip_intake(state: TravelState) -> dict:
                 raw_trip_data["origin"] = trip_legs[0]["origin"]
                 raw_trip_data["destination"] = trip_legs[0]["destination"]  # First destination
                 raw_trip_data["departure_date"] = trip_legs[0]["departure_date"]
-                # Return date is the departure date of the last leg (return flight)
-                raw_trip_data["return_date"] = trip_legs[-1]["departure_date"]
+                raw_trip_data["return_date"] = _legs_return_date(trip_legs)
                 logger.info("Multi-city trip with %d legs detected", len(trip_legs))
         else:
             _merge_single_city_parsed_query(

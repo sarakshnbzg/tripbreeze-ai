@@ -11,6 +11,22 @@ from infrastructure.logging_utils import get_logger
 
 logger = get_logger(__name__)
 
+
+def _legs_return_date(legs: list[dict[str, Any]]) -> str:
+    """Return date derived from the last leg.
+
+    When the last leg is a return-home transit (nights=0) its departure_date IS
+    the day the traveller flies home.  When the last leg is a city stay
+    (nights>0, i.e. no explicit return leg was appended) the traveller departs
+    on check_out_date, not on the day they arrived.
+    """
+    if not legs:
+        return ""
+    last = legs[-1]
+    if last.get("nights", 0) > 0:
+        return str(last.get("check_out_date") or last["departure_date"])
+    return str(last["departure_date"])
+
 VALID_INTERESTS = {
     "food",
     "history",
@@ -342,7 +358,7 @@ def _build_trip_legs_from_form(
         "origin": trip_legs[0]["origin"],
         "destination": trip_legs[0]["destination"],
         "departure_date": trip_legs[0]["departure_date"],
-        "return_date": trip_legs[-1]["departure_date"],
+        "return_date": _legs_return_date(trip_legs),
     }
 
 
@@ -404,7 +420,7 @@ def _recover_multi_city_trip(
     raw_trip_data["origin"] = built_legs[0]["origin"]
     raw_trip_data["destination"] = built_legs[0]["destination"]
     raw_trip_data["departure_date"] = built_legs[0]["departure_date"]
-    raw_trip_data["return_date"] = built_legs[-1]["departure_date"]
+    raw_trip_data["return_date"] = _legs_return_date(built_legs)
     return built_legs, inferred_multi_city_data
 
 
@@ -656,7 +672,7 @@ def _finalise_inferred_multi_city_trip(
         raw_trip_data["origin"] = trip_legs[0]["origin"]
         raw_trip_data["destination"] = trip_legs[0]["destination"]
         raw_trip_data["departure_date"] = trip_legs[0]["departure_date"]
-        raw_trip_data["return_date"] = trip_legs[-1]["departure_date"]
+        raw_trip_data["return_date"] = _legs_return_date(trip_legs)
     return trip_legs
 
 

@@ -42,6 +42,8 @@ export type PlannerStageDisplayState = {
   setClarificationAnswer: Dispatch<SetStateAction<string>>;
   recording: boolean;
   error: string;
+  username: string;
+  homeCity: string;
 };
 
 export type PlannerStageModels = {
