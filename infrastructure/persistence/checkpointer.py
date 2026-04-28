@@ -8,7 +8,7 @@ allowed.
 
 import atexit
 
-from settings import MEMORY_DATABASE_URL, REQUIRE_PERSISTENT_CHECKPOINTER
+from settings import APP_ENV, MEMORY_DATABASE_URL, REQUIRE_PERSISTENT_CHECKPOINTER
 from infrastructure.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -20,6 +20,11 @@ _pool = None
 _checkpointer = None
 
 
+def _persistent_checkpointer_required() -> bool:
+    """Require durable HITL state outside local development."""
+    return REQUIRE_PERSISTENT_CHECKPOINTER or APP_ENV in {"production", "staging"}
+
+
 def get_checkpointer():
     """Return a process-wide LangGraph checkpointer (lazy singleton)."""
     global _pool, _checkpointer
@@ -27,7 +32,7 @@ def get_checkpointer():
         return _checkpointer
 
     if not MEMORY_DATABASE_URL:
-        if REQUIRE_PERSISTENT_CHECKPOINTER:
+        if _persistent_checkpointer_required():
             raise RuntimeError(
                 "Persistent LangGraph checkpointing is required, but DATABASE_URL/NEON_DATABASE_URL "
                 "is not configured. Set a Postgres connection string before starting the app."

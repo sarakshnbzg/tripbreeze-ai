@@ -160,16 +160,19 @@ Hallucination risk is reduced by grounding guidance in a local knowledge base, c
 
 ## ⚠️ Limitations
 
-- Restart-safe HITL review requires Postgres-backed checkpointing
-- Live search quality depends on SerpAPI quotas and source coverage
+- Restart-safe HITL review requires Postgres-backed checkpointing, and staging/production now fail fast if `DATABASE_URL` is missing
+- Live search quality depends on SerpAPI quotas, source coverage, and usage costs that can rise with repeated searches
+- The app currently runs as a single-region deployment, so distant users and regional outages can still affect latency and availability
 - LLM research and finalisation can still be imperfect when source data is sparse or ambiguous
 - Auth is suitable for demos and small deployments, but broader production hardening is still needed
+- Golden-prompt replay tests cover intake, research, and finaliser flows, but offline evaluation breadth is still limited compared with a larger curated dataset or live judge pipeline
 
 ---
 
 ## 🔭 Future Work
 
 - Expand visa and entry coverage with fresher, passport-specific data
+- Broaden offline evaluation with more golden cases, regression thresholds, and scheduled judge runs
 - Improve revision flows so users can adjust specific choices without restarting the full plan
 - Add user-facing profile management with stronger linking to past trips
 - Strengthen auth to production-grade standards
