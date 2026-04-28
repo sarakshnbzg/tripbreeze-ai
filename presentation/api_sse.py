@@ -126,7 +126,7 @@ def run_clarification_sync(q: queue.Queue, thread_id: str, answer: str) -> None:
 
 async def queue_to_sse(q: queue.Queue):
     """Async generator that drains a queue and yields SSE strings."""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     while True:
         item = await loop.run_in_executor(None, q.get)
         if item is SENTINEL:

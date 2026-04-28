@@ -2,11 +2,11 @@
 
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class SearchRequest(BaseModel):
-    user_id: str = "default_user"
+    user_id: str
     free_text_query: str | None = None
     structured_fields: dict[str, Any] | None = None
     llm_provider: str = "openai"
@@ -17,10 +17,10 @@ class SearchRequest(BaseModel):
 class ApproveRequest(BaseModel):
     user_feedback: str = ""
     feedback_type: str = "rewrite_itinerary"
-    selected_flight: dict[str, Any] = {}
-    selected_hotel: dict[str, Any] = {}
-    selected_flights: list[dict[str, Any]] = []
-    selected_hotels: list[dict[str, Any]] = []
+    selected_flight: dict[str, Any] = Field(default_factory=dict)
+    selected_hotel: dict[str, Any] = Field(default_factory=dict)
+    selected_flights: list[dict[str, Any]] = Field(default_factory=list)
+    selected_hotels: list[dict[str, Any]] = Field(default_factory=list)
     trip_request: dict[str, Any] | None = None
     llm_provider: str = "openai"
     llm_model: str = "gpt-4o-mini"

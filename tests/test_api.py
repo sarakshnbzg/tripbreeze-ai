@@ -31,7 +31,7 @@ class TestAPIEndpoints:
     def test_search_rejects_unavailable_provider(self, monkeypatch):
         monkeypatch.setattr(planning_routes, "get_provider_status", lambda provider: (False, "Provider unavailable"))
 
-        response = client.post("/api/search", json={"llm_provider": "openai"})
+        response = client.post("/api/search", json={"user_id": "test_user", "llm_provider": "openai"})
 
         assert response.status_code == 400
         assert response.json()["detail"] == "Provider unavailable"
@@ -104,7 +104,7 @@ class TestAPIEndpoints:
 
         loop = DummyLoop()
         monkeypatch.setattr(planning_routes, "get_provider_status", lambda provider: (True, ""))
-        monkeypatch.setattr(planning_routes.asyncio, "get_event_loop", lambda: loop)
+        monkeypatch.setattr(planning_routes.asyncio, "get_running_loop", lambda: loop)
 
         response = asyncio.run(
             planning_routes.approve(

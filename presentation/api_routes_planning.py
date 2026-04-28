@@ -42,7 +42,7 @@ async def search(req: SearchRequest):
 
     config = {"configurable": {"thread_id": thread_id}}
     q: queue.Queue = queue.Queue()
-    asyncio.get_event_loop().run_in_executor(executor, run_planning_sync, q, initial_state, config)
+    asyncio.get_running_loop().run_in_executor(executor, run_planning_sync, q, initial_state, config)
 
     return StreamingResponse(
         queue_to_sse(q),
@@ -68,7 +68,7 @@ async def get_state(thread_id: str):
 async def return_flights(thread_id: str, req: ReturnFlightRequest):
     """Fetch return flight options for a selected outbound departure token."""
     time_window = tuple(req.return_time_window) if req.return_time_window and len(req.return_time_window) == 2 else None
-    results = await asyncio.get_event_loop().run_in_executor(
+    results = await asyncio.get_running_loop().run_in_executor(
         executor,
         lambda: fetch_return_flights(
             origin=req.origin,
@@ -92,7 +92,7 @@ async def clarify(thread_id: str, req: ClarifyRequest):
         raise HTTPException(status_code=400, detail="Answer cannot be empty")
 
     q: queue.Queue = queue.Queue()
-    asyncio.get_event_loop().run_in_executor(executor, run_clarification_sync, q, thread_id, req.answer.strip())
+    asyncio.get_running_loop().run_in_executor(executor, run_clarification_sync, q, thread_id, req.answer.strip())
 
     return StreamingResponse(
         queue_to_sse(q),
@@ -133,7 +133,7 @@ async def approve(thread_id: str, req: ApproveRequest):
         state_updates["messages"] = [{"role": "user", "content": f"{prefix}{req.user_feedback.strip()}"}]
 
     q: queue.Queue = queue.Queue()
-    asyncio.get_event_loop().run_in_executor(executor, run_post_review_sync, q, thread_id, state_updates)
+    asyncio.get_running_loop().run_in_executor(executor, run_post_review_sync, q, thread_id, state_updates)
 
     return StreamingResponse(
         queue_to_sse(q),
