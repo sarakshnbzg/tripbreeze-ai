@@ -46,7 +46,7 @@ export function FinalItineraryPanel({
 
   if (!hasStructuredItinerary) {
     return (
-      <div className="rounded-[1.9rem] border border-ink/10 bg-gradient-to-br from-[#fffaf4] via-white to-[#f6f1ea] p-5 shadow-[0_24px_60px_rgba(16,33,43,0.08)]">
+      <div className="animate-fade-up rounded-[1.9rem] border border-ink/10 bg-gradient-to-br from-[#fffaf4] via-white to-[#f6f1ea] p-5 shadow-[0_24px_60px_rgba(16,33,43,0.08)]">
         <div className="rounded-[1.6rem] border border-white/80 bg-white/85 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -75,7 +75,7 @@ export function FinalItineraryPanel({
   }
 
   return (
-    <div className="rounded-[1.9rem] border border-ink/10 bg-gradient-to-br from-[#fffaf4] via-white to-[#f6f1ea] p-5 shadow-[0_24px_60px_rgba(16,33,43,0.08)]">
+    <div className="animate-fade-up rounded-[1.9rem] border border-ink/10 bg-gradient-to-br from-[#fffaf4] via-white to-[#f6f1ea] p-4 shadow-[0_24px_60px_rgba(16,33,43,0.08)] sm:p-5">
       <div className="mb-5 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <div className="text-lg font-semibold text-ink">Final itinerary</div>
@@ -84,7 +84,7 @@ export function FinalItineraryPanel({
         <div className="rounded-[1.5rem] border border-line/70 bg-white/88 p-4 xl:min-w-[24rem]">
           <div className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate">Save or share</div>
           <div className="flex flex-wrap gap-3">
-            <Button variant="secondary" onClick={() => void onDownloadPdf()} disabled={loading !== null}>
+            <Button variant="secondary" onClick={() => void onDownloadPdf()} disabled={loading !== null} className="w-full justify-center sm:w-auto">
               {loading === "pdf" ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : null}
               Download PDF
             </Button>
@@ -92,11 +92,11 @@ export function FinalItineraryPanel({
               <input
                 type="email"
                 placeholder="your.email@example.com"
-                className="min-w-[220px] flex-1 rounded-full border border-ink/10 bg-mist/60 px-4 py-3 text-sm outline-none transition focus:border-coral"
+                className="min-w-0 flex-1 rounded-full border border-ink/10 bg-mist/60 px-4 py-3 text-sm outline-none transition focus:border-coral sm:min-w-[220px]"
                 value={emailAddress}
                 onChange={(event) => setEmailAddress(event.target.value)}
               />
-              <Button onClick={() => void onEmailItinerary()} disabled={loading !== null}>
+              <Button onClick={() => void onEmailItinerary()} disabled={loading !== null} className="w-full justify-center sm:w-auto">
                 {loading === "email" ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Mail className="mr-2 h-4 w-4" />}
                 Email itinerary
               </Button>
@@ -117,11 +117,11 @@ export function FinalItineraryPanel({
         </div>
       ) : null}
 
-      <div className="mb-4 rounded-[1.6rem] border border-white/80 bg-white/85 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+      <div className="animate-fade-up stagger-1 mb-4 rounded-[1.6rem] border border-white/80 bg-white/85 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] sm:p-5">
         <div className="mb-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate">Trip snapshot</div>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {itinerarySnapshotItems.map((item) => (
-            <div key={item.label} className="rounded-[1.3rem] border border-ink/10 bg-[#fffdf9] p-4">
+            <div key={item.label} className="lift-card rounded-[1.3rem] border border-ink/10 bg-[#fffdf9] p-3 sm:p-4">
               <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate">{item.label}</div>
               <div className="mt-2 text-sm font-semibold leading-6 text-ink">{item.value}</div>
             </div>
@@ -148,11 +148,11 @@ export function FinalItineraryPanel({
       </div>
 
       {primaryItinerarySections.length ? (
-        <div className="mb-4">
+        <div className="animate-fade-up stagger-2 mb-4">
           <div className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate">Trip logistics</div>
           <div className="grid gap-4 xl:grid-cols-2">
             {primaryItinerarySections.map((section) => (
-              <div key={section.key} className="rounded-[1.6rem] border border-white/80 bg-white/80 p-5">
+              <div key={section.key} className="lift-card rounded-[1.6rem] border border-white/80 bg-white/80 p-4 sm:p-5">
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate">{section.title}</div>
                 <div className="mt-2 text-sm leading-7 text-ink">{renderMarkdownContent(section.content) ?? section.content}</div>
               </div>
@@ -162,7 +162,7 @@ export function FinalItineraryPanel({
       ) : null}
 
       {visaTrust ? (
-        <div className="mb-4">
+        <div className="animate-fade-up stagger-2 mb-4">
           <SourceTrustCard trust={visaTrust} />
         </div>
       ) : null}
@@ -172,7 +172,7 @@ export function FinalItineraryPanel({
           <div className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate">Trip extras</div>
           <div className="grid gap-4 xl:grid-cols-2">
             {secondaryItinerarySections.map((section) => (
-              <div key={section.key} className="rounded-[1.6rem] border border-white/80 bg-white/80 p-5">
+              <div key={section.key} className="lift-card rounded-[1.6rem] border border-white/80 bg-white/80 p-4 sm:p-5">
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate">{section.title}</div>
                 <div className="mt-2 text-sm leading-7 text-ink">{renderMarkdownContent(section.content) ?? section.content}</div>
               </div>
@@ -182,7 +182,7 @@ export function FinalItineraryPanel({
       ) : null}
 
       {mapPoints.length ? (
-        <div className="mb-4 rounded-[1.6rem] border border-white/80 bg-white/80 p-5">
+        <div className="animate-fade-up stagger-3 mb-4 rounded-[1.6rem] border border-white/80 bg-white/80 p-4 sm:p-5">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate">Trip map</div>
             <div className="text-xs text-slate">{mapPoints.length} stop{mapPoints.length === 1 ? "" : "s"}</div>
@@ -192,11 +192,11 @@ export function FinalItineraryPanel({
       ) : null}
 
       {itineraryLegs.length ? (
-        <div className="mb-4 rounded-[1.6rem] border border-white/80 bg-white/80 p-5">
+        <div className="animate-fade-up stagger-3 mb-4 rounded-[1.6rem] border border-white/80 bg-white/80 p-4 sm:p-5">
           <div className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate">Trip legs</div>
           <div className="grid gap-3 lg:grid-cols-2">
             {itineraryLegs.map((leg, index) => (
-              <div key={`itinerary-leg-${index}`} className="rounded-[1.3rem] border border-ink/10 bg-[#fffaf4] p-4 text-sm text-slate">
+              <div key={`itinerary-leg-${index}`} className="lift-card rounded-[1.3rem] border border-ink/10 bg-[#fffaf4] p-3 text-sm text-slate sm:p-4">
                 <div className="font-semibold text-ink">
                   Leg {Number(leg.leg_number ?? index + 1)}: {readString(leg.origin)} to {readString(leg.destination)}
                 </div>
@@ -210,7 +210,7 @@ export function FinalItineraryPanel({
       ) : null}
 
       {itineraryDays.length ? (
-        <div className="mb-4 rounded-[1.6rem] border border-white/80 bg-white/80 p-5">
+        <div className="animate-fade-up stagger-3 mb-4 rounded-[1.6rem] border border-white/80 bg-white/80 p-4 sm:p-5">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate">Day-by-day plan</div>
             <div className="text-xs text-slate">{itineraryDays.length} day{itineraryDays.length === 1 ? "" : "s"}</div>
@@ -220,7 +220,7 @@ export function FinalItineraryPanel({
               const activities = readRecordArray(day.activities);
               const weather = readRecord(day.weather);
               return (
-                <div key={`itinerary-day-${index}`} className="rounded-[1.4rem] border border-ink/10 bg-[#fffdf9] p-4">
+                <div key={`itinerary-day-${index}`} className="lift-card rounded-[1.4rem] border border-ink/10 bg-[#fffdf9] p-3 sm:p-4">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <div className="font-semibold text-ink">
@@ -241,7 +241,7 @@ export function FinalItineraryPanel({
                   {activities.length ? (
                     <div className="mt-4 grid gap-3 lg:grid-cols-2">
                       {activities.map((activity, activityIndex) => (
-                        <div key={`activity-${index}-${activityIndex}`} className="rounded-[1.2rem] bg-white p-3 text-sm text-slate ring-1 ring-ink/8">
+                        <div key={`activity-${index}-${activityIndex}`} className="lift-card rounded-[1.2rem] bg-white p-3 text-sm text-slate ring-1 ring-ink/8">
                           <div className="flex items-center justify-between gap-3">
                             <div className="font-semibold text-ink">{readString(activity.name) || `Activity ${activityIndex + 1}`}</div>
                             {readString(activity.time_of_day) ? (

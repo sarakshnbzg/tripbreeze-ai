@@ -284,7 +284,29 @@ export function TripBreezeChatApp() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-7xl gap-6 px-4 py-6 xl:px-6">
+    <div className="mx-auto flex min-h-screen max-w-7xl flex-col gap-4 px-3 py-4 sm:px-4 sm:py-6 lg:flex-row lg:gap-6 xl:px-6">
+      <div className="panel-surface rounded-[1.6rem] p-4 lg:hidden">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="eyebrow-label">Signed in</div>
+            <div className="mt-2 font-display text-2xl text-ink">{authenticatedUser}</div>
+            <div className="mt-2 text-sm text-slate">
+              {hasReviewWorkspace
+                ? "You’re in the review stage. Your selections and progress stay with this session."
+                : itinerary
+                  ? "Your itinerary is ready below with sharing and export options."
+                  : "Your saved preferences stay applied while you plan."}
+            </div>
+          </div>
+          {currentTokenSummary.cost > 0 ? (
+            <div className="rounded-[1.1rem] border border-line/70 bg-white/82 px-3 py-2 text-right">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate">Session cost</div>
+              <div className="mt-1 text-sm font-semibold text-ink">${currentTokenSummary.cost.toFixed(4)}</div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+
       <AppSidebar
         authenticatedUser={authenticatedUser}
         profile={profile}

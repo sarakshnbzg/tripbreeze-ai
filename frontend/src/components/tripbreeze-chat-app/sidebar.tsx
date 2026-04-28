@@ -63,11 +63,11 @@ export function AppSidebar({
   }
 
   return (
-    <aside className="hidden w-80 shrink-0 lg:block">
+    <aside className="hidden w-80 shrink-0 lg:sticky lg:top-6 lg:block lg:self-start">
       <Card className="border-white/70 bg-white/76 p-6">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm uppercase tracking-[0.25em] text-slate">Account</p>
+            <p className="eyebrow-label">Account</p>
             <h2 className="mt-2 font-display text-2xl text-ink">{authenticatedUser}</h2>
           </div>
           <button type="button" onClick={onLogout} className="rounded-full border border-line/80 bg-white/70 p-2 text-slate transition hover:bg-white">

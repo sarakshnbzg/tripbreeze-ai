@@ -56,8 +56,16 @@ export function DestinationBriefingPanel({ destinationInfo }: { destinationInfo:
   const parsed = extractSourceTrust(String(destinationInfo));
 
   return (
-    <div className="rounded-[1.75rem] border border-line/70 bg-paper/88 p-5">
-      <div className="mb-3 text-lg font-semibold text-ink">Destination briefing</div>
+    <div className="panel-surface rounded-[1.85rem] p-5">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate">Prepared earlier</div>
+          <div className="mt-2 text-lg font-semibold text-ink">Destination briefing</div>
+        </div>
+        <div className="rounded-full border border-pine/15 bg-pine/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-pine">
+          Entry guidance
+        </div>
+      </div>
       <div className="space-y-4">
         <div className="text-sm leading-7 text-ink">{renderMarkdownContent(parsed.content) ?? parsed.content}</div>
         {parsed.trust ? <SourceTrustCard trust={parsed.trust} compact /> : null}
@@ -84,6 +92,19 @@ export function ReviewWorkspaceHeader({ model }: { model: ReviewWorkspaceModel }
   }
 
   const filters = activeFlightFilters(state);
+  const selectionSummary = state.trip_legs?.length
+    ? `${completedMultiCityLegs} completed leg${completedMultiCityLegs === 1 ? "" : "s"} out of ${state.trip_legs.length}`
+    : [
+        hasSelectedSingleFlight ? selectionLabel(selectedOutboundOption, "Flight selected") : "No flight yet",
+        isRoundTrip
+          ? selectedReturnIndex !== null
+            ? selectionLabel(selectedReturnOption, "Return selected")
+            : "No return yet"
+          : null,
+        hasSelectedSingleHotel ? selectionLabel(selectedHotelOption, "Hotel selected") : "No hotel yet",
+      ]
+        .filter(Boolean)
+        .join(" • ");
 
   const steps = state.trip_legs?.length
     ? ["1. Select flights", "2. Select hotels", "3. Personalise itinerary"]
@@ -93,47 +114,52 @@ export function ReviewWorkspaceHeader({ model }: { model: ReviewWorkspaceModel }
 
   return (
     <>
-      <div className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-lg font-semibold text-ink">
-            <Plane className="h-5 w-5 text-coral" />
-            Review your trip
+      <div className="mb-5 rounded-[1.7rem] border border-white/80 bg-white/74 p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-lg font-semibold text-ink">
+              <Plane className="h-5 w-5 text-coral" />
+              Review your trip
+            </div>
+            <div className="mt-1 text-sm text-muted">Pick the right options first, then personalise the itinerary details.</div>
           </div>
-          <div className="mt-1 text-sm text-muted">Pick the right options first, then personalise the itinerary details.</div>
+          <div className="rounded-full border border-pine/15 bg-pine/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-pine">
+            Decision workspace
+          </div>
         </div>
-        <div className="rounded-full border border-pine/15 bg-pine/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-pine">
-          Decision workspace
+
+        <div className="mt-5 grid gap-3 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+          <div className="rounded-[1.4rem] border border-line/70 bg-paper/82 p-4">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate">Selection progress</div>
+            <div className="mt-2 text-sm leading-7 text-ink">{selectionSummary}</div>
+          </div>
+          <div className="rounded-[1.4rem] border border-line/70 bg-white/84 p-4">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate">Current flow</div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {steps.map((step) => (
+                <div
+                  key={step}
+                  className="rounded-full border border-line/70 bg-white px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate sm:text-xs sm:tracking-[0.14em]"
+                >
+                  {step}
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
-      <div className="mb-5 flex flex-wrap gap-2">
-        {steps.map((step) => (
-          <div
-            key={step}
-            className="rounded-full border border-line/70 bg-white/82 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate sm:text-xs sm:tracking-[0.14em]"
-          >
-            {step}
-          </div>
-        ))}
-      </div>
-      {state.trip_legs?.length ? (
-        <div className="mb-5 rounded-[1.4rem] border border-pine/12 bg-pine/8 px-4 py-3 text-sm text-slate">
-          <span className="font-semibold text-ink">Multi-city progress:</span>{" "}
-          {completedMultiCityLegs} of {state.trip_legs.length} legs fully selected
-        </div>
-      ) : (
-        <div className="mb-5 rounded-[1.4rem] border border-pine/12 bg-pine/8 px-4 py-3 text-sm text-slate">
-          <span className="font-semibold text-ink">Selected so far:</span>{" "}
-          {hasSelectedSingleFlight ? selectionLabel(selectedOutboundOption, "Flight selected") : "No flight yet"}
-          {isRoundTrip
-            ? ` • ${selectedReturnIndex !== null ? selectionLabel(selectedReturnOption, "Return selected") : "No return yet"}`
-            : ""}
-          {` • ${hasSelectedSingleHotel ? selectionLabel(selectedHotelOption, "Hotel selected") : "No hotel yet"}`}
-        </div>
-      )}
+
       {filters.length ? (
         <div className="mb-5 rounded-[1.4rem] border border-line/70 bg-white/88 px-4 py-3 text-sm text-slate">
           <span className="font-semibold text-ink">Active flight filters:</span>{" "}
           {filters.join(" • ")}
+        </div>
+      ) : null}
+
+      {state.trip_legs?.length ? (
+        <div className="mb-5 rounded-[1.4rem] border border-pine/12 bg-pine/8 px-4 py-3 text-sm text-slate">
+          <span className="font-semibold text-ink">Multi-city progress:</span>{" "}
+          {completedMultiCityLegs} of {state.trip_legs.length} legs fully selected
         </div>
       ) : null}
     </>
@@ -268,9 +294,25 @@ export function ReviewActionsPanel({
   const { setFeedback, handleReview } = actions;
 
   return (
-    <>
+    <div className="mt-5 rounded-[1.8rem] border border-white/80 bg-white/74 p-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="text-sm font-semibold text-ink">Finish this review</div>
+          <div className="mt-1 text-sm text-slate">
+            Approve the current selections to generate the itinerary, or send the planner back with revision notes.
+          </div>
+        </div>
+        <div
+          className={`rounded-full px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] ${
+            canApprove ? "border border-pine/15 bg-pine/10 text-pine" : "border border-line/70 bg-paper/80 text-slate"
+          }`}
+        >
+          {canApprove ? "Ready to approve" : "Selections still needed"}
+        </div>
+      </div>
+
       <textarea
-        className="mt-5 h-24 w-full rounded-[1.6rem] border border-ink/10 bg-white/80 px-4 py-3 text-sm outline-none transition focus:border-coral"
+        className="mt-5 h-24 w-full rounded-[1.6rem] border border-ink/10 bg-white/88 px-4 py-3 text-sm outline-none transition focus:border-coral"
         placeholder={
           showPersonalisationPanel
             ? "Add notes for the itinerary or ask for changes."
@@ -289,6 +331,6 @@ export function ReviewActionsPanel({
           Ask planner to rework results
         </Button>
       </div>
-    </>
+    </div>
   );
 }

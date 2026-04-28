@@ -26,9 +26,11 @@ export function ReviewPanel({
 
   return (
     <>
-      <DestinationBriefingPanel destinationInfo={state.destination_info} />
+      <div className="animate-fade-up">
+        <DestinationBriefingPanel destinationInfo={state.destination_info} />
+      </div>
 
-      <div className="rounded-[1.9rem] border border-pine/12 bg-gradient-to-b from-paper via-white to-[#f7f2ea] p-5 shadow-[0_24px_56px_rgba(16,33,43,0.10)]">
+      <div className="animate-fade-up stagger-1 rounded-[1.9rem] border border-pine/12 bg-gradient-to-b from-paper via-white to-[#f7f2ea] p-5 shadow-[0_24px_56px_rgba(16,33,43,0.10)]">
         <ReviewWorkspaceHeader model={model} />
         <PartialResultsPanel note={model.partialResultsNote} />
 

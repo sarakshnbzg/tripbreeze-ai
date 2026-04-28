@@ -133,7 +133,8 @@ export function ReviewOptionCard({
     <button
       type="button"
       onClick={onSelect}
-      className={`w-full rounded-[1.6rem] border p-4 text-left transition ${
+      data-selected={selected ? "true" : "false"}
+      className={`selection-ring lift-card w-full rounded-[1.6rem] border p-4 text-left transition ${
         selected
           ? "border-coral bg-gradient-to-br from-[#fff3ee] to-[#fff8f2] shadow-[0_18px_45px_rgba(215,108,78,0.14)]"
           : "border-ink/10 bg-white hover:-translate-y-0.5 hover:border-coral/40 hover:shadow-[0_14px_34px_rgba(16,33,43,0.08)]"
