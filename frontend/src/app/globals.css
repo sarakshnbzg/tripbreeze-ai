@@ -66,6 +66,45 @@ p {
     linear-gradient(180deg, rgba(255, 255, 255, 0.3), transparent 24%);
 }
 
+.planner-watermark {
+  position: absolute;
+  right: -3.5rem;
+  top: 6rem;
+  width: 22rem;
+  height: 22rem;
+  pointer-events: none;
+  border-radius: 9999px;
+  background:
+    radial-gradient(circle, rgba(220, 199, 161, 0.12), rgba(220, 199, 161, 0.02) 58%, transparent 72%),
+    url("/icon.png");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain, 72%;
+  opacity: 0.13;
+  filter: grayscale(1) blur(0.4px);
+  mix-blend-mode: multiply;
+}
+
+@media (max-width: 1024px) {
+  .planner-watermark {
+    width: 16rem;
+    height: 16rem;
+    right: -2.5rem;
+    top: 7rem;
+    opacity: 0.1;
+  }
+}
+
+@media (max-width: 640px) {
+  .planner-watermark {
+    width: 12rem;
+    height: 12rem;
+    right: -2rem;
+    top: 8rem;
+    opacity: 0.08;
+  }
+}
+
 .panel-surface {
   border: 1px solid var(--panel-border);
   background: var(--panel-fill);
