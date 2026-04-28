@@ -60,38 +60,6 @@ export function PlannerStage({
   const shouldShowRequestSummary = (hasReviewWorkspace || Boolean(itinerary)) && originalUserMessage;
   const shouldShowReviewProgress = recentPlanningUpdates.length > 0 && !(hasReviewWorkspace || itinerary);
   const shouldShowCompactProgress = (hasReviewWorkspace || Boolean(itinerary)) && recentPlanningUpdates.length > 0;
-  const currentStage = itinerary ? "finalize" : hasReviewWorkspace ? "review" : "plan";
-  const stageItems = [
-    {
-      key: "plan",
-      label: "Plan",
-      description: "Shape the brief and launch research.",
-    },
-    {
-      key: "review",
-      label: "Review",
-      description: "Compare flights, hotels, and costs.",
-    },
-    {
-      key: "finalize",
-      label: "Finalize",
-      description: "Turn the approved trip into an itinerary.",
-    },
-  ] as const;
-  const tripSummaryItems = [
-    {
-      label: "Trip mode",
-      value: form.multiCity ? "Multi-city" : form.oneWay ? "One-way" : "Round trip",
-    },
-    {
-      label: "Travelers",
-      value: `${Math.max(1, form.travelers)} traveler${Math.max(1, form.travelers) === 1 ? "" : "s"}`,
-    },
-    {
-      label: "Budget",
-      value: form.budgetLimit > 0 ? `${form.currency} ${form.budgetLimit.toLocaleString()}` : "Flexible",
-    },
-  ];
 
   return (
     <main className="min-w-0 flex-1">
@@ -124,44 +92,6 @@ export function PlannerStage({
         </div>
 
         <div className="relative mt-6 space-y-5">
-          <section className="rounded-[1.6rem] border border-line/70 bg-paper/84 px-4 py-4 sm:px-5">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <div className="eyebrow-label">This trip</div>
-                <div className="mt-2 flex flex-wrap gap-2 text-sm text-ink">
-                  {tripSummaryItems.map((item) => (
-                    <span key={item.label} className="rounded-full border border-line/70 bg-white px-3 py-2 font-semibold">
-                      {item.label}: {item.value}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                {stageItems.map((item, index) => {
-                  const isActive = item.key === currentStage;
-                  const isComplete =
-                    (item.key === "plan" && (hasReviewWorkspace || Boolean(itinerary))) ||
-                    (item.key === "review" && Boolean(itinerary));
-                  return (
-                    <span
-                      key={item.key}
-                      className={`rounded-full px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] ${
-                        isActive
-                          ? "bg-pine text-white"
-                          : isComplete
-                            ? "bg-coral/12 text-coral"
-                            : "border border-line/70 bg-white text-slate"
-                      }`}
-                    >
-                      {index + 1}. {item.label}
-                    </span>
-                  );
-                })}
-              </div>
-            </div>
-          </section>
-
           {!showComposer && !itinerary ? (
             <div className="rounded-[1.4rem] border border-pine/15 bg-pine/8 px-4 py-3 text-sm text-slate">
               <span className="font-semibold text-ink">Ask planner to rework results</span> reruns planning from the current review with your notes.
