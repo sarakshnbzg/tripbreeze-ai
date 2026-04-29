@@ -795,7 +795,7 @@ class TestClarificationResumeFlow:
         assert len(final_state["trip_legs"]) == 2
         assert final_state["trip_legs"][0]["destination"] == "Paris"
         assert final_state["trip_legs"][1]["destination"] == "London"
-        assert final_state["trip_request"]["return_date"] == final_state["trip_legs"][-1]["departure_date"]
+        assert final_state["trip_request"]["return_date"] == final_state["trip_legs"][-1]["check_out_date"]
         mocks["api_flights"].assert_called()
         mocks["api_hotels"].assert_called()
 
