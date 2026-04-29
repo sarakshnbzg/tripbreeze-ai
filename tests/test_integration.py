@@ -800,6 +800,66 @@ class TestClarificationResumeFlow:
         mocks["api_hotels"].assert_called()
 
 
+class TestRevisionResumeFlow:
+    """Review-time revisions should clear stale state and rerun intake + research."""
+
+    def test_review_revision_replans_with_revision_baseline_and_reruns_search(self):
+        revised_return = (date.fromisoformat(FUTURE_DEPARTURE) + timedelta(days=5)).isoformat()
+
+        def _invoke(prompt: str):
+            if "<user_query>" in prompt and "travel domain" in prompt.lower():
+                return _make_ai_message(tool_calls=[{
+                    "name": "EvaluateDomain",
+                    "args": {"in_domain": True, "reason": ""},
+                    "id": "domain-revise-1",
+                }])
+            return _make_ai_message(tool_calls=[{
+                "name": "ExtractTripDetails",
+                "args": {
+                    "travel_class": "BUSINESS",
+                    "preferences": "avoid layovers",
+                },
+                "id": "extract-revise-1",
+            }])
+
+        intake_llm = MagicMock()
+        intake_llm.bind_tools.return_value = intake_llm
+        intake_llm.invoke.side_effect = _invoke
+
+        fields = _base_structured_fields(
+            departure_date=FUTURE_DEPARTURE,
+            return_date=(date.fromisoformat(FUTURE_DEPARTURE) + timedelta(days=2)).isoformat(),
+            travel_class="ECONOMY",
+        )
+
+        with _patch_all(intake_llm=intake_llm) as mocks:
+            graph = compile_graph()
+            config = _make_config()
+
+            initial_state = graph.invoke(_base_initial_state(structured_fields=fields), config)
+            assert initial_state["current_step"] == "awaiting_review"
+            assert len(initial_state["flight_options"]) > 0
+            assert len(initial_state["hotel_options"]) > 0
+
+            events = list(graph.stream(Command(resume={
+                "feedback_type": "revise_plan",
+                "user_feedback": "Make it 5 nights, business class, and avoid layovers.",
+            }), config))
+            assert events
+
+            revised_state = dict(graph.get_state(config).values)
+
+        assert revised_state["current_step"] == "awaiting_review"
+        assert revised_state["trip_request"]["return_date"] == revised_return
+        assert revised_state["trip_request"]["travel_class"] == "BUSINESS"
+        assert revised_state["trip_request"]["preferences"] == "avoid layovers"
+        assert revised_state["free_text_query"] == "Make it 5 nights, business class, and avoid layovers."
+        assert len(revised_state["flight_options"]) > 0
+        assert len(revised_state["hotel_options"]) > 0
+        assert mocks["api_flights"].call_count == 2
+        assert mocks["api_hotels"].call_count == 2
+
+
 class TestMultiCityEndToEnd:
     """Structured multi-city trip should plan leg-by-leg and finalise without LLM errors."""
 

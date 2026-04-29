@@ -117,6 +117,41 @@ class TestRevisionBaseline:
 
         assert baseline["return_date"] == "2026-05-26"
 
+    def test_updates_check_out_date_for_one_way_trip_when_feedback_changes_nights(self):
+        baseline = _build_revision_baseline(
+            {
+                "trip_request": {
+                    "origin": "Berlin",
+                    "destination": "Lisbon",
+                    "departure_date": "2026-05-21",
+                    "check_out_date": "2026-05-23",
+                    "return_date": "",
+                },
+                "user_feedback": "Make it 5 nights",
+            }
+        )
+
+        assert baseline["check_out_date"] == "2026-05-26"
+        assert baseline["return_date"] == ""
+
+    def test_does_not_patch_multi_city_dates_deterministically(self):
+        baseline = _build_revision_baseline(
+            {
+                "trip_request": {
+                    "origin": "Berlin",
+                    "departure_date": "2026-05-21",
+                    "return_date": "2026-05-24",
+                },
+                "trip_legs": [
+                    {"origin": "Berlin", "destination": "Paris", "departure_date": "2026-05-21", "nights": 2},
+                    {"origin": "Paris", "destination": "Barcelona", "departure_date": "2026-05-23", "nights": 3},
+                ],
+                "user_feedback": "Make it 5 nights",
+            }
+        )
+
+        assert baseline["return_date"] == "2026-05-24"
+
     def test_review_router_uses_resumed_feedback_for_revision_baseline(self, monkeypatch):
         monkeypatch.setattr(
             "domain.nodes.review_router.interrupt",

@@ -1040,6 +1040,87 @@ class TestTripIntakeNode:
         assert result["current_step"] == "intake_complete"
         assert result["trip_request"]["return_date"] == return_date
 
+    def test_clarification_response_cannot_overwrite_non_missing_fields(self):
+        domain_response = MagicMock()
+        domain_response.tool_calls = [{"args": {"in_domain": True, "reason": ""}}]
+
+        parse_response = MagicMock()
+        parse_response.tool_calls = [{
+            "args": {
+                "origin": "",
+                "destination": "Paris",
+                "departure_date": _DEPARTURE,
+                "return_date": _RETURN,
+            }
+        }]
+
+        clarify_response = MagicMock()
+        clarify_response.tool_calls = [{
+            "args": {
+                "origin": "Berlin",
+                "destination": "Rome",
+            }
+        }]
+
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+
+        state = self._base_state(
+            user_profile={},
+            structured_fields={},
+            revision_baseline={},
+            free_text_query="Plan a trip to Paris on these dates.",
+        )
+
+        with patch("domain.nodes.trip_intake.create_chat_model", return_value=mock_llm):
+            with patch(
+                "domain.nodes.trip_intake.invoke_with_retry",
+                side_effect=[domain_response, parse_response, clarify_response],
+            ):
+                with patch("domain.nodes.trip_intake.extract_token_usage", return_value=None):
+                    with patch("domain.nodes.trip_intake.interrupt", return_value="From Berlin."):
+                        result = trip_intake(state)
+
+        trip = result["trip_request"]
+        assert trip["origin"] == "Berlin"
+        assert trip["destination"] == "Paris"
+
+    def test_revision_baseline_preserves_existing_trip_details_when_feedback_parse_is_sparse(self):
+        departure_date = str(date.today() + timedelta(days=30))
+        revised_return_date = str(date.fromisoformat(departure_date) + timedelta(days=5))
+        mock_llm = MagicMock()
+        mock_response = MagicMock()
+        mock_response.tool_calls = [{"args": {"preferences": "avoid layovers"}}]
+        mock_llm.bind_tools.return_value = MagicMock()
+
+        state = self._base_state(
+            structured_fields={},
+            revision_baseline={
+                "origin": "Berlin",
+                "destination": "London",
+                "departure_date": departure_date,
+                "return_date": revised_return_date,
+                "num_travelers": 2,
+                "budget_limit": 3000,
+                "currency": "EUR",
+                "travel_class": "ECONOMY",
+                "preferences": "",
+            },
+            free_text_query="Make it 5 nights and avoid layovers",
+        )
+
+        with patch("domain.nodes.trip_intake.create_chat_model", return_value=mock_llm):
+            with patch("domain.nodes.trip_intake.invoke_with_retry", return_value=mock_response):
+                with patch("domain.nodes.trip_intake.extract_token_usage", return_value=None):
+                    result = trip_intake(state)
+
+        trip = result["trip_request"]
+        assert result["current_step"] == "intake_complete"
+        assert trip["origin"] == "Berlin"
+        assert trip["destination"] == "London"
+        assert trip["return_date"] == revised_return_date
+        assert trip["preferences"] == "avoid layovers"
+
     def test_validation_error_returns_friendly_message(self):
         state = self._base_state()
         state["structured_fields"]["departure_date"] = _RETURN
