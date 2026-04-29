@@ -46,7 +46,7 @@ Next.js frontend  ──(HTTP + SSE)──▶  FastAPI backend
                                          └─ cancel
                                             │
                                       External services
-                                      OpenAI · SerpAPI · Open-Meteo · SMTP
+                                      OpenAI · Gemini · SerpAPI · Open-Meteo · SMTP
 ```
 
 Key files: [application/graph.py](application/graph.py) · [application/state.py](application/state.py) · [presentation/api.py](presentation/api.py) · [AGENTS.md](AGENTS.md)
@@ -58,7 +58,7 @@ Key files: [application/graph.py](application/graph.py) · [application/state.py
 | Layer | Tools |
 |---|---|
 | Backend | Python 3.13, FastAPI, LangGraph, LangChain |
-| LLMs | OpenAI chat models, Whisper |
+| LLMs | OpenAI or Gemini for chat, OpenAI embeddings/moderation, Whisper |
 | Search & Weather | SerpAPI, Open-Meteo |
 | Retrieval | ChromaDB + BM25 hybrid RAG |
 | Database | Postgres |
@@ -84,6 +84,14 @@ DATABASE_URL=postgresql://user:pass@host/db?sslmode=require
 ```
 
 `DATABASE_URL` is required for auth, profiles, long-term memory, and restart-safe HITL review. Set `SESSION_SECRET` as well before deploying anywhere shared or public.
+
+Optional for Gemini chat:
+
+```env
+GOOGLE_API_KEY=...
+```
+
+OpenAI is still required for embeddings, moderation, and transcription even if you use Gemini for chat.
 
 All settings are typed and documented in [settings.py](settings.py).
 
