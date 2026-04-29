@@ -144,6 +144,17 @@ RAG eval results write to `evals/results/`. Add `--retrieval-only` or `--llm-jud
 
 ---
 
+## 📏 Evaluation
+
+TripBreeze is evaluated at multiple layers rather than only by final itinerary output:
+
+- Backend unit and integration tests cover intake, research, budget aggregation, RAG, finalisation, and API behavior
+- Frontend tests cover planner state, review actions, auth flows, and key workspace interactions
+- Intake and revision robustness tests cover clarification recovery, revision-baseline preservation, one-way vs round-trip duration handling, and review → revise → replan flows
+- RAG can be evaluated separately with offline retrieval and judge-style scripts in `evals/`
+
+---
+
 ## 🗺️ Example Prompts
 
 ```
