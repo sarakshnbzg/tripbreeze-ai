@@ -7,15 +7,17 @@ import time
 from collections.abc import Iterator
 from typing import Any
 
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_openai import OpenAIEmbeddings
 from model_catalog import (
     DEFAULT_LLM_MODEL,
     DEFAULT_LLM_PROVIDER,
+    GEMINI_MODELS,
     MODEL_COSTS,
     OPENAI_MODELS,
 )
-from settings import EMBEDDING_MODELS, OPENAI_API_KEY
+from settings import EMBEDDING_MODELS, GOOGLE_API_KEY, OPENAI_API_KEY
 from infrastructure.logging_utils import get_logger, log_event
 
 logger = get_logger(__name__)
@@ -44,6 +46,9 @@ def _infer_llm_metadata(llm: Any, *, _visited: set[int] | None = None) -> tuple[
     if "openai" in class_name or "openai" in module_name:
         if not provider:
             provider = "openai"
+    if "google" in class_name or "gemini" in class_name or "google" in module_name or "gemini" in module_name:
+        if not provider:
+            provider = "gemini"
 
     if provider and model:
         return normalise_llm_selection(provider, model)
@@ -78,6 +83,8 @@ def _usage_from_response(response: Any, *, model: str) -> dict[str, float | int]
 
 def get_available_models(provider: str) -> list[str]:
     """Return the supported model ids for a provider."""
+    if str(provider or "").lower() == "gemini":
+        return GEMINI_MODELS
     return OPENAI_MODELS
 
 
@@ -87,7 +94,7 @@ def normalise_llm_selection(
 ) -> tuple[str, str]:
     """Normalise provider/model selection against supported defaults."""
     chosen_provider = (provider or DEFAULT_LLM_PROVIDER).lower()
-    if chosen_provider != "openai":
+    if chosen_provider not in {"openai", "gemini"}:
         chosen_provider = DEFAULT_LLM_PROVIDER
 
     available_models = get_available_models(chosen_provider)
@@ -100,6 +107,11 @@ def normalise_llm_selection(
 
 def get_provider_status(provider: str) -> tuple[bool, str]:
     """Return whether a provider is ready, plus a user-facing status message."""
+    if str(provider or "").lower() == "gemini":
+        if not GOOGLE_API_KEY:
+            return False, "Gemini support requires `GOOGLE_API_KEY` in your environment."
+        return True, ""
+
     if not OPENAI_API_KEY:
         return False, "OpenAI support requires `OPENAI_API_KEY` in your environment or Streamlit secrets."
 
@@ -122,11 +134,21 @@ def create_chat_model(
         temperature,
     )
 
-    if not OPENAI_API_KEY:
-        logger.error("OpenAI model requested but OPENAI_API_KEY is not configured")
-        raise RuntimeError("OpenAI support requires OPENAI_API_KEY in your environment.")
-
-    llm = ChatOpenAI(model=chosen_model, temperature=temperature, **kwargs)
+    if chosen_provider == "gemini":
+        if not GOOGLE_API_KEY:
+            logger.error("Gemini model requested but GOOGLE_API_KEY is not configured")
+            raise RuntimeError("Gemini support requires GOOGLE_API_KEY in your environment.")
+        llm = ChatGoogleGenerativeAI(
+            model=chosen_model,
+            temperature=temperature,
+            google_api_key=GOOGLE_API_KEY,
+            **kwargs,
+        )
+    else:
+        if not OPENAI_API_KEY:
+            logger.error("OpenAI model requested but OPENAI_API_KEY is not configured")
+            raise RuntimeError("OpenAI support requires OPENAI_API_KEY in your environment.")
+        llm = ChatOpenAI(model=chosen_model, temperature=temperature, **kwargs)
 
     setattr(llm, "_tripbreeze_provider", chosen_provider)
     setattr(llm, "_tripbreeze_model", chosen_model)
@@ -297,10 +319,15 @@ def stream_with_retry(llm, prompt, *, max_attempts: int = 3) -> Iterator[Any]:
 def create_embeddings(provider: str | None = None):
     """Create embeddings for the selected provider."""
     chosen_provider, _ = normalise_llm_selection(provider, None)
-    logger.info("Creating embeddings provider=%s", chosen_provider)
+    embedding_provider = "openai"
+    logger.info(
+        "Creating embeddings provider=%s requested_provider=%s",
+        embedding_provider,
+        chosen_provider,
+    )
 
     if not OPENAI_API_KEY:
         logger.error("OpenAI embeddings requested but OPENAI_API_KEY is not configured")
         raise RuntimeError("OpenAI embeddings require OPENAI_API_KEY in your environment.")
 
-    return OpenAIEmbeddings(model=EMBEDDING_MODELS["openai"])
+    return OpenAIEmbeddings(model=EMBEDDING_MODELS[embedding_provider])

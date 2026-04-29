@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 
 import type { StreamEvent, TravelState, TripOption } from "@/lib/types";
+import { OPENAI_MODELS } from "@/components/tripbreeze-chat-app/constants";
 
 export type PlannerForm = {
   freeText: string;
@@ -24,7 +25,7 @@ export type PlannerForm = {
   hotelStars: number[];
   multiCityLegs: Array<{ destination: string; nights: number }>;
   userId: string;
-  provider: "openai";
+  provider: "openai" | "gemini";
   model: string;
   temperature: number;
 };
@@ -59,7 +60,7 @@ export const defaultForm: PlannerForm = {
   multiCityLegs: [{ destination: "", nights: 3 }],
   userId: "default_user",
   provider: "openai",
-  model: "gpt-4o-mini",
+  model: OPENAI_MODELS[0],
   temperature: 0.3,
 };
 

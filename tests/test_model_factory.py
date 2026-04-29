@@ -13,6 +13,7 @@ from infrastructure.llms.model_factory import (
     stream_with_retry,
     OPENAI_MODELS,
 )
+from model_catalog import GEMINI_MODELS
 
 
 # ── get_available_models ──
@@ -21,6 +22,9 @@ from infrastructure.llms.model_factory import (
 class TestGetAvailableModels:
     def test_openai_models(self):
         assert get_available_models("openai") == OPENAI_MODELS
+
+    def test_gemini_models(self):
+        assert get_available_models("gemini") == GEMINI_MODELS
 
     def test_unknown_defaults_to_openai(self):
         assert get_available_models("unknown") == OPENAI_MODELS
@@ -35,6 +39,11 @@ class TestNormaliseLlmSelection:
         assert provider == "openai"
         assert model == "gpt-4o-mini"
 
+    def test_valid_gemini_selection(self):
+        provider, model = normalise_llm_selection("gemini", "gemini-2.5-flash")
+        assert provider == "gemini"
+        assert model == "gemini-2.5-flash"
+
     def test_none_provider_defaults(self):
         provider, model = normalise_llm_selection(None, None)
         assert provider == "openai"
@@ -47,6 +56,11 @@ class TestNormaliseLlmSelection:
     def test_invalid_model_defaults_to_first(self):
         provider, model = normalise_llm_selection("openai", "nonexistent-model")
         assert model == OPENAI_MODELS[0]
+
+    def test_invalid_gemini_model_defaults_to_first_gemini_model(self):
+        provider, model = normalise_llm_selection("gemini", "nonexistent-model")
+        assert provider == "gemini"
+        assert model == GEMINI_MODELS[0]
 
     def test_case_insensitive_provider(self):
         provider, model = normalise_llm_selection("OPENAI", None)
@@ -66,6 +80,18 @@ class TestGetProviderStatus:
     def test_openai_with_key(self, monkeypatch):
         monkeypatch.setattr("infrastructure.llms.model_factory.OPENAI_API_KEY", "sk-test")
         ready, msg = get_provider_status("openai")
+        assert ready is True
+        assert msg == ""
+
+    def test_gemini_without_key(self, monkeypatch):
+        monkeypatch.setattr("infrastructure.llms.model_factory.GOOGLE_API_KEY", "")
+        ready, msg = get_provider_status("gemini")
+        assert ready is False
+        assert "GOOGLE_API_KEY" in msg
+
+    def test_gemini_with_key(self, monkeypatch):
+        monkeypatch.setattr("infrastructure.llms.model_factory.GOOGLE_API_KEY", "google-test")
+        ready, msg = get_provider_status("gemini")
         assert ready is True
         assert msg == ""
 

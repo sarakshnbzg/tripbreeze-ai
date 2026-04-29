@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     )
 
     openai_api_key: str = Field("", alias="OPENAI_API_KEY")
+    google_api_key: str = Field("", alias="GOOGLE_API_KEY")
     serpapi_api_key: str = Field("", alias="SERPAPI_API_KEY")
     memory_database_url: str = Field(
         "",
@@ -185,6 +186,7 @@ if settings.langchain_tracing_v2 and settings.langchain_api_key:
 
 # Backward-compatible module-level exports
 OPENAI_API_KEY = settings.openai_api_key
+GOOGLE_API_KEY = settings.google_api_key
 SERPAPI_API_KEY = settings.serpapi_api_key
 MEMORY_DATABASE_URL = settings.memory_database_url
 CSC_API_KEY = settings.csc_api_key

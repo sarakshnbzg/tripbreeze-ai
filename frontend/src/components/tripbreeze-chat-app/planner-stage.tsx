@@ -51,6 +51,7 @@ export function PlannerStage({
     username,
   } = displayState;
   const {
+    availableProviders,
     availableModels,
     reviewWorkspaceModel,
     reviewWorkspaceActions,
@@ -108,6 +109,7 @@ export function PlannerStage({
             <ModelSettingsPanel
               form={form}
               setForm={setForm}
+              availableProviders={availableProviders}
               availableModels={availableModels}
             />
           ) : null}

@@ -1,12 +1,15 @@
 import type { PlannerForm } from "@/lib/planner";
+import type { LlmProvider } from "@/lib/types";
 
 export function ModelSettingsPanel({
   form,
   setForm,
+  availableProviders,
   availableModels,
 }: {
   form: PlannerForm;
   setForm: React.Dispatch<React.SetStateAction<PlannerForm>>;
+  availableProviders: readonly LlmProvider[];
   availableModels: readonly string[];
 }) {
   return (
@@ -15,6 +18,27 @@ export function ModelSettingsPanel({
         Settings
       </div>
       <div className="grid gap-3">
+        <label className="block">
+          <span className="mb-2 block text-sm font-medium text-slate">Provider</span>
+          <select
+            className="w-full rounded-full border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-coral"
+            value={form.provider}
+            onChange={(event) => {
+              const provider = event.target.value as LlmProvider;
+              setForm((current) => ({
+                ...current,
+                provider,
+                model: provider === "gemini" ? "gemini-2.5-flash" : "gpt-5-mini",
+              }));
+            }}
+          >
+            {availableProviders.map((provider) => (
+              <option key={provider} value={provider}>
+                {provider === "openai" ? "OpenAI" : "Gemini"}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="block">
           <span className="mb-2 block text-sm font-medium text-slate">Model</span>
           <select

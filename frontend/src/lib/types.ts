@@ -1,4 +1,4 @@
-export type LlmProvider = "openai";
+export type LlmProvider = "openai" | "gemini";
 
 export type UserProfile = {
   user_id?: string;

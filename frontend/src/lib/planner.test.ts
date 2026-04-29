@@ -31,7 +31,7 @@ function buildForm(overrides: Partial<PlannerForm> = {}): PlannerForm {
     multiCityLegs: [{ destination: "", nights: 3 }],
     userId: "default_user",
     provider: "openai",
-    model: "gpt-4o-mini",
+    model: "gpt-5-mini",
     temperature: 0.3,
     ...overrides,
   };

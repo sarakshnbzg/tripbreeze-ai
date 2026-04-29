@@ -737,6 +737,8 @@ def _load_and_split_docs() -> list:
 
 def _chroma_dir_for_provider(provider: str | None):
     chosen_provider, _ = normalise_llm_selection(provider, None)
+    if chosen_provider != "openai":
+        chosen_provider = "openai"
     return CHROMA_ROOT_DIR / chosen_provider
 
 
@@ -747,6 +749,8 @@ def _build_vectorstore(
     """Build or load the ChromaDB vector store from knowledge-base documents."""
     global _cached_vectorstores
     chosen_provider, _ = normalise_llm_selection(provider, None)
+    if chosen_provider != "openai":
+        chosen_provider = "openai"
 
     with _cached_vectorstores_lock:
         if not force_rebuild and chosen_provider in _cached_vectorstores:

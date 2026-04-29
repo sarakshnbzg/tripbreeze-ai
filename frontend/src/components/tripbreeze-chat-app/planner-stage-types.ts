@@ -3,6 +3,7 @@
 import type { Dispatch, RefObject, SetStateAction } from "react";
 
 import type { PlannerForm } from "@/lib/planner";
+import type { LlmProvider } from "@/lib/types";
 
 import type { ChatMessage } from "@/components/tripbreeze-chat-app/helpers";
 import type { PlannerLoadingState } from "@/components/tripbreeze-chat-app/ui-types";
@@ -47,6 +48,7 @@ export type PlannerStageDisplayState = {
 };
 
 export type PlannerStageModels = {
+  availableProviders: readonly LlmProvider[];
   availableModels: readonly string[];
   reviewWorkspaceModel: ReviewWorkspaceModel;
   reviewWorkspaceActions: ReviewWorkspaceActions;

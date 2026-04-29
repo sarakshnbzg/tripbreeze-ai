@@ -4,6 +4,7 @@ DEFAULT_LLM_PROVIDER = "openai"
 
 DEFAULT_LLM_MODEL = {
     "openai": "gpt-4o-mini",
+    "gemini": "gemini-2.5-flash",
 }
 
 DEFAULT_JUDGE_MODEL = {
@@ -18,6 +19,12 @@ OPENAI_MODELS = [
     "gpt-4.1-mini",
     "gpt-4.1-nano",
     "gpt-3.5-turbo",
+]
+
+GEMINI_MODELS = [
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-pro",
 ]
 
 # Model costs (USD per token)

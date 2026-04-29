@@ -45,6 +45,7 @@ describe("PlannerStage", () => {
           homeCity: "",
         }}
         models={{
+          availableProviders: ["openai", "gemini"],
           availableModels: ["gpt-4o-mini"],
           reviewWorkspaceModel: {
             hasReviewWorkspace: false,
