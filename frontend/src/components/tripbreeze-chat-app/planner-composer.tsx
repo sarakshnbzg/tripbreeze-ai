@@ -44,8 +44,8 @@ export function PlannerComposer({
 
   const promptChips = [
     "I want to fly from Berlin to Tokyo from 2026-06-10 to 2026-06-17 for 2 travelers with a budget of 3000 EUR.",
-    "Paris for 3 days, then Barcelona for 4 days, then fly home.",
-    "Business class, exclude Ryanair, keep the flight under 10 hours.",
+    "Paris for 3 nights, Barcelona for 2 nights next month.",
+    "A week in Lisbon for 2 in October, direct flights only, budget 2500 EUR.",
   ];
   const activeAdvancedFilters = [
     form.multiCity ? "Multi-city" : null,
@@ -70,7 +70,7 @@ export function PlannerComposer({
           </div>
         </div>
         <p className="mt-3 max-w-2xl text-sm leading-7 text-slate">
-          Describe the kind of trip you want. If you prefer, you can add structured details below.
+          Describe your trip, or use the filters below.
         </p>
         <textarea
           className="mt-4 h-36 w-full rounded-[1.8rem] border border-line/80 bg-white px-5 py-4 text-sm leading-7 outline-none transition focus:border-coral focus:shadow-[0_0_0_4px_rgba(215,108,78,0.12)]"
@@ -80,17 +80,20 @@ export function PlannerComposer({
             setForm((current) => resetPlannerFormForFreshFreeText(current, event.target.value))
           }
         />
-        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:flex xl:flex-wrap">
-          {promptChips.slice(0, 2).map((chip) => (
-            <button
-              key={chip}
-              type="button"
-              onClick={() => setForm((current) => resetPlannerFormForFreshFreeText(current, chip))}
-              className="rounded-full border border-white/80 bg-white/80 px-4 py-2 text-sm text-slate transition hover:border-coral/35 hover:text-ink"
-            >
-              {chip}
-            </button>
-          ))}
+        <div className="mt-4">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate/60">Examples</div>
+          <div className="grid gap-2 sm:grid-cols-2 xl:flex xl:flex-wrap">
+            {promptChips.map((chip) => (
+              <button
+                key={chip}
+                type="button"
+                onClick={() => setForm((current) => resetPlannerFormForFreshFreeText(current, chip))}
+                className="rounded-full border border-white/80 bg-white/80 px-4 py-2 text-sm text-slate transition hover:border-coral/35 hover:text-ink"
+              >
+                {chip}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -100,7 +103,7 @@ export function PlannerComposer({
             <div>
               <div className="text-sm font-semibold text-ink">Advanced trip filters</div>
               <div className="mt-1 text-sm text-slate">
-                Add optional trip details, plus any airline, timing, hotel, or multi-city preferences.
+                Airline, timing, hotel, or multi-city options.
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -240,7 +243,7 @@ export function PlannerComposer({
           {form.multiCity ? (
             <div className="space-y-3">
               <div className="rounded-2xl bg-mist/60 px-4 py-3 text-sm text-slate">
-                Add destinations in order of visit. Return date is calculated automatically from your destinations and nights.
+                Add destinations in order. Return date auto-calculated.
               </div>
               {form.multiCityLegs.map((leg, index) => (
                 <div
@@ -395,7 +398,7 @@ export function PlannerComposer({
 
           <HotelStarTierPicker
             label="Hotel Stars"
-            helper="Choose one or more tiers like 4-star and up, or leave it on Any."
+            helper="Pick one or more tiers, or leave on Any."
             thresholds={compressStarPreferences(form.hotelStars)}
             onChange={(thresholds) =>
               updateStructuredForm((current) => ({
@@ -411,7 +414,7 @@ export function PlannerComposer({
         <div className="min-w-0 xl:max-w-[42rem]">
           <div className="text-sm font-semibold text-ink">Run planner</div>
           <div className="mt-1 text-sm leading-7 text-slate">
-            Search flights, hotels, budget fit, and entry requirements from your brief.
+            Searches flights, hotels, and entry requirements.
           </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 xl:flex xl:flex-nowrap xl:shrink-0">

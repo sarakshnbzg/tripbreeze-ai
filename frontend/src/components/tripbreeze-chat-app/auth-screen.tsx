@@ -47,7 +47,7 @@ export function AuthScreen({
         <Card className="section-grid overflow-hidden border-white/80 bg-[linear-gradient(180deg,rgba(255,250,244,0.94),rgba(244,239,231,0.8))] p-8 sm:p-10">
           <h1 className="mt-5 font-display text-5xl leading-tight text-ink">TripBreeze AI</h1>
           <p className="mt-5 max-w-xl text-base leading-7 text-slate">
-            Log in, set your preferences, and plan trips in a simpler chat-style workspace.
+            Plan trips with AI — search, compare, and share.
           </p>
           <div className="mt-8 grid gap-3 sm:grid-cols-3">
             {[
@@ -82,7 +82,6 @@ export function AuthScreen({
           {authMode === "login" ? (
             <FieldGroup
               title="Welcome back"
-              description="Log in to access your saved preferences, past trips, and itinerary tools."
             >
               <div className="space-y-4">
                 <label className="block">
@@ -112,7 +111,7 @@ export function AuthScreen({
             <div className="space-y-4">
               <FieldGroup
                 title="Account details"
-                description="Create your account first, then add the travel defaults you want TripBreeze to remember."
+                description="Create account, then set your travel defaults."
               >
                 <div className="grid gap-4 md:grid-cols-2">
                   <label className="md:col-span-2 block">
@@ -146,7 +145,7 @@ export function AuthScreen({
 
               <FieldGroup
                 title="Travel profile"
-                description="These preferences are optional, but they help TripBreeze choose better defaults from the start."
+                description="Optional — sets your planning defaults."
               >
                 <div className="grid gap-4 md:grid-cols-2">
                   <label className="block">
