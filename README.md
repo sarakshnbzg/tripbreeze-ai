@@ -184,6 +184,7 @@ Hallucination risk is reduced by grounding guidance in a local knowledge base, c
 - The end-to-end planning flow depends on several external services such as OpenAI, SerpAPI, Postgres, and optional SMTP, so upstream outages or rate limits can degrade the user experience even when the application itself is healthy
 - The app currently runs as a single-region deployment, so distant users and regional outages can still affect latency and availability
 - End-to-end latency can vary noticeably because research, retrieval, and itinerary generation combine multiple network-bound steps
+- A ground-travel feature was explored, but it was not completed because no suitable free API was found that could reliably support the full experience
 - LLM research and finalisation can still be imperfect when source data is sparse or ambiguous
 - Auth is suitable for demos and small deployments, but broader production hardening is still needed
 - Golden-prompt replay tests cover intake, research, and finaliser flows, but offline evaluation breadth is still limited compared with a larger curated dataset or live judge pipeline
