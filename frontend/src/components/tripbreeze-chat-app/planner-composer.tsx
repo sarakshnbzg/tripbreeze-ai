@@ -4,9 +4,87 @@ import { Button } from "@/components/ui/button";
 import { resetPlannerFormForFreshFreeText, type PlannerForm } from "@/lib/planner";
 
 import { HotelStarTierPicker } from "./controls";
-import { CURRENCIES, TRAVEL_CLASSES } from "./constants";
+import { CURRENCIES, PLANNER_PROMPT_CHIPS, TRAVEL_CLASSES } from "./constants";
 import { compressStarPreferences, expandStarThresholds } from "./helpers";
 import type { PlannerLoadingState } from "./ui-types";
+
+type PlannerComposerProps = {
+  form: PlannerForm;
+  setForm: React.Dispatch<React.SetStateAction<PlannerForm>>;
+  showComposer: boolean;
+  loading: PlannerLoadingState;
+  recording: boolean;
+  error: string;
+  username: string;
+  onPlanTrip: () => void;
+  onVoiceInput: () => void;
+};
+
+function buildActiveAdvancedFilters(form: PlannerForm): string[] {
+  return [
+    form.multiCity ? "Multi-city" : null,
+    form.oneWay ? (form.multiCity ? "Open-jaw" : "One-way") : null,
+    form.directOnly ? "Direct only" : null,
+    form.maxFlightDurationHours > 0 ? `Under ${form.maxFlightDurationHours}h` : null,
+    form.includeAirlines.trim() ? "Included airlines" : null,
+    form.excludeAirlines.trim() ? "Excluded airlines" : null,
+    form.hotelStars.length ? "Hotel stars" : null,
+  ].filter((value): value is string => Boolean(value));
+}
+
+function PromptChipList({
+  onSelect,
+}: {
+  onSelect: (chip: string) => void;
+}) {
+  return (
+    <div className="mt-4">
+      <div className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate/60">Examples</div>
+      <div className="grid gap-2 sm:grid-cols-2 xl:flex xl:flex-wrap">
+        {PLANNER_PROMPT_CHIPS.map((chip) => (
+          <button
+            key={chip}
+            type="button"
+            onClick={() => onSelect(chip)}
+            className="rounded-full border border-white/80 bg-white/80 px-4 py-2 text-sm text-slate transition hover:border-coral/35 hover:text-ink"
+          >
+            {chip}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AdvancedFiltersSummary({
+  activeFilters,
+}: {
+  activeFilters: string[];
+}) {
+  return (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <div className="text-sm font-semibold text-ink">Advanced trip filters</div>
+        <div className="mt-1 text-sm text-slate">
+          Airline, timing, hotel, or multi-city options.
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {activeFilters.length ? (
+          activeFilters.map((filter) => (
+            <span key={filter} className="rounded-full border border-coral/20 bg-coral/10 px-3 py-1 text-xs font-semibold text-coral">
+              {filter}
+            </span>
+          ))
+        ) : (
+          <span className="rounded-full border border-line/70 bg-white px-3 py-1 text-xs font-semibold text-slate">
+            Optional
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function PlannerComposer({
   form,
@@ -18,17 +96,7 @@ export function PlannerComposer({
   username,
   onPlanTrip,
   onVoiceInput,
-}: {
-  form: PlannerForm;
-  setForm: React.Dispatch<React.SetStateAction<PlannerForm>>;
-  showComposer: boolean;
-  loading: PlannerLoadingState;
-  recording: boolean;
-  error: string;
-  username: string;
-  onPlanTrip: () => void;
-  onVoiceInput: () => void;
-}) {
+}: PlannerComposerProps) {
   if (!showComposer) {
     return null;
   }
@@ -42,20 +110,7 @@ export function PlannerComposer({
     }));
   };
 
-  const promptChips = [
-    "I want to fly from Berlin to Tokyo from 2026-06-10 to 2026-06-17 for 2 travelers with a budget of 3000 EUR.",
-    "Paris for 3 nights, Barcelona for 2 nights next month.",
-    "A week in Lisbon for 2 in October, direct flights only, budget 2500 EUR.",
-  ];
-  const activeAdvancedFilters = [
-    form.multiCity ? "Multi-city" : null,
-    form.oneWay ? (form.multiCity ? "Open-jaw" : "One-way") : null,
-    form.directOnly ? "Direct only" : null,
-    form.maxFlightDurationHours > 0 ? `Under ${form.maxFlightDurationHours}h` : null,
-    form.includeAirlines.trim() ? "Included airlines" : null,
-    form.excludeAirlines.trim() ? "Excluded airlines" : null,
-    form.hotelStars.length ? "Hotel stars" : null,
-  ].filter(Boolean);
+  const activeAdvancedFilters = buildActiveAdvancedFilters(form);
 
   return (
     <div className="relative mt-6 overflow-hidden rounded-[1.8rem] border border-line/70 bg-white/72 p-5 shadow-card sm:p-6">
@@ -80,46 +135,16 @@ export function PlannerComposer({
             setForm((current) => resetPlannerFormForFreshFreeText(current, event.target.value))
           }
         />
-        <div className="mt-4">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate/60">Examples</div>
-          <div className="grid gap-2 sm:grid-cols-2 xl:flex xl:flex-wrap">
-            {promptChips.map((chip) => (
-              <button
-                key={chip}
-                type="button"
-                onClick={() => setForm((current) => resetPlannerFormForFreshFreeText(current, chip))}
-                className="rounded-full border border-white/80 bg-white/80 px-4 py-2 text-sm text-slate transition hover:border-coral/35 hover:text-ink"
-              >
-                {chip}
-              </button>
-            ))}
-          </div>
-        </div>
+        <PromptChipList
+          onSelect={(chip) =>
+            setForm((current) => resetPlannerFormForFreshFreeText(current, chip))
+          }
+        />
       </div>
 
       <details className="mt-5 rounded-[1.6rem] border border-line/70 bg-paper/70 p-4">
         <summary className="cursor-pointer list-none">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="text-sm font-semibold text-ink">Advanced trip filters</div>
-              <div className="mt-1 text-sm text-slate">
-                Airline, timing, hotel, or multi-city options.
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {activeAdvancedFilters.length ? (
-                activeAdvancedFilters.map((filter) => (
-                  <span key={filter} className="rounded-full border border-coral/20 bg-coral/10 px-3 py-1 text-xs font-semibold text-coral">
-                    {filter}
-                  </span>
-                ))
-              ) : (
-                <span className="rounded-full border border-line/70 bg-white px-3 py-1 text-xs font-semibold text-slate">
-                  Optional
-                </span>
-              )}
-            </div>
-          </div>
+          <AdvancedFiltersSummary activeFilters={activeAdvancedFilters} />
         </summary>
         <div className="mt-4 space-y-4">
           <div className="rounded-[1.4rem] border border-line/60 bg-white/72 p-4">

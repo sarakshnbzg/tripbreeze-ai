@@ -170,7 +170,9 @@ Hallucination risk is reduced by grounding guidance in a local knowledge base, c
 
 - Restart-safe HITL review requires Postgres-backed checkpointing, and staging/production now fail fast if `DATABASE_URL` is missing
 - Live search quality depends on SerpAPI quotas, source coverage, and usage costs that can rise with repeated searches
+- The end-to-end planning flow depends on several external services such as OpenAI, SerpAPI, Postgres, and optional SMTP, so upstream outages or rate limits can degrade the user experience even when the application itself is healthy
 - The app currently runs as a single-region deployment, so distant users and regional outages can still affect latency and availability
+- End-to-end latency can vary noticeably because research, retrieval, and itinerary generation combine multiple network-bound steps
 - LLM research and finalisation can still be imperfect when source data is sparse or ambiguous
 - Auth is suitable for demos and small deployments, but broader production hardening is still needed
 - Golden-prompt replay tests cover intake, research, and finaliser flows, but offline evaluation breadth is still limited compared with a larger curated dataset or live judge pipeline
@@ -181,6 +183,8 @@ Hallucination risk is reduced by grounding guidance in a local knowledge base, c
 
 - Expand visa and entry coverage with fresher, passport-specific data
 - Broaden offline evaluation with more golden cases, regression thresholds, and scheduled judge runs
+- Add deeper robustness testing for messy prompts, conflicting constraints, and longer revision loops
+- Add graceful fallback and partial-result handling when external providers are slow, unavailable, or rate-limited
 - Improve revision flows so users can adjust specific choices without restarting the full plan
 - Add user-facing profile management with stronger linking to past trips
 - Strengthen auth to production-grade standards

@@ -98,15 +98,17 @@ export type ItineraryViewModel = {
   budgetBreakdown: BudgetBreakdownData | null;
 };
 
+type BuildItineraryViewModelArgs = {
+  state: TravelState | null;
+  itinerary: string;
+  currencyCode: string;
+};
+
 export function buildItineraryViewModel({
   state,
   itinerary,
   currencyCode,
-}: {
-  state: TravelState | null;
-  itinerary: string;
-  currencyCode: string;
-}): ItineraryViewModel {
+}: BuildItineraryViewModelArgs): ItineraryViewModel {
   const tripRequest = readRecord(state?.trip_request);
   const budgetData = readRecord(state?.budget);
   const itineraryData = readRecord(state?.itinerary_data);
@@ -137,26 +139,18 @@ export function buildItineraryViewModel({
     parsedVisa,
   });
 
-  const snapshotItems = tripLegs.length
-    ? buildMultiCitySnapshotItems({
-        tripLegs,
-        tripRequest,
-        finalSelectedFlights,
-        finalSelectedHotels,
-        travelers,
-        estimatedTotal,
-        budgetLimit,
-        currencyCode,
-      })
-    : buildSingleDestinationSnapshotItems({
-        tripRequest,
-        finalSelectedFlight,
-        finalSelectedHotel,
-        travelers,
-        estimatedTotal,
-        budgetLimit,
-        currencyCode,
-      });
+  const snapshotItems = buildSnapshotItems({
+    tripLegs,
+    tripRequest,
+    finalSelectedFlight,
+    finalSelectedHotel,
+    finalSelectedFlights,
+    finalSelectedHotels,
+    travelers,
+    estimatedTotal,
+    budgetLimit,
+    currencyCode,
+  });
 
   const bookingLinks = buildBookingLinks({
     tripLegs,
@@ -181,16 +175,16 @@ export function buildItineraryViewModel({
     selectedHotel: finalSelectedHotel,
   });
 
-  const primarySections = [
-    itineraryFlightDetails ? { key: "flight", title: "Flight details", content: itineraryFlightDetails } : null,
-    itineraryHotelDetails ? { key: "hotel", title: "Hotel details", content: itineraryHotelDetails } : null,
-    parsedVisa.content && visaBriefings.length === 0 ? { key: "visa", title: "Visa and entry", content: parsedVisa.content } : null,
-  ].filter((section): section is ItinerarySection => Boolean(section));
-
-  const secondarySections = [
-    itineraryHighlights ? { key: "highlights", title: "Destination highlights", content: itineraryHighlights } : null,
-    itineraryPacking ? { key: "packing", title: "Packing tips", content: itineraryPacking } : null,
-  ].filter((section): section is ItinerarySection => Boolean(section));
+  const primarySections = buildPrimarySections({
+    itineraryFlightDetails,
+    itineraryHotelDetails,
+    visaContent: parsedVisa.content,
+    hasVisaBriefings: visaBriefings.length > 0,
+  });
+  const secondarySections = buildSecondarySections({
+    itineraryHighlights,
+    itineraryPacking,
+  });
   const fallbackNotice = buildFallbackNotice(finaliserMetadata);
   return {
     finalItinerary,
@@ -207,6 +201,84 @@ export function buildItineraryViewModel({
     itineraryDays,
     budgetBreakdown,
   };
+}
+
+function buildSnapshotItems({
+  tripLegs,
+  tripRequest,
+  finalSelectedFlight,
+  finalSelectedHotel,
+  finalSelectedFlights,
+  finalSelectedHotels,
+  travelers,
+  estimatedTotal,
+  budgetLimit,
+  currencyCode,
+}: {
+  tripLegs: Array<Record<string, unknown>>;
+  tripRequest: Record<string, unknown>;
+  finalSelectedFlight: Record<string, unknown>;
+  finalSelectedHotel: Record<string, unknown>;
+  finalSelectedFlights: Array<Record<string, unknown>>;
+  finalSelectedHotels: Array<Record<string, unknown>>;
+  travelers: number;
+  estimatedTotal: number;
+  budgetLimit: number;
+  currencyCode: string;
+}): ItinerarySnapshotItem[] {
+  if (tripLegs.length) {
+    return buildMultiCitySnapshotItems({
+      tripLegs,
+      tripRequest,
+      finalSelectedFlights,
+      finalSelectedHotels,
+      travelers,
+      estimatedTotal,
+      budgetLimit,
+      currencyCode,
+    });
+  }
+
+  return buildSingleDestinationSnapshotItems({
+    tripRequest,
+    finalSelectedFlight,
+    finalSelectedHotel,
+    travelers,
+    estimatedTotal,
+    budgetLimit,
+    currencyCode,
+  });
+}
+
+function buildPrimarySections({
+  itineraryFlightDetails,
+  itineraryHotelDetails,
+  visaContent,
+  hasVisaBriefings,
+}: {
+  itineraryFlightDetails: string;
+  itineraryHotelDetails: string;
+  visaContent: string;
+  hasVisaBriefings: boolean;
+}): ItinerarySection[] {
+  return [
+    itineraryFlightDetails ? { key: "flight", title: "Flight details", content: itineraryFlightDetails } : null,
+    itineraryHotelDetails ? { key: "hotel", title: "Hotel details", content: itineraryHotelDetails } : null,
+    visaContent && !hasVisaBriefings ? { key: "visa", title: "Visa and entry", content: visaContent } : null,
+  ].filter((section): section is ItinerarySection => Boolean(section));
+}
+
+function buildSecondarySections({
+  itineraryHighlights,
+  itineraryPacking,
+}: {
+  itineraryHighlights: string;
+  itineraryPacking: string;
+}): ItinerarySection[] {
+  return [
+    itineraryHighlights ? { key: "highlights", title: "Destination highlights", content: itineraryHighlights } : null,
+    itineraryPacking ? { key: "packing", title: "Packing tips", content: itineraryPacking } : null,
+  ].filter((section): section is ItinerarySection => Boolean(section));
 }
 
 function buildBudgetBreakdown({
