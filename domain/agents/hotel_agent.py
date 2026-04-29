@@ -7,15 +7,18 @@ from infrastructure.logging_utils import get_logger
 logger = get_logger(__name__)
 
 
-def _api_hotel_stars(trip: dict) -> list[int]:
-    """Only apply star filters upstream when the user explicitly asked for them."""
-    if not trip.get("hotel_stars_user_specified"):
-        return []
+def _api_hotel_stars(trip: dict, user_profile: dict | None = None) -> list[int]:
+    """Return star filter list for SerpAPI: explicit trip stars take priority, then profile preference."""
+    if trip.get("hotel_stars_user_specified"):
+        hotel_stars = trip.get("hotel_stars", [])
+        if isinstance(hotel_stars, int):
+            hotel_stars = [hotel_stars]
+        return [star for star in hotel_stars if star in HOTEL_STARS]
 
-    hotel_stars = trip.get("hotel_stars", [])
-    if isinstance(hotel_stars, int):
-        hotel_stars = [hotel_stars]
-    return [star for star in hotel_stars if star in HOTEL_STARS]
+    preferred = (user_profile or {}).get("preferred_hotel_stars") or []
+    if isinstance(preferred, int):
+        preferred = [preferred]
+    return sorted({int(s) for s in preferred if isinstance(s, int) and s in HOTEL_STARS})
 
 
 def _preferred_hotel_stars(trip: dict, user_profile: dict) -> list[int]:
@@ -166,7 +169,7 @@ def search_hotels(state: dict) -> dict:
         }
 
     try:
-        hotel_stars = _api_hotel_stars(trip)
+        hotel_stars = _api_hotel_stars(trip, user_profile)
 
         logger.info(
             "Searching hotels destination=%s check_in=%s check_out=%s travelers=%s stars=%s",
@@ -231,7 +234,7 @@ def search_leg_hotels(
         return []
 
     try:
-        hotel_stars = _api_hotel_stars(trip_request)
+        hotel_stars = _api_hotel_stars(trip_request, user_profile)
 
         logger.info(
             "Searching leg hotels destination=%s check_in=%s check_out=%s nights=%s travelers=%s stars=%s",

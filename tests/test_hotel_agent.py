@@ -221,7 +221,7 @@ class TestSearchHotelsNode:
 
 
 class TestSearchLegHotels:
-    def test_profile_stars_do_not_filter_leg_hotel_search(self):
+    def test_profile_stars_filter_leg_hotel_search(self):
         captured = {}
 
         def fake_api_search(**kwargs):
@@ -247,7 +247,7 @@ class TestSearchLegHotels:
             hotels = search_leg_hotels(leg, trip_request, user_profile={"preferred_hotel_stars": [4]})
 
         assert hotels == []
-        assert captured["hotel_stars"] == []
+        assert captured["hotel_stars"] == [4]
 
     def test_explicit_stars_still_filter_leg_hotel_search(self):
         captured = {}
