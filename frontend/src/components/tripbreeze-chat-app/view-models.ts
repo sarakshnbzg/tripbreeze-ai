@@ -36,6 +36,32 @@ export type VisaBriefing = {
   trust: SourceTrust | null;
 };
 
+export type BudgetLineItem = {
+  label: string;
+  amount: number;
+  icon: string;
+};
+
+export type BudgetLegBreakdown = {
+  route: string;
+  nights: number;
+  flightCost: number;
+  hotelCost: number;
+  dailyExpenses: number;
+  legTotal: number;
+};
+
+export type BudgetBreakdownData = {
+  lineItems: BudgetLineItem[];
+  total: number;
+  budgetLimit: number;
+  currency: string;
+  withinBudget: boolean | null;
+  budgetNote: string;
+  perLeg: BudgetLegBreakdown[];
+  fallbackText: string;
+};
+
 export type ItineraryViewModel = {
   finalItinerary: string;
   hasStructuredItinerary: boolean;
@@ -49,6 +75,7 @@ export type ItineraryViewModel = {
   mapPoints: ItineraryMapPoint[];
   itineraryLegs: Array<Record<string, unknown>>;
   itineraryDays: Array<Record<string, unknown>>;
+  budgetBreakdown: BudgetBreakdownData | null;
 };
 
 export function buildItineraryViewModel({
@@ -125,10 +152,11 @@ export function buildItineraryViewModel({
     finalSelectedHotels,
   });
 
+  const budgetBreakdown = buildBudgetBreakdown({ budgetData, budgetLimit, itineraryBudget, currencyCode });
+
   const primarySections = [
     itineraryFlightDetails ? { key: "flight", title: "Flight details", content: itineraryFlightDetails } : null,
     itineraryHotelDetails ? { key: "hotel", title: "Hotel details", content: itineraryHotelDetails } : null,
-    itineraryBudget ? { key: "budget", title: "Budget breakdown", content: itineraryBudget } : null,
     parsedVisa.content && visaBriefings.length === 0 ? { key: "visa", title: "Visa and entry", content: parsedVisa.content } : null,
   ].filter((section): section is ItinerarySection => Boolean(section));
 
@@ -151,7 +179,53 @@ export function buildItineraryViewModel({
     mapPoints,
     itineraryLegs,
     itineraryDays,
+    budgetBreakdown,
   };
+}
+
+function buildBudgetBreakdown({
+  budgetData,
+  budgetLimit,
+  itineraryBudget,
+  currencyCode,
+}: {
+  budgetData: Record<string, unknown>;
+  budgetLimit: number;
+  itineraryBudget: string;
+  currencyCode: string;
+}): BudgetBreakdownData | null {
+  const currency = readString(budgetData.currency) || currencyCode;
+  const flightCost = Number(budgetData.flight_cost ?? 0);
+  const hotelCost = Number(budgetData.hotel_cost ?? 0);
+  const dailyExpenses = Number(budgetData.estimated_daily_expenses ?? 0);
+  const total = Number(budgetData.total_estimated ?? budgetData.total_estimated_cost ?? 0);
+  const withinBudget = budgetData.within_budget == null ? null : Boolean(budgetData.within_budget);
+  const budgetNote = readString(budgetData.budget_notes);
+  const perLegRaw = Array.isArray(budgetData.per_leg_breakdown) ? budgetData.per_leg_breakdown : [];
+
+  if (flightCost === 0 && hotelCost === 0 && dailyExpenses === 0 && total === 0) {
+    return itineraryBudget ? { lineItems: [], total: 0, budgetLimit, currency, withinBudget: null, budgetNote: "", perLeg: [], fallbackText: itineraryBudget } : null;
+  }
+
+  const lineItems: BudgetLineItem[] = [
+    { label: "Flights", amount: flightCost, icon: "✈️" },
+    { label: "Hotels", amount: hotelCost, icon: "🏨" },
+    { label: "Daily expenses", amount: dailyExpenses, icon: "🍽️" },
+  ].filter((item) => item.amount > 0);
+
+  const perLeg: BudgetLegBreakdown[] = perLegRaw.map((leg) => {
+    const l = leg as Record<string, unknown>;
+    return {
+      route: `${readString(l.origin)} → ${readString(l.destination)}`,
+      nights: Number(l.nights ?? 0),
+      flightCost: Number(l.flight_cost ?? 0),
+      hotelCost: Number(l.hotel_cost ?? 0),
+      dailyExpenses: Number(l.daily_expenses ?? 0),
+      legTotal: Number(l.leg_total ?? 0),
+    };
+  });
+
+  return { lineItems, total, budgetLimit, currency, withinBudget, budgetNote, perLeg, fallbackText: "" };
 }
 
 function buildVisaBriefings({
@@ -274,7 +348,7 @@ function isGenericLogisticsActivity(label: string): boolean {
     "hotel checkout",
     "departure",
     "depart ",
-    "flexible activity nearby",
+    "flexible activity",
     "nearby flexible activity",
     "flexible nearby activity",
   ];

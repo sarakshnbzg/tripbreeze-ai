@@ -205,7 +205,7 @@ def _is_non_mappable_activity(name: str | None) -> bool:
         return True
 
     placeholder_phrases = (
-        "flexible activity nearby",
+        "flexible activity",
         "nearby flexible activity",
         "flexible nearby activity",
     )
