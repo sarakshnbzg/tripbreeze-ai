@@ -2,6 +2,7 @@
 
 import asyncio
 import io
+from pathlib import Path
 import sys
 from types import SimpleNamespace
 
@@ -421,6 +422,30 @@ class TestAPIEndpoints:
 
         assert response.status_code == 502
         assert response.json()["detail"] == "Transcription failed. Please try again later."
+
+    def test_generated_image_serves_cached_png(self, monkeypatch, tmp_path):
+        image_dir = tmp_path / "generated"
+        image_dir.mkdir()
+        image_path = image_dir / "cover.png"
+        image_path.write_bytes(b"fake-png")
+        monkeypatch.setattr(system_routes, "GENERATED_IMAGE_DIR", Path(image_dir))
+
+        response = client.get("/api/generated-images/cover.png", headers=auth_headers())
+
+        assert response.status_code == 200
+        assert response.content == b"fake-png"
+        assert response.headers["content-type"] == "image/png"
+        assert response.headers["cache-control"] == "public, max-age=86400, immutable"
+
+    def test_generated_image_rejects_traversal_outside_cache_dir(self, monkeypatch, tmp_path):
+        image_dir = tmp_path / "generated"
+        image_dir.mkdir()
+        monkeypatch.setattr(system_routes, "GENERATED_IMAGE_DIR", Path(image_dir))
+
+        response = client.get("/api/generated-images/%2E%2E%2Fsecret.png", headers=auth_headers())
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Image not found"
 
     def test_pdf_export_rejects_oversized_itinerary(self):
         response = client.post(

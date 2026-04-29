@@ -140,6 +140,52 @@ class TestRevisionBaseline:
         assert result["free_text_query"] == "Make it 5 nights"
         assert result["revision_baseline"]["return_date"] == "2026-05-26"
 
+    def test_review_router_clears_partial_results_state_when_revising(self, monkeypatch):
+        monkeypatch.setattr(
+            "domain.nodes.review_router.interrupt",
+            lambda payload: {
+                "feedback_type": "revise_plan",
+                "user_feedback": "Try different dates with better flight availability",
+            },
+        )
+
+        result = review_router(
+            {
+                "trip_request": {
+                    "origin": "Berlin",
+                    "destination": "Porto",
+                    "departure_date": "2026-05-21",
+                    "return_date": "2026-05-24",
+                },
+                "flight_options": [],
+                "hotel_options": [{"name": "Harbor Hotel"}],
+                "budget": {
+                    "partial_results_note": "Hotel options are ready, but flight options are unavailable right now.",
+                },
+                "destination_info": "### Porto\nPartial briefing",
+                "selected_hotel": {"name": "Harbor Hotel"},
+                "final_itinerary": "Recovered trip",
+                "itinerary_data": {"trip_overview": "Berlin to Porto"},
+                "itinerary_cover": {"image_url": "/api/generated-images/cover.png"},
+                "rag_sources": ["Visa Requirements"],
+                "rag_trace": [{"node": "research"}],
+            }
+        )
+
+        assert result["current_step"] == "revising_plan"
+        assert result["free_text_query"] == "Try different dates with better flight availability"
+        assert result["flight_options"] == []
+        assert result["hotel_options"] == []
+        assert result["budget"] == {}
+        assert result["destination_info"] == ""
+        assert result["selected_hotel"] == {}
+        assert result["final_itinerary"] == ""
+        assert result["itinerary_data"] == {}
+        assert result["itinerary_cover"] == {}
+        assert result["rag_sources"] == []
+        assert result["rag_trace"] == []
+        assert result["revision_baseline"]["destination"] == "Porto"
+
 
 class TestRouteAfterIntake:
     def test_successful_intake_continues(self):

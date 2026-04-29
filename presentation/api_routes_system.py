@@ -1,9 +1,13 @@
 """Health and utility routes for the FastAPI backend."""
 
+from pathlib import Path
+
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse
 
 from presentation.api_security import enforce_content_length, enforce_rate_limit, log_and_raise_api_error
 from presentation.api_runtime import logger
+from infrastructure.apis.itinerary_cover_image_client import GENERATED_IMAGE_DIR
 
 router = APIRouter()
 _MAX_AUDIO_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -22,6 +26,28 @@ _ALLOWED_AUDIO_CONTENT_TYPES = {
 async def healthcheck() -> dict[str, str]:
     """Lightweight container/lb health endpoint."""
     return {"status": "ok"}
+
+
+@router.get("/api/generated-images/{image_name:path}")
+async def get_generated_image(image_name: str):
+    """Serve locally cached itinerary cover images."""
+    image_path = (GENERATED_IMAGE_DIR / image_name).resolve()
+    try:
+        image_path.relative_to(GENERATED_IMAGE_DIR.resolve())
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Image not found") from exc
+
+    if not image_path.exists() or not image_path.is_file():
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    media_type = "image/png"
+    if image_path.suffix.lower() == ".jpg" or image_path.suffix.lower() == ".jpeg":
+        media_type = "image/jpeg"
+    return FileResponse(
+        Path(image_path),
+        media_type=media_type,
+        headers={"Cache-Control": "public, max-age=86400, immutable"},
+    )
 
 
 @router.post("/api/transcribe")

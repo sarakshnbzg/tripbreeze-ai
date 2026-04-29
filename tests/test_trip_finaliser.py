@@ -181,6 +181,29 @@ class TestFinaliserSuccessResponse:
         assert response["selected_hotel"]["name"] == "Hotel Le Marais"
         assert response["selected_hotel"]["latitude"] == 48.86
 
+    def test_includes_itinerary_cover_when_provided(self):
+        itinerary = Itinerary(
+            trip_overview="overview",
+            flight_details="flight",
+            hotel_details="hotel",
+            destination_highlights="highlights",
+            budget_breakdown="budget",
+            visa_entry_info="visa",
+            packing_tips="packing",
+        )
+
+        response = _finaliser_success_response(
+            itinerary=itinerary,
+            render_markdown=render_itinerary_markdown,
+            rag_sources=[],
+            rag_trace=[],
+            token_usage=[],
+            itinerary_cover={"image_url": "/api/generated-images/test.png", "title": "Paris cover"},
+        )
+
+        assert response["itinerary_cover"]["image_url"] == "/api/generated-images/test.png"
+        assert response["itinerary_cover"]["title"] == "Paris cover"
+
 
 class TestActivityLocationMetadata:
     def test_backfills_activity_map_fields_from_candidates(self):
@@ -497,9 +520,10 @@ class TestMultiCityDerivedSections:
         assert plans[4].date == "2026-06-15"
         assert plans[4].theme == "Departure day — depart Rome for Berlin"
 
+    @patch("domain.nodes.trip_finaliser.generate_itinerary_cover", return_value=({}, None))
     @patch("domain.nodes.trip_finaliser.fetch_weather_for_trip", return_value={})
     @patch("domain.nodes.trip_finaliser.create_chat_model")
-    def test_multi_city_trip_uses_llm_structured_itinerary(self, mock_create, _mock_weather):
+    def test_multi_city_trip_uses_llm_structured_itinerary(self, mock_create, _mock_weather, _mock_cover):
         response = MagicMock()
         response.tool_calls = [
             {
@@ -650,9 +674,10 @@ class TestFinaliserFallbacks:
         state.update(overrides)
         return state
 
+    @patch("domain.nodes.trip_finaliser.generate_itinerary_cover", return_value=({}, None))
     @patch("domain.nodes.trip_finaliser.fetch_weather_for_trip", return_value={})
     @patch("domain.nodes.trip_finaliser.create_chat_model")
-    def test_single_city_falls_back_when_final_tool_missing(self, mock_create, _mock_weather):
+    def test_single_city_falls_back_when_final_tool_missing(self, mock_create, _mock_weather, _mock_cover):
         response = MagicMock()
         response.tool_calls = []
         response.usage_metadata = {"input_tokens": 10, "output_tokens": 5}
@@ -671,9 +696,10 @@ class TestFinaliserFallbacks:
         assert result["finaliser_metadata"]["react_loop"]["final_tool_emitted"] is False
         assert result["itinerary_data"]["visa_entry_info"] == "US citizens can visit visa-free."
 
+    @patch("domain.nodes.trip_finaliser.generate_itinerary_cover", return_value=({}, None))
     @patch("domain.nodes.trip_finaliser.fetch_weather_for_trip", return_value={})
     @patch("domain.nodes.trip_finaliser.create_chat_model")
-    def test_malformed_output_falls_back_after_failed_parse(self, mock_create, _mock_weather):
+    def test_malformed_output_falls_back_after_failed_parse(self, mock_create, _mock_weather, _mock_cover):
         response = MagicMock()
         response.tool_calls = [
             {
@@ -709,9 +735,10 @@ class TestFinaliserFallbacks:
         assert result["finaliser_metadata"]["react_loop"]["final_tool_emitted"] is True
         assert result["itinerary_data"]["trip_overview"].startswith("Berlin to Paris")
 
+    @patch("domain.nodes.trip_finaliser.generate_itinerary_cover", return_value=({}, None))
     @patch("domain.nodes.trip_finaliser.fetch_weather_for_trip", return_value={})
     @patch("domain.nodes.trip_finaliser.create_chat_model")
-    def test_multi_city_missing_final_tool_builds_fallback_itinerary(self, mock_create, _mock_weather):
+    def test_multi_city_missing_final_tool_builds_fallback_itinerary(self, mock_create, _mock_weather, _mock_cover):
         response = MagicMock()
         response.tool_calls = []
         response.usage_metadata = {"input_tokens": 12, "output_tokens": 6}
@@ -754,11 +781,50 @@ class TestFinaliserFallbacks:
         assert result["finaliser_metadata"]["used_fallback"] is True
         assert result["finaliser_metadata"]["fallback_reason"] == "no_tool_calls"
 
+    @patch("domain.nodes.trip_finaliser.generate_itinerary_cover", return_value=({}, None))
+    @patch("domain.nodes.trip_finaliser.fetch_weather_for_trip", return_value={})
+    @patch("domain.nodes.trip_finaliser.invoke_with_retry", side_effect=TimeoutError("LLM timed out"))
+    @patch("domain.nodes.trip_finaliser.create_chat_model")
+    def test_single_city_timeout_builds_fallback_itinerary(self, mock_create, _mock_invoke, _mock_weather, _mock_cover):
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+        mock_create.return_value = mock_llm
 
-class TestLiveMarkdownStreaming:
+        result = trip_finaliser(self._single_city_state())
+
+        assert "Trip Overview" in result["final_itinerary"]
+        assert result["finaliser_metadata"]["used_fallback"] is True
+        assert result["finaliser_metadata"]["fallback_reason"] == "react_loop_failed"
+        assert result["finaliser_metadata"]["react_loop"]["iterations"] == 0
+        assert result["finaliser_metadata"]["react_loop"]["final_tool_emitted"] is False
+        assert result["itinerary_data"]["visa_entry_info"] == "US citizens can visit visa-free."
+
+    @patch("domain.nodes.trip_finaliser.generate_itinerary_cover", side_effect=RuntimeError("image model down"))
     @patch("domain.nodes.trip_finaliser.fetch_weather_for_trip", return_value={})
     @patch("domain.nodes.trip_finaliser.create_chat_model")
-    def test_streams_markdown_tokens_when_emitter_present(self, mock_create, _mock_weather):
+    def test_cover_generation_failure_does_not_block_final_itinerary(self, mock_create, _mock_weather, _mock_cover):
+        response = MagicMock()
+        response.tool_calls = []
+        response.usage_metadata = {"input_tokens": 10, "output_tokens": 5}
+
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+        mock_llm.invoke.return_value = response
+        mock_create.return_value = mock_llm
+
+        result = trip_finaliser(self._single_city_state())
+
+        assert "Trip Overview" in result["final_itinerary"]
+        assert result["itinerary_cover"] == {}
+        assert result["finaliser_metadata"]["used_fallback"] is True
+        assert result["finaliser_metadata"]["fallback_reason"] == "no_tool_calls"
+
+
+class TestLiveMarkdownStreaming:
+    @patch("domain.nodes.trip_finaliser.generate_itinerary_cover", return_value=({}, None))
+    @patch("domain.nodes.trip_finaliser.fetch_weather_for_trip", return_value={})
+    @patch("domain.nodes.trip_finaliser.create_chat_model")
+    def test_streams_markdown_tokens_when_emitter_present(self, mock_create, _mock_weather, _mock_cover):
         structured_response = MagicMock()
         structured_response.tool_calls = [
             {

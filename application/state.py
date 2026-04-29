@@ -60,6 +60,7 @@ class TravelState(TypedDict, total=False):
     # Final output
     final_itinerary: str
     itinerary_data: dict[str, Any]
+    itinerary_cover: dict[str, Any]
     finaliser_metadata: dict[str, Any]
 
     # Conversation history (append-only via operator.add)
@@ -97,6 +98,7 @@ REVISION_RESET: dict = {
     "attraction_candidates": [],
     "final_itinerary": "",
     "itinerary_data": {},
+    "itinerary_cover": {},
     "finaliser_metadata": {},
     "node_errors": [],
 }

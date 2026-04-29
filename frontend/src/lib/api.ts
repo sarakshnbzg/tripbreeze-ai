@@ -42,6 +42,24 @@ export function resolveApiBaseUrl(
 
 const API_BASE_URL = resolveApiBaseUrl();
 
+export function resolveApiAssetUrl(
+  assetUrl: string,
+  configuredBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL,
+  browserHostname?: string,
+): string {
+  const trimmed = assetUrl.trim();
+  if (!trimmed) {
+    return "";
+  }
+  if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith("data:")) {
+    return trimmed;
+  }
+  if (!trimmed.startsWith("/")) {
+    return trimmed;
+  }
+  return `${resolveApiBaseUrl(configuredBaseUrl, browserHostname)}${trimmed}`;
+}
+
 function getStoredCsrfToken(): string {
   if (typeof window === "undefined") {
     return "";

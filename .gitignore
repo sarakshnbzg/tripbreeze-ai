@@ -10,6 +10,7 @@ __pycache__/
 .DS_Store
 *.egg-info/
 evals/results/
+.generated/
 frontend/.next/
 frontend/node_modules/
 frontend/*.tsbuildinfo

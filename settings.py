@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = Field(True, alias="SMTP_USE_TLS")
 
     openai_embedding_model: str = Field("text-embedding-3-small", alias="OPENAI_EMBEDDING_MODEL")
+    itinerary_cover_image_enabled: bool = Field(True, alias="ITINERARY_COVER_IMAGE_ENABLED")
+    itinerary_cover_image_model: str = Field("gpt-image-1", alias="ITINERARY_COVER_IMAGE_MODEL")
+    itinerary_cover_image_size: str = Field("1536x1024", alias="ITINERARY_COVER_IMAGE_SIZE")
+    itinerary_cover_image_timeout_seconds: float = Field(20.0, alias="ITINERARY_COVER_IMAGE_TIMEOUT_SECONDS", gt=0)
 
     rag_chunk_size: int = Field(800, alias="RAG_CHUNK_SIZE", gt=0)
     rag_chunk_overlap: int = Field(100, alias="RAG_CHUNK_OVERLAP", ge=0)
@@ -193,6 +197,10 @@ SMTP_SENDER_PASSWORD = settings.smtp_sender_password
 SMTP_USE_TLS = settings.smtp_use_tls
 
 EMBEDDING_MODELS = settings.embedding_models
+ITINERARY_COVER_IMAGE_ENABLED = settings.itinerary_cover_image_enabled
+ITINERARY_COVER_IMAGE_MODEL = settings.itinerary_cover_image_model
+ITINERARY_COVER_IMAGE_SIZE = settings.itinerary_cover_image_size
+ITINERARY_COVER_IMAGE_TIMEOUT_SECONDS = settings.itinerary_cover_image_timeout_seconds
 
 RAG_CHUNK_SIZE = settings.rag_chunk_size
 RAG_CHUNK_OVERLAP = settings.rag_chunk_overlap
