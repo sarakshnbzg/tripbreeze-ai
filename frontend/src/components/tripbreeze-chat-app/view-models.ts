@@ -592,7 +592,16 @@ function buildSingleDestinationSnapshotItems({
   const destination = String(tripRequest.destination ?? "").trim();
   const departureDate = String(tripRequest.departure_date ?? "").trim();
   const returnDate = String(tripRequest.return_date ?? "").trim();
-  const selectedFlightLabel = Object.keys(finalSelectedFlight).length ? selectionLabel(finalSelectedFlight, "Selected flight") : "Chosen flight";
+  const selectedFlightLabel = (() => {
+    if (!Object.keys(finalSelectedFlight).length) return "Chosen flight";
+    const outboundAirline = String(finalSelectedFlight.airline ?? finalSelectedFlight.operator ?? finalSelectedFlight.name ?? "");
+    const returnFlight = readRecord(finalSelectedFlight.selected_return);
+    const returnAirline = Object.keys(returnFlight).length ? String(returnFlight.airline ?? returnFlight.operator ?? returnFlight.name ?? "") : "";
+    if (returnAirline && returnAirline !== outboundAirline) {
+      return [outboundAirline, returnAirline].filter(Boolean).join(" / ");
+    }
+    return outboundAirline || "Selected flight";
+  })();
   const selectedHotelLabel = Object.keys(finalSelectedHotel).length ? selectionLabel(finalSelectedHotel, "Selected hotel") : "Chosen hotel";
 
   return [
