@@ -232,11 +232,9 @@ def _backfill_activity_coordinates(
             if activity.latitude is not None and activity.longitude is not None:
                 continue
             address = (activity.address or "").strip()
+            if not address:
+                continue
             fallback_hint = day_hint or (activity.destination or "")
-            if not address and not activity.name:
-                continue
-            if not address and _is_generic_logistics_activity(activity.name):
-                continue
             query_parts = [part for part in [activity.name, address, fallback_hint] if part]
             if not query_parts:
                 continue
