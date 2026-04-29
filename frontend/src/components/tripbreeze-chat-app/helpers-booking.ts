@@ -1,13 +1,14 @@
 export function combineRoundTripFlight(outbound: Record<string, unknown>, returnFlight: Record<string, unknown>) {
-  const totalPrice = Number(
-    returnFlight.total_price ?? outbound.total_price ?? outbound.price ?? 0,
-  );
+  const outboundTotal = Number(outbound.total_price ?? outbound.price ?? 0);
+  const returnTotal = Number(returnFlight.total_price ?? returnFlight.price ?? 0);
+  const totalPrice = returnTotal || outboundTotal;
   const adults = Math.max(1, Number(outbound.adults ?? 1));
   const price = adults > 1 ? Number((totalPrice / adults).toFixed(2)) : totalPrice;
   return {
     ...outbound,
     return_summary: String(returnFlight.return_summary ?? outbound.return_summary ?? ""),
     return_details_available: true,
+    outbound_total_price: outboundTotal,
     selected_return: returnFlight,
     total_price: totalPrice,
     price,

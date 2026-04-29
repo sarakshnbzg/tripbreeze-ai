@@ -129,7 +129,21 @@ export function useReviewEffects({
           currency: currencyCode,
           return_time_window: returnTimeWindow ? [...returnTimeWindow] : null,
         });
-        setReturnOptions(options as TripOption[]);
+        const budgetLimit = Number(state.trip_request?.budget_limit ?? 0);
+        let filteredOptions = options as TripOption[];
+        if (budgetLimit > 0) {
+          const hotelOptions = (state.hotel_options ?? []) as Array<Record<string, unknown>>;
+          const cheapestHotel = hotelOptions.length
+            ? Math.min(...hotelOptions.map((h) => Number(h.total_price ?? 0)))
+            : 0;
+          const dailyExpenses = Number((state.budget as Record<string, unknown> | undefined)?.estimated_daily_expenses ?? 0);
+          const maxRoundTripPrice = budgetLimit - cheapestHotel - dailyExpenses;
+          const withinBudget = filteredOptions.filter((o) => Number(o.total_price ?? 0) <= maxRoundTripPrice);
+          if (withinBudget.length) {
+            filteredOptions = withinBudget;
+          }
+        }
+        setReturnOptions(filteredOptions);
         setSelectedReturnIndex(null);
       } catch {
         setReturnOptions([]);

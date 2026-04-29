@@ -152,7 +152,14 @@ export function buildItineraryViewModel({
     finalSelectedHotels,
   });
 
-  const budgetBreakdown = buildBudgetBreakdown({ budgetData, budgetLimit, itineraryBudget, currencyCode });
+  const budgetBreakdown = buildBudgetBreakdown({
+    budgetData,
+    budgetLimit,
+    itineraryBudget,
+    currencyCode,
+    selectedFlight: finalSelectedFlight,
+    selectedHotel: finalSelectedHotel,
+  });
 
   const primarySections = [
     itineraryFlightDetails ? { key: "flight", title: "Flight details", content: itineraryFlightDetails } : null,
@@ -188,18 +195,31 @@ function buildBudgetBreakdown({
   budgetLimit,
   itineraryBudget,
   currencyCode,
+  selectedFlight,
+  selectedHotel,
 }: {
   budgetData: Record<string, unknown>;
   budgetLimit: number;
   itineraryBudget: string;
   currencyCode: string;
+  selectedFlight?: Record<string, unknown>;
+  selectedHotel?: Record<string, unknown>;
 }): BudgetBreakdownData | null {
   const currency = readString(budgetData.currency) || currencyCode;
-  const flightCost = Number(budgetData.flight_cost ?? 0);
-  const hotelCost = Number(budgetData.hotel_cost ?? 0);
   const dailyExpenses = Number(budgetData.estimated_daily_expenses ?? 0);
-  const total = Number(budgetData.total_estimated ?? budgetData.total_estimated_cost ?? 0);
-  const withinBudget = budgetData.within_budget == null ? null : Boolean(budgetData.within_budget);
+  const selectedFlightCost = (() => {
+    if (!selectedFlight || !Object.keys(selectedFlight).length) return 0;
+    const combined = Number(selectedFlight.total_price ?? 0);
+    const outbound = Number(selectedFlight.outbound_total_price ?? 0);
+    const returnLeg = readRecord(selectedFlight.selected_return);
+    const returnCost = Object.keys(returnLeg).length ? Number(returnLeg.total_price ?? returnLeg.price ?? 0) : 0;
+    return combined || outbound + returnCost || outbound || Number(selectedFlight.price ?? 0);
+  })();
+  const selectedHotelCost = selectedHotel && Object.keys(selectedHotel).length ? Number(selectedHotel.total_price ?? 0) : 0;
+  const flightCost = selectedFlightCost || Number(budgetData.flight_cost ?? 0);
+  const hotelCost = selectedHotelCost || Number(budgetData.hotel_cost ?? 0);
+  const total = flightCost + hotelCost + dailyExpenses || Number(budgetData.total_estimated ?? budgetData.total_estimated_cost ?? 0);
+  const withinBudget = budgetLimit > 0 ? total <= budgetLimit : budgetData.within_budget == null ? null : Boolean(budgetData.within_budget);
   const budgetNote = readString(budgetData.budget_notes);
   const perLegRaw = Array.isArray(budgetData.per_leg_breakdown) ? budgetData.per_leg_breakdown : [];
 
