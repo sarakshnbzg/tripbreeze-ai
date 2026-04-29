@@ -148,9 +148,6 @@ export function useTripPlannerReviewActions({
 
     setError("");
     setLoading(feedbackType === "revise_plan" ? "planning" : "approving");
-    if (feedbackType === "revise_plan") {
-      setShowComposer(true);
-    }
     setItinerary("");
 
     const request: ApproveRequest = {
