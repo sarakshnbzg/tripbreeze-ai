@@ -20,13 +20,13 @@ from settings import (
     FRONTEND_ORIGINS,
     SESSION_COOKIE_NAME,
     SESSION_COOKIE_SECURE,
+    SESSION_COOKIE_SAMESITE,
     SESSION_IDLE_TIMEOUT_SECONDS,
     SESSION_MAX_AGE_SECONDS,
     SESSION_SECRET,
 )
 
 SESSION_COOKIE_PATH: Final[str] = "/"
-SESSION_COOKIE_SAMESITE: Final[str] = "strict"
 CSRF_HEADER_NAME: Final[str] = "x-csrf-token"
 SAFE_METHODS: Final[set[str]] = {"GET", "HEAD", "OPTIONS"}
 PUBLIC_PATH_PREFIXES: Final[tuple[str, ...]] = (

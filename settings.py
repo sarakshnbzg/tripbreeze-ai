@@ -80,6 +80,19 @@ class Settings(BaseSettings):
     session_max_age_seconds: int = Field(60 * 60 * 24 * 7, alias="SESSION_MAX_AGE_SECONDS", gt=0)
     session_idle_timeout_seconds: int = Field(60 * 60 * 24, alias="SESSION_IDLE_TIMEOUT_SECONDS", gt=0)
     session_cookie_secure: bool = Field(False, alias="SESSION_COOKIE_SECURE")
+    session_cookie_samesite: str = Field("strict", alias="SESSION_COOKIE_SAMESITE")
+
+    @field_validator("session_cookie_samesite")
+    @classmethod
+    def validate_session_cookie_samesite(cls, value: str, info) -> str:
+        normalized = str(value or "strict").strip().lower()
+        if normalized not in {"strict", "lax", "none"}:
+            raise ValueError("SESSION_COOKIE_SAMESITE must be 'strict', 'lax', or 'none'")
+        if normalized == "none":
+            secure = info.data.get("session_cookie_secure")
+            if not secure:
+                raise ValueError("SESSION_COOKIE_SAMESITE=none requires SESSION_COOKIE_SECURE=true")
+        return normalized
 
     @field_validator("rag_chunk_overlap")
     @classmethod
@@ -211,3 +224,4 @@ SESSION_COOKIE_NAME = settings.session_cookie_name
 SESSION_MAX_AGE_SECONDS = settings.session_max_age_seconds
 SESSION_IDLE_TIMEOUT_SECONDS = settings.session_idle_timeout_seconds
 SESSION_COOKIE_SECURE = settings.session_cookie_secure
+SESSION_COOKIE_SAMESITE = settings.session_cookie_samesite

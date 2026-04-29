@@ -136,6 +136,22 @@ class TestAPIEndpoints:
         assert "SameSite=strict" in cookie_header
         assert response.json()["csrf_token"]
 
+    def test_login_uses_configured_samesite_cookie_policy(self, monkeypatch):
+        monkeypatch.setattr(auth_routes, "verify_user", lambda user_id, password: True)
+        monkeypatch.setattr(auth_routes, "load_profile", lambda user_id: {"user_id": user_id})
+        monkeypatch.setattr(auth_module, "SESSION_COOKIE_SAMESITE", "none")
+        monkeypatch.setattr(auth_module, "SESSION_COOKIE_SECURE", True)
+
+        response = client.post(
+            "/api/auth/login",
+            json={"user_id": "test_user", "password": "super-secret"},
+        )
+
+        assert response.status_code == 200
+        cookie_header = response.headers["set-cookie"]
+        assert "SameSite=none" in cookie_header
+        assert "Secure" in cookie_header
+
     def test_login_hides_internal_exception_details(self, monkeypatch):
         monkeypatch.setattr(auth_routes, "verify_user", lambda user_id, password: (_ for _ in ()).throw(RuntimeError("database offline")))
 
