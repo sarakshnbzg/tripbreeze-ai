@@ -21,7 +21,6 @@ def _finaliser_success_response(
     rag_sources: list[str],
     rag_trace: list[dict],
     token_usage: list[dict],
-    itinerary_cover: dict | None = None,
     finaliser_metadata: dict | None = None,
     selected_hotel: dict | None = None,
     selected_hotels: list[dict] | None = None,
@@ -34,7 +33,6 @@ def _finaliser_success_response(
     response = {
         "final_itinerary": markdown,
         "itinerary_data": itinerary.model_dump(),
-        "itinerary_cover": itinerary_cover or {},
         "rag_sources": rag_sources,
         "rag_trace": rag_trace,
         "token_usage": token_usage,

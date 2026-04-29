@@ -31,13 +31,19 @@ def _infer_llm_metadata(llm: Any, *, _visited: set[int] | None = None) -> tuple[
         return normalise_llm_selection(None, None)
     _visited.add(object_id)
 
-    provider = ""
-    model = str(getattr(llm, "model_name", "") or getattr(llm, "model", "") or "").strip()
+    provider = str(getattr(llm, "_tripbreeze_provider", "") or "").strip().lower()
+    model = str(
+        getattr(llm, "_tripbreeze_model", "")
+        or getattr(llm, "model_name", "")
+        or getattr(llm, "model", "")
+        or ""
+    ).strip()
 
     class_name = llm.__class__.__name__.lower()
     module_name = llm.__class__.__module__.lower()
     if "openai" in class_name or "openai" in module_name:
-        provider = "openai"
+        if not provider:
+            provider = "openai"
 
     if provider and model:
         return normalise_llm_selection(provider, model)
@@ -75,7 +81,10 @@ def get_available_models(provider: str) -> list[str]:
     return OPENAI_MODELS
 
 
-def normalise_llm_selection(provider: str | None, model: str | None) -> tuple[str, str]:
+def normalise_llm_selection(
+    provider: str | None,
+    model: str | None,
+) -> tuple[str, str]:
     """Normalise provider/model selection against supported defaults."""
     chosen_provider = (provider or DEFAULT_LLM_PROVIDER).lower()
     if chosen_provider != "openai":
@@ -117,7 +126,11 @@ def create_chat_model(
         logger.error("OpenAI model requested but OPENAI_API_KEY is not configured")
         raise RuntimeError("OpenAI support requires OPENAI_API_KEY in your environment.")
 
-    return ChatOpenAI(model=chosen_model, temperature=temperature, **kwargs)
+    llm = ChatOpenAI(model=chosen_model, temperature=temperature, **kwargs)
+
+    setattr(llm, "_tripbreeze_provider", chosen_provider)
+    setattr(llm, "_tripbreeze_model", chosen_model)
+    return llm
 
 
 def extract_token_usage(response, *, model: str, node: str) -> dict:

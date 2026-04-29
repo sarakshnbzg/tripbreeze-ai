@@ -105,7 +105,11 @@ export function PlannerStage({
 
         <div className="relative mt-6 space-y-5">
           {showModelSettings ? (
-            <ModelSettingsPanel form={form} setForm={setForm} availableModels={availableModels} />
+            <ModelSettingsPanel
+              form={form}
+              setForm={setForm}
+              availableModels={availableModels}
+            />
           ) : null}
 
           {shouldShowMessageFeed ? <MessageFeed messages={messages} /> : null}

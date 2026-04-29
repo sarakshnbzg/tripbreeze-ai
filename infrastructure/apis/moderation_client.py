@@ -51,6 +51,28 @@ def _flagged_categories(result: Any) -> list[str]:
     return sorted(str(name) for name, flagged in category_map.items() if flagged)
 
 
+def _moderate_with_openai(*, text: str, context: str) -> tuple[bool, list[str]]:
+    import openai
+
+    client = openai.OpenAI(api_key=OPENAI_API_KEY, timeout=MODERATION_TIMEOUT_SECONDS)
+    response = client.moderations.create(
+        model=MODERATION_MODEL,
+        input=text,
+    )
+    result = response.results[0] if getattr(response, "results", None) else None
+    flagged = bool(getattr(result, "flagged", False)) if result is not None else False
+    categories = _flagged_categories(result)
+    log_event(
+        logger,
+        "moderation.checked",
+        context=context,
+        flagged=flagged,
+        categories=categories,
+        model=MODERATION_MODEL,
+    )
+    return flagged, categories
+
+
 def check_text_allowed(payload: Any, *, context: str) -> bool:
     """Return whether payload passes moderation.
 
@@ -62,24 +84,7 @@ def check_text_allowed(payload: Any, *, context: str) -> bool:
         return True
 
     try:
-        import openai
-
-        client = openai.OpenAI(api_key=OPENAI_API_KEY, timeout=MODERATION_TIMEOUT_SECONDS)
-        response = client.moderations.create(
-            model=MODERATION_MODEL,
-            input=text,
-        )
-        result = response.results[0] if getattr(response, "results", None) else None
-        flagged = bool(getattr(result, "flagged", False)) if result is not None else False
-        categories = _flagged_categories(result)
-        log_event(
-            logger,
-            "moderation.checked",
-            context=context,
-            flagged=flagged,
-            categories=categories,
-            model=MODERATION_MODEL,
-        )
+        flagged, categories = _moderate_with_openai(text=text, context=context)
         if flagged:
             raise ModerationBlockedError(context=context, categories=categories)
         return True

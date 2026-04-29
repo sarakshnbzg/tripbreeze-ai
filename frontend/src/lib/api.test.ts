@@ -22,8 +22,8 @@ describe("resolveApiBaseUrl", () => {
 
 describe("resolveApiAssetUrl", () => {
   it("expands backend-relative asset URLs against the API base URL", () => {
-    expect(resolveApiAssetUrl("/api/generated-images/cover.png", "http://127.0.0.1:8100", "127.0.0.1")).toBe(
-      "http://127.0.0.1:8100/api/generated-images/cover.png",
+    expect(resolveApiAssetUrl("/api/assets/example.png", "http://127.0.0.1:8100", "127.0.0.1")).toBe(
+      "http://127.0.0.1:8100/api/assets/example.png",
     );
   });
 

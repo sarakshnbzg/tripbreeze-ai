@@ -42,4 +42,3 @@ class TestModerationClient:
             check_text_allowed("flagged", context="search")
 
         assert exc_info.value.categories == ["violence"]
-

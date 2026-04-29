@@ -89,7 +89,6 @@ describe("PlannerStage", () => {
             finalItinerary: "",
             hasStructuredItinerary: false,
             fallbackNotice: null,
-            itineraryCover: null,
             snapshotItems: [],
             bookingLinks: [],
             primarySections: [],

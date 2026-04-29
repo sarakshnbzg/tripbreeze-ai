@@ -5,7 +5,6 @@ import json
 from application.state import TravelState
 from domain.utils.sanitize import sanitise_untrusted_text
 from infrastructure.apis.geocoding_client import geocode_address
-from infrastructure.apis.itinerary_cover_image_client import generate_itinerary_cover
 from infrastructure.apis.serpapi_client import fetch_hotel_address
 from infrastructure.apis.weather_client import fetch_weather_for_trip
 from infrastructure.llms.model_factory import create_chat_model, extract_token_usage, invoke_with_retry, stream_with_retry
@@ -53,34 +52,6 @@ from domain.nodes.trip_finaliser_context import (
 )
 from infrastructure.logging_utils import get_logger, log_event
 logger = get_logger(__name__)
-
-
-def _generate_cover_image_payload(
-    *,
-    state: TravelState,
-    itinerary,
-    token_usage: list[dict],
-) -> dict:
-    try:
-        itinerary_cover, prompt_usage = generate_itinerary_cover(
-            trip_request=state.get("trip_request", {}) or {},
-            itinerary_data=itinerary.model_dump(),
-            llm_provider=str(state.get("llm_provider", "openai") or "openai"),
-            llm_model=str(state.get("llm_model", "gpt-4o-mini") or "gpt-4o-mini"),
-        )
-    except Exception as exc:
-        log_event(
-            logger,
-            "itinerary_cover.unexpected_failure",
-            error_type=type(exc).__name__,
-            model=str(state.get("llm_model", "") or ""),
-        )
-        logger.warning("Itinerary cover generation failed unexpectedly: %s", exc)
-        return {}
-
-    if prompt_usage:
-        token_usage.append(prompt_usage)
-    return itinerary_cover
 
 
 # ── Prompt ────────────────────────────────────────────────────────────
@@ -426,18 +397,12 @@ def _finalise_multi_city(state: TravelState) -> dict:
             model=state.get("llm_model", ""),
             reason=finaliser_metadata["fallback_reason"],
         )
-        itinerary_cover = _generate_cover_image_payload(
-            state=state,
-            itinerary=itinerary,
-            token_usage=token_usage,
-        )
         return _finaliser_success_response(
             itinerary=itinerary,
             render_markdown=render_multi_city_itinerary_markdown,
             rag_sources=rag_sources,
             rag_trace=rag_trace,
             token_usage=token_usage,
-            itinerary_cover=itinerary_cover,
             finaliser_metadata=finaliser_metadata,
             selected_hotels=selected_hotels,
             state=state,
@@ -506,18 +471,12 @@ def _finalise_multi_city(state: TravelState) -> dict:
         used_fallback=bool(finaliser_metadata.get("used_fallback")),
         itinerary_day_count=len(itinerary.daily_plans),
     )
-    itinerary_cover = _generate_cover_image_payload(
-        state=state,
-        itinerary=itinerary,
-        token_usage=token_usage,
-    )
     return _finaliser_success_response(
         itinerary=itinerary,
         render_markdown=render_multi_city_itinerary_markdown,
         rag_sources=rag_sources,
         rag_trace=rag_trace,
         token_usage=token_usage,
-        itinerary_cover=itinerary_cover,
         finaliser_metadata=finaliser_metadata,
         selected_hotels=selected_hotels,
         state=state,
@@ -656,18 +615,12 @@ def _finalise_single_city(state: TravelState) -> dict:
             model=state.get("llm_model", ""),
             reason=finaliser_metadata["fallback_reason"],
         )
-        itinerary_cover = _generate_cover_image_payload(
-            state=state,
-            itinerary=itinerary,
-            token_usage=token_usage,
-        )
         return _finaliser_success_response(
             itinerary=itinerary,
             render_markdown=render_itinerary_markdown,
             rag_sources=rag_sources,
             rag_trace=rag_trace,
             token_usage=token_usage,
-            itinerary_cover=itinerary_cover,
             finaliser_metadata=finaliser_metadata,
             selected_hotel=selected_hotel,
             state=state,
@@ -727,18 +680,12 @@ def _finalise_single_city(state: TravelState) -> dict:
         destination,
         fetch_weather_for_trip_fn=fetch_weather_for_trip,
     )
-    itinerary_cover = _generate_cover_image_payload(
-        state=state,
-        itinerary=itinerary,
-        token_usage=token_usage,
-    )
     return _finaliser_success_response(
         itinerary=itinerary,
         render_markdown=render_itinerary_markdown,
         rag_sources=rag_sources,
         rag_trace=rag_trace,
         token_usage=token_usage,
-        itinerary_cover=itinerary_cover,
         finaliser_metadata=finaliser_metadata,
         selected_hotel=selected_hotel,
         state=state,

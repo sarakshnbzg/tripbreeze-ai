@@ -347,12 +347,6 @@ Passport required.
           finalItinerary: "Trip ready",
           hasStructuredItinerary: true,
           fallbackNotice: null,
-          itineraryCover: {
-            imageUrl: "/api/generated-images/test-cover.png",
-            title: "Lisbon in golden hour",
-            altText: "Illustrated Lisbon street at golden hour with a tram and tiled buildings.",
-            caption: "A warm first impression of your Lisbon escape.",
-          },
           snapshotItems: [
             { label: "Route", value: "Berlin -> Lisbon" },
             { label: "Dates", value: "2026-06-10 to 2026-06-15" },
@@ -428,8 +422,6 @@ Passport required.
     );
 
     expect(screen.getByText("Trip snapshot")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: /illustrated lisbon street/i })).toHaveAttribute("src", "/api/generated-images/test-cover.png");
-    expect(screen.getByText("AI trip cover")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Flight booking" })).toHaveAttribute("href", "https://example.com/flight");
     expect(screen.getByText("Flight details")).toBeInTheDocument();
     expect(screen.getByText("Visa and entry")).toBeInTheDocument();
@@ -453,7 +445,6 @@ Passport required.
           finalItinerary: "#### Trip Overview\nBerlin to Lisbon",
           hasStructuredItinerary: false,
           fallbackNotice: null,
-          itineraryCover: null,
           snapshotItems: [],
           bookingLinks: [],
           primarySections: [],
@@ -492,7 +483,6 @@ Passport required.
             title: "Recovered itinerary",
             detail: "The planner did not finish the structured itinerary step, so TripBreeze recovered this itinerary from your approved trip details.",
           },
-          itineraryCover: null,
           snapshotItems: [{ label: "Route", value: "Berlin -> Paris" }],
           bookingLinks: [],
           primarySections: [],
@@ -530,7 +520,6 @@ Passport required.
           finalItinerary: "Recovered trip",
           hasStructuredItinerary: true,
           fallbackNotice: null,
-          itineraryCover: null,
           snapshotItems: [{ label: "Route", value: "Berlin -> Paris" }],
           bookingLinks: [],
           primarySections: [],
@@ -608,49 +597,6 @@ Passport required.
       detail:
         "The planner returned malformed itinerary data, so TripBreeze recovered this itinerary from your approved trip details.",
     });
-  });
-
-  it("resolves backend-relative itinerary cover URLs against the API base URL", () => {
-    const viewModel = buildItineraryViewModel({
-      state: {
-        itinerary_data: {
-          trip_overview: "Berlin to Lisbon",
-        },
-        itinerary_cover: {
-          image_url: "/api/generated-images/test-cover.png",
-          title: "Lisbon cover",
-          alt_text: "Lisbon tram at sunset",
-          caption: "Golden-hour arrival energy.",
-        },
-      } as unknown as TravelState,
-      itinerary: "Trip ready",
-      currencyCode: "EUR",
-    });
-
-    expect(viewModel.itineraryCover).toEqual(
-      expect.objectContaining({
-        imageUrl: "http://localhost:8100/api/generated-images/test-cover.png",
-      }),
-    );
-  });
-
-  it("ignores malformed itinerary cover payloads without an image URL", () => {
-    const viewModel = buildItineraryViewModel({
-      state: {
-        itinerary_data: {
-          trip_overview: "Berlin to Lisbon",
-        },
-        itinerary_cover: {
-          title: "Lisbon cover",
-          alt_text: "Lisbon tram at sunset",
-          caption: "Golden-hour arrival energy.",
-        },
-      } as unknown as TravelState,
-      itinerary: "Trip ready",
-      currencyCode: "EUR",
-    });
-
-    expect(viewModel.itineraryCover).toBeNull();
   });
 
   it("refreshes the budget note when selected options change the displayed total", () => {
@@ -785,7 +731,6 @@ Passport required.
           finalItinerary: "Trip ready",
           hasStructuredItinerary: true,
           fallbackNotice: null,
-          itineraryCover: null,
           snapshotItems: [{ label: "Route", value: "Berlin -> Paris -> Barcelona" }],
           bookingLinks: [],
           primarySections: [],

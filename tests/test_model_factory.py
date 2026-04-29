@@ -25,9 +25,6 @@ class TestGetAvailableModels:
     def test_unknown_defaults_to_openai(self):
         assert get_available_models("unknown") == OPENAI_MODELS
 
-    def test_google_aliases_to_openai_models(self):
-        assert get_available_models("google") == OPENAI_MODELS
-
 
 # ── normalise_llm_selection ──
 
@@ -37,11 +34,6 @@ class TestNormaliseLlmSelection:
         provider, model = normalise_llm_selection("openai", "gpt-4o-mini")
         assert provider == "openai"
         assert model == "gpt-4o-mini"
-
-    def test_google_provider_falls_back_to_openai(self):
-        provider, model = normalise_llm_selection("google", "gemini-2.5-flash")
-        assert provider == "openai"
-        assert model == OPENAI_MODELS[0]
 
     def test_none_provider_defaults(self):
         provider, model = normalise_llm_selection(None, None)
@@ -60,11 +52,6 @@ class TestNormaliseLlmSelection:
         provider, model = normalise_llm_selection("OPENAI", None)
         assert provider == "openai"
 
-    def test_google_invalid_model_defaults_to_openai(self):
-        provider, model = normalise_llm_selection("google", "bad-model")
-        assert provider == "openai"
-        assert model == OPENAI_MODELS[0]
-
 
 # ── get_provider_status ──
 
@@ -81,12 +68,6 @@ class TestGetProviderStatus:
         ready, msg = get_provider_status("openai")
         assert ready is True
         assert msg == ""
-
-    def test_google_status_uses_openai_requirements(self, monkeypatch):
-        monkeypatch.setattr("infrastructure.llms.model_factory.OPENAI_API_KEY", "")
-        ready, msg = get_provider_status("google")
-        assert ready is False
-        assert "OPENAI_API_KEY" in msg
 
 
 # ── extract_token_usage ──

@@ -24,7 +24,6 @@ export function FinalItineraryPanel({
     finalItinerary,
     hasStructuredItinerary,
     fallbackNotice,
-    itineraryCover,
     snapshotItems: itinerarySnapshotItems,
     bookingLinks: itineraryBookingLinks,
     primarySections: primaryItinerarySections,
@@ -119,21 +118,6 @@ export function FinalItineraryPanel({
         <div className="mb-4 rounded-[1.6rem] border border-amber-200 bg-amber-50/85 p-4 text-sm text-amber-950">
           <div className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-800">{fallbackNotice.title}</div>
           <div className="mt-2 leading-7">{fallbackNotice.detail}</div>
-        </div>
-      ) : null}
-
-      {itineraryCover ? (
-        <div className="animate-fade-up stagger-1 mb-4 overflow-hidden rounded-[1.8rem] border border-white/80 bg-white/85 shadow-[0_18px_48px_rgba(16,33,43,0.12)]">
-          <img
-            src={itineraryCover.imageUrl}
-            alt={itineraryCover.altText}
-            className="h-64 w-full object-cover sm:h-80"
-          />
-          <div className="bg-gradient-to-br from-[#fffaf4] via-white to-[#f6f1ea] p-4 sm:p-5">
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate">AI trip cover</div>
-            <div className="mt-2 text-lg font-semibold text-ink">{itineraryCover.title}</div>
-            {itineraryCover.caption ? <div className="mt-2 text-sm leading-7 text-slate">{itineraryCover.caption}</div> : null}
-          </div>
         </div>
       ) : null}
 

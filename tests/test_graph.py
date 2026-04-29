@@ -166,7 +166,6 @@ class TestRevisionBaseline:
                 "selected_hotel": {"name": "Harbor Hotel"},
                 "final_itinerary": "Recovered trip",
                 "itinerary_data": {"trip_overview": "Berlin to Porto"},
-                "itinerary_cover": {"image_url": "/api/generated-images/cover.png"},
                 "rag_sources": ["Visa Requirements"],
                 "rag_trace": [{"node": "research"}],
             }
@@ -181,7 +180,6 @@ class TestRevisionBaseline:
         assert result["selected_hotel"] == {}
         assert result["final_itinerary"] == ""
         assert result["itinerary_data"] == {}
-        assert result["itinerary_cover"] == {}
         assert result["rag_sources"] == []
         assert result["rag_trace"] == []
         assert result["revision_baseline"]["destination"] == "Porto"

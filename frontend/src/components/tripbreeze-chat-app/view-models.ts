@@ -1,4 +1,3 @@
-import { resolveApiAssetUrl } from "@/lib/api";
 import { formatCurrency } from "@/lib/planner";
 import type { TravelState } from "@/lib/types";
 
@@ -13,13 +12,6 @@ import { extractSourceTrust, type SourceTrust } from "./source-trust";
 export type ItinerarySnapshotItem = {
   label: string;
   value: string;
-};
-
-export type ItineraryCover = {
-  imageUrl: string;
-  title: string;
-  altText: string;
-  caption: string;
 };
 
 export type ItinerarySection = {
@@ -94,7 +86,6 @@ export type ItineraryViewModel = {
   finalItinerary: string;
   hasStructuredItinerary: boolean;
   fallbackNotice: { title: string; detail: string } | null;
-  itineraryCover: ItineraryCover | null;
   snapshotItems: ItinerarySnapshotItem[];
   bookingLinks: Array<{ label: string; url: string }>;
   primarySections: ItinerarySection[];
@@ -119,7 +110,6 @@ export function buildItineraryViewModel({
   const tripRequest = readRecord(state?.trip_request);
   const budgetData = readRecord(state?.budget);
   const itineraryData = readRecord(state?.itinerary_data);
-  const itineraryCoverData = readRecord(state?.itinerary_cover);
   const itineraryFlightDetails = readString(itineraryData.flight_details);
   const itineraryHotelDetails = readString(itineraryData.hotel_details);
   const itineraryHighlights = readString(itineraryData.destination_highlights);
@@ -202,22 +192,10 @@ export function buildItineraryViewModel({
     itineraryPacking ? { key: "packing", title: "Packing tips", content: itineraryPacking } : null,
   ].filter((section): section is ItinerarySection => Boolean(section));
   const fallbackNotice = buildFallbackNotice(finaliserMetadata);
-  const itineraryCover = (() => {
-    const imageUrl = readString(itineraryCoverData.image_url);
-    if (!imageUrl) return null;
-    return {
-      imageUrl: resolveApiAssetUrl(imageUrl),
-      title: readString(itineraryCoverData.title) || "Trip cover",
-      altText: readString(itineraryCoverData.alt_text) || "AI-generated trip cover image",
-      caption: readString(itineraryCoverData.caption),
-    };
-  })();
-
   return {
     finalItinerary,
     hasStructuredItinerary,
     fallbackNotice,
-    itineraryCover,
     snapshotItems,
     bookingLinks,
     primarySections,

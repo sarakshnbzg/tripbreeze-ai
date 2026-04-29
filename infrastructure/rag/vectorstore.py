@@ -741,7 +741,7 @@ def _chroma_dir_for_provider(provider: str | None):
 
 
 def _build_vectorstore(
-    provider: str | None = DEFAULT_LLM_PROVIDER,
+    provider: str | None = None,
     force_rebuild: bool = False,
 ) -> Chroma:
     """Build or load the ChromaDB vector store from knowledge-base documents."""
@@ -795,7 +795,9 @@ def _source_label(source_path: str) -> str:
 
 
 def retrieve(
-    query: str, k: int = RAG_TOP_K, provider: str | None = DEFAULT_LLM_PROVIDER
+    query: str,
+    k: int = RAG_TOP_K,
+    provider: str | None = DEFAULT_LLM_PROVIDER,
 ) -> list[dict[str, str]]:
     """Return the top-k relevant visa text chunks with source metadata."""
     chosen_provider, _ = normalise_llm_selection(provider, None)
