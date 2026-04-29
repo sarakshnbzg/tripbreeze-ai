@@ -104,12 +104,6 @@ export function PlannerStage({
         </div>
 
         <div className="relative mt-6 space-y-5">
-          {!showComposer && !itinerary ? (
-            <div className="rounded-[1.4rem] border border-pine/15 bg-pine/8 px-4 py-3 text-sm text-slate">
-              <span className="font-semibold text-ink">Ask planner to rework results</span> reruns planning from the current review with your notes.
-            </div>
-          ) : null}
-
           {showModelSettings ? (
             <ModelSettingsPanel form={form} setForm={setForm} availableModels={availableModels} />
           ) : null}

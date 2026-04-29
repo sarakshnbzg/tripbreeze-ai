@@ -62,6 +62,26 @@ export type BudgetBreakdownData = {
   fallbackText: string;
 };
 
+function buildDisplayedBudgetNote({
+  budgetLimit,
+  total,
+  currency,
+}: {
+  budgetLimit: number;
+  total: number;
+  currency: string;
+}): string {
+  if (budgetLimit <= 0) {
+    return "";
+  }
+
+  if (total <= budgetLimit) {
+    return `You're within budget with ~${formatCurrency(budgetLimit - total, currency)} to spare.`;
+  }
+
+  return `Estimated total (${formatCurrency(total, currency)}) exceeds your budget (${formatCurrency(budgetLimit, currency)}) by ${formatCurrency(total - budgetLimit, currency)}.`;
+}
+
 export type ItineraryViewModel = {
   finalItinerary: string;
   hasStructuredItinerary: boolean;
@@ -218,9 +238,17 @@ function buildBudgetBreakdown({
   const selectedHotelCost = selectedHotel && Object.keys(selectedHotel).length ? Number(selectedHotel.total_price ?? 0) : 0;
   const flightCost = selectedFlightCost || Number(budgetData.flight_cost ?? 0);
   const hotelCost = selectedHotelCost || Number(budgetData.hotel_cost ?? 0);
-  const total = flightCost + hotelCost + dailyExpenses || Number(budgetData.total_estimated ?? budgetData.total_estimated_cost ?? 0);
+  const backendTotal = Number(budgetData.total_estimated ?? budgetData.total_estimated_cost ?? 0);
+  const total = flightCost + hotelCost + dailyExpenses || backendTotal;
   const withinBudget = budgetLimit > 0 ? total <= budgetLimit : budgetData.within_budget == null ? null : Boolean(budgetData.within_budget);
-  const budgetNote = readString(budgetData.budget_notes);
+  const backendWithinBudget = budgetData.within_budget == null ? null : Boolean(budgetData.within_budget);
+  const rawBudgetNote = readString(budgetData.budget_notes);
+  const budgetNoteNeedsRefresh = budgetLimit > 0 && rawBudgetNote
+    ? withinBudget !== backendWithinBudget || (backendTotal > 0 && Math.abs(total - backendTotal) >= 0.5)
+    : false;
+  const budgetNote = budgetNoteNeedsRefresh
+    ? buildDisplayedBudgetNote({ budgetLimit, total, currency })
+    : rawBudgetNote;
   const perLegRaw = Array.isArray(budgetData.per_leg_breakdown) ? budgetData.per_leg_breakdown : [];
 
   if (flightCost === 0 && hotelCost === 0 && dailyExpenses === 0 && total === 0) {

@@ -599,6 +599,42 @@ Passport required.
     });
   });
 
+  it("refreshes the budget note when selected options change the displayed total", () => {
+    const viewModel = buildItineraryViewModel({
+      state: {
+        trip_request: {
+          budget_limit: 3000,
+          num_travelers: 1,
+        },
+        budget: {
+          currency: "EUR",
+          flight_cost: 800,
+          hotel_cost: 300,
+          estimated_daily_expenses: 1330,
+          total_estimated: 1904,
+          within_budget: true,
+          budget_notes: "You're within budget with ~EUR 1096 to spare.",
+        },
+        selected_flight: {
+          total_price: 8887,
+        },
+        selected_hotel: {
+          total_price: 574,
+        },
+      } as unknown as TravelState,
+      itinerary: "Trip ready",
+      currencyCode: "EUR",
+    });
+
+    expect(viewModel.budgetBreakdown).toEqual(
+      expect.objectContaining({
+        total: 10791,
+        withinBudget: false,
+        budgetNote: "Estimated total (€10,791) exceeds your budget (€3,000) by €7,791.",
+      }),
+    );
+  });
+
   it("extracts visa trust metadata into a dedicated itinerary field", () => {
     const viewModel = buildItineraryViewModel({
       state: {
