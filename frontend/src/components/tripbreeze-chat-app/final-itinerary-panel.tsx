@@ -2,6 +2,7 @@ import dynamic from "next/dynamic";
 import { LoaderCircle, Mail } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { formatCurrency } from "@/lib/planner";
 
 import {
   readRecord,
@@ -10,6 +11,7 @@ import {
   renderMarkdownContent,
 } from "./helpers";
 import { SourceTrustCard } from "./source-trust";
+import type { BudgetBreakdownData } from "./view-models";
 import type { FinalItineraryPanelProps } from "./workspace-types";
 
 const ItineraryMap = dynamic(() => import("./itinerary-map"), { ssr: false });
@@ -31,6 +33,7 @@ export function FinalItineraryPanel({
     mapPoints,
     itineraryLegs,
     itineraryDays,
+    budgetBreakdown,
   } = viewModel;
   const {
     loading,
@@ -159,6 +162,12 @@ export function FinalItineraryPanel({
               </div>
             ))}
           </div>
+        </div>
+      ) : null}
+
+      {budgetBreakdown ? (
+        <div className="animate-fade-up stagger-2 mb-4">
+          <BudgetBreakdownCard data={budgetBreakdown} />
         </div>
       ) : null}
 
@@ -297,6 +306,92 @@ export function FinalItineraryPanel({
               );
             })}
           </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function BudgetBreakdownCard({ data }: { data: BudgetBreakdownData }) {
+  const { lineItems, total, budgetLimit, currency, withinBudget, budgetNote, perLeg, fallbackText } = data;
+
+  if (fallbackText) {
+    return (
+      <div className="lift-card rounded-[1.6rem] border border-white/80 bg-white/80 p-4 sm:p-5">
+        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate">Budget breakdown</div>
+        <div className="mt-2 text-sm leading-7 text-ink">{renderMarkdownContent(fallbackText) ?? fallbackText}</div>
+      </div>
+    );
+  }
+
+  const pct = budgetLimit > 0 && total > 0 ? Math.min(100, Math.round((total / budgetLimit) * 100)) : null;
+  const overBudget = withinBudget === false;
+
+  return (
+    <div className="lift-card rounded-[1.6rem] border border-white/80 bg-white/80 p-4 sm:p-5">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate">Budget breakdown</div>
+        {withinBudget !== null ? (
+          <div className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${overBudget ? "border border-red-200 bg-red-50 text-red-700" : "border border-pine/20 bg-pine/10 text-pine"}`}>
+            {overBudget ? "Over budget" : "Within budget"}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="space-y-2">
+        {lineItems.map((item) => (
+          <div key={item.label} className="flex items-center justify-between rounded-[1rem] bg-mist/50 px-4 py-3">
+            <div className="flex items-center gap-2 text-sm text-ink">
+              <span>{item.icon}</span>
+              <span>{item.label}</span>
+            </div>
+            <div className="text-sm font-semibold text-ink">{formatCurrency(item.amount, currency)}</div>
+          </div>
+        ))}
+
+        <div className="flex items-center justify-between rounded-[1rem] border border-ink/10 bg-[#fffaf4] px-4 py-3">
+          <div className="text-sm font-semibold text-ink">Total estimate</div>
+          <div className="text-base font-bold text-ink">{formatCurrency(total, currency)}</div>
+        </div>
+      </div>
+
+      {pct !== null ? (
+        <div className="mt-4">
+          <div className="mb-1 flex items-center justify-between text-[11px] text-slate">
+            <span>{formatCurrency(total, currency)} of {formatCurrency(budgetLimit, currency)} budget</span>
+            <span>{pct}%</span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-mist">
+            <div
+              className={`h-full rounded-full transition-all ${overBudget ? "bg-red-400" : "bg-pine"}`}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {perLeg.length > 0 ? (
+        <div className="mt-4 border-t border-ink/8 pt-4">
+          <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate">Per leg</div>
+          <div className="space-y-2">
+            {perLeg.map((leg) => (
+              <div key={leg.route} className="rounded-[1rem] bg-mist/40 px-4 py-3 text-sm">
+                <div className="mb-1 font-semibold text-ink">{leg.route}{leg.nights > 0 ? ` · ${leg.nights} night${leg.nights === 1 ? "" : "s"}` : ""}</div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-slate">
+                  {leg.flightCost > 0 ? <span>✈️ {formatCurrency(leg.flightCost, currency)}</span> : null}
+                  {leg.hotelCost > 0 ? <span>🏨 {formatCurrency(leg.hotelCost, currency)}</span> : null}
+                  {leg.dailyExpenses > 0 ? <span>🍽️ {formatCurrency(leg.dailyExpenses, currency)}</span> : null}
+                  <span className="font-semibold text-ink">= {formatCurrency(leg.legTotal, currency)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {budgetNote ? (
+        <div className={`mt-4 rounded-[1.1rem] border px-4 py-3 text-sm leading-6 ${overBudget ? "border-red-200 bg-red-50/60 text-red-800" : "border-pine/20 bg-pine/8 text-pine"}`}>
+          {budgetNote}
         </div>
       ) : null}
     </div>

@@ -98,6 +98,7 @@ describe("PlannerStage", () => {
             mapPoints: [],
             itineraryLegs: [],
             itineraryDays: [],
+            budgetBreakdown: null,
           },
           itineraryShareState: {
             loading: null,

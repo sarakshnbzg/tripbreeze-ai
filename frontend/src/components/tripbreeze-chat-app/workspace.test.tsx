@@ -408,6 +408,7 @@ Passport required.
               ],
             },
           ],
+          budgetBreakdown: null,
         }}
         shareState={{
           loading: null,
@@ -453,6 +454,7 @@ Passport required.
           mapPoints: [],
           itineraryLegs: [],
           itineraryDays: [],
+          budgetBreakdown: null,
         }}
         shareState={{
           loading: "approving",
@@ -490,6 +492,7 @@ Passport required.
           mapPoints: [],
           itineraryLegs: [],
           itineraryDays: [],
+          budgetBreakdown: null,
         }}
         shareState={{
           loading: null,
@@ -526,6 +529,7 @@ Passport required.
           mapPoints: [],
           itineraryLegs: [],
           itineraryDays: [],
+          budgetBreakdown: null,
         }}
         shareState={{
           loading: null,
@@ -722,6 +726,7 @@ Passport required.
           mapPoints: [],
           itineraryLegs: [],
           itineraryDays: [],
+          budgetBreakdown: null,
         }}
         shareState={{
           loading: null,
