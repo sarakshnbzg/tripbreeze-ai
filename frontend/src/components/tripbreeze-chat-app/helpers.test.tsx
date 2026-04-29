@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { render, screen } from "@testing-library/react";
 
 import {
   buildResolvedRequestDataPoints,
@@ -7,6 +8,7 @@ import {
   compressStarPreferences,
   createDefaultSelection,
   expandStarThresholds,
+  renderMarkdownContent,
   safeErrorMessage,
 } from "./helpers";
 
@@ -156,6 +158,20 @@ describe("tripbreeze helpers", () => {
     );
 
     expect(summary).toBe("Fly from Vienna to Tokyo for 8 nights in October with a mid-range hotel near Shibuya.");
+  });
+
+  it("renders split booking urls as compact links", () => {
+    render(
+      <>
+        {renderMarkdownContent(`- Property: River Hotel
+- Booking:
+https://example.com/hotels/river?very=long&url=true`)}
+      </>,
+    );
+
+    const link = screen.getByRole("link", { name: "Open booking link" });
+    expect(link).toHaveAttribute("href", "https://example.com/hotels/river?very=long&url=true");
+    expect(screen.queryByText(/https:\/\/example.com\/hotels/)).not.toBeInTheDocument();
   });
 
   it("returns safe error messages", () => {

@@ -1,15 +1,75 @@
 import type { ReactNode } from "react";
 
+const bareUrlPattern = /https?:\/\/[^\s)]+/g;
+
+function normalizeBookingLinks(content: string) {
+  const lines = content.split("\n");
+  const normalizedLines: string[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const nextLine = lines[index + 1]?.trim() ?? "";
+    const bookingOnlyMatch = /^(\s*[-*]\s+)?Booking:\s*$/i.exec(line.trim());
+    const nextLineUrlMatch = /^(https?:\/\/\S+)$/.exec(nextLine);
+
+    if (bookingOnlyMatch && nextLineUrlMatch) {
+      const bullet = bookingOnlyMatch[1] ? "- " : "";
+      normalizedLines.push(`${bullet}Booking: [Open booking link](${nextLineUrlMatch[1]})`);
+      index += 1;
+      continue;
+    }
+
+    normalizedLines.push(
+      line.replace(/Booking:\s*(https?:\/\/\S+)/gi, "Booking: [Open booking link]($1)"),
+    );
+  }
+
+  return normalizedLines.join("\n");
+}
+
 function renderInlineMarkdown(text: string): ReactNode[] {
   const parts: ReactNode[] = [];
   const pattern = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\((https?:\/\/[^)\s]+)\))/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
+  function pushPlainText(value: string, keyPrefix: string) {
+    let plainLastIndex = 0;
+    let urlMatch: RegExpExecArray | null;
+
+    bareUrlPattern.lastIndex = 0;
+    urlMatch = bareUrlPattern.exec(value);
+    while (urlMatch) {
+      if (urlMatch.index > plainLastIndex) {
+        parts.push(value.slice(plainLastIndex, urlMatch.index));
+      }
+
+      const href = urlMatch[0];
+      parts.push(
+        <a
+          key={`${keyPrefix}-${urlMatch.index}-bare-link`}
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+          className="font-semibold text-coral underline-offset-2 break-words hover:underline"
+        >
+          Open link
+        </a>,
+      );
+
+      plainLastIndex = bareUrlPattern.lastIndex;
+      urlMatch = bareUrlPattern.exec(value);
+    }
+
+    if (plainLastIndex < value.length) {
+      parts.push(value.slice(plainLastIndex));
+    }
+  }
+
   match = pattern.exec(text);
   while (match) {
     if (match.index > lastIndex) {
-      parts.push(text.slice(lastIndex, match.index));
+      pushPlainText(text.slice(lastIndex, match.index), `${lastIndex}-${match.index}`);
     }
 
     const token = match[0];
@@ -31,7 +91,7 @@ function renderInlineMarkdown(text: string): ReactNode[] {
           href={href}
           target="_blank"
           rel="noreferrer"
-          className="font-semibold text-coral underline-offset-2 hover:underline"
+          className="font-semibold text-coral underline-offset-2 break-words hover:underline"
         >
           {label}
         </a>,
@@ -43,14 +103,14 @@ function renderInlineMarkdown(text: string): ReactNode[] {
   }
 
   if (lastIndex < text.length) {
-    parts.push(text.slice(lastIndex));
+    pushPlainText(text.slice(lastIndex), `${lastIndex}-${text.length}`);
   }
 
   return parts;
 }
 
 export function renderMarkdownContent(content: string) {
-  const normalized = content
+  const normalized = normalizeBookingLinks(content)
     .replace(/\r\n/g, "\n")
     .replace(/([^\n])\s(#{2,6}\s)/g, "$1\n$2")
     .trim();
