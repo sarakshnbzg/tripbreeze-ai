@@ -235,8 +235,12 @@ export function FinalItineraryPanel({
                   Leg {Number(leg.leg_number ?? index + 1)}: {readString(leg.origin)} to {readString(leg.destination)}
                 </div>
                 {readString(leg.departure_date) ? <div className="mt-1">{readString(leg.departure_date)}</div> : null}
-                {readString(leg.flight_summary) ? <div className="mt-2">{readString(leg.flight_summary)}</div> : null}
-                {readString(leg.hotel_summary) ? <div className="mt-2">{readString(leg.hotel_summary)}</div> : null}
+                {readString(leg.flight_summary) ? (
+                  <div className="mt-2 leading-7">{renderMarkdownContent(readString(leg.flight_summary)) ?? readString(leg.flight_summary)}</div>
+                ) : null}
+                {readString(leg.hotel_summary) ? (
+                  <div className="mt-2 leading-7">{renderMarkdownContent(readString(leg.hotel_summary)) ?? readString(leg.hotel_summary)}</div>
+                ) : null}
               </div>
             ))}
           </div>

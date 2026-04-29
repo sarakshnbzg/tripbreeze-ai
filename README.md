@@ -158,13 +158,13 @@ TripBreeze is evaluated at multiple layers rather than only by final itinerary o
 ## 🗺️ Example Prompts
 
 ```
-I want to fly from London to Tokyo from 2026-06-10 to 2026-06-17 for 2 travelers with a budget of 3000 EUR.
+Istanbul 2 nights, then Vienna 3 nights, from Berlin, start on 2026-07-01.
 ```
 ```
-Paris for 3 days, then Barcelona for 4 days, then fly home.
+Tokyo for 7 nights from London for 2 travelers on 2026-08-15.
 ```
 ```
-Business class, exclude Ryanair, keep the flight under 10 hours.
+London to Paris from 2026-06-10 to 2026-06-14 for 2 travelers, budget 1200 EUR.
 ```
 
 ---

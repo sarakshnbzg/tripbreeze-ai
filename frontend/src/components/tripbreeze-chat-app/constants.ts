@@ -5,9 +5,9 @@ export const HOTEL_STARS = [5, 4, 3, 2, 1] as const;
 export const INTEREST_OPTIONS = ["food", "history", "nature", "art", "nightlife", "shopping", "outdoors", "family"] as const;
 export const PACE_OPTIONS = ["relaxed", "moderate", "packed"] as const;
 export const PLANNER_PROMPT_CHIPS = [
-  "I want to fly from Berlin to Tokyo from 2026-06-10 to 2026-06-17 for 2 travelers with a budget of 3000 EUR.",
-  "Paris for 3 nights, Barcelona for 2 nights next month.",
-  "A week in Lisbon for 2 in October, direct flights only, budget 2500 EUR.",
+  "Istanbul 2 nights, then Vienna 3 nights, from Berlin, start on 2026-07-01.",
+  "Tokyo for 7 nights from London for 2 travelers on 2026-08-15.",
+  "London to Paris from 2026-06-10 to 2026-06-14 for 2 travelers, budget 1200 EUR.",
 ] as const;
 export const OPENAI_MODELS = [
   "gpt-5-mini",

@@ -385,7 +385,7 @@ Passport required.
               origin: "Berlin",
               destination: "Lisbon",
               departure_date: "2026-06-10",
-              flight_summary: "Morning departure",
+              flight_summary: "Morning departure. Booking: https://example.com/flights/leg-one",
             },
           ],
           itineraryDays: [
@@ -430,6 +430,11 @@ Passport required.
     expect(screen.getByText("Packing tips")).toBeInTheDocument();
     expect(screen.getByText("Trip map")).toBeInTheDocument();
     expect(screen.getByText(/Leg 1: Berlin to Lisbon/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open booking link" })).toHaveAttribute(
+      "href",
+      "https://example.com/flights/leg-one",
+    );
+    expect(screen.queryByText(/https:\/\/example.com\/flights\/leg-one/)).not.toBeInTheDocument();
     expect(screen.getByText(/Day 1 · Arrival/)).toBeInTheDocument();
     expect(screen.getByText("Check in")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open in Google Maps" })).toHaveAttribute(
