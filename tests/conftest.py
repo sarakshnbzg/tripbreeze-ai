@@ -11,6 +11,12 @@ import pytest
 from tests.golden_prompt_replay import build_recorded_response, stringify_prompt
 
 
+@pytest.fixture(autouse=True)
+def disable_moderation_network_calls(monkeypatch):
+    """Keep tests from calling the live Moderations API unless they opt in."""
+    monkeypatch.setattr("infrastructure.apis.moderation_client.MODERATION_ENABLED", False)
+
+
 @pytest.fixture
 def mock_llm_responses():
     """Patch a node's LLM boundary to replay recorded responses in order."""
@@ -57,4 +63,3 @@ def mock_llm_responses():
         )
 
     return _mock
-

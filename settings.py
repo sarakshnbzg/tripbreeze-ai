@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = Field(True, alias="SMTP_USE_TLS")
 
     openai_embedding_model: str = Field("text-embedding-3-small", alias="OPENAI_EMBEDDING_MODEL")
+    moderation_enabled: bool = Field(True, alias="MODERATION_ENABLED")
+    moderation_model: str = Field("omni-moderation-latest", alias="MODERATION_MODEL")
+    moderation_timeout_seconds: float = Field(8.0, alias="MODERATION_TIMEOUT_SECONDS", gt=0)
+    moderation_fail_closed: bool = Field(False, alias="MODERATION_FAIL_CLOSED")
     itinerary_cover_image_enabled: bool = Field(True, alias="ITINERARY_COVER_IMAGE_ENABLED")
     itinerary_cover_image_model: str = Field("gpt-image-1", alias="ITINERARY_COVER_IMAGE_MODEL")
     itinerary_cover_image_size: str = Field("1536x1024", alias="ITINERARY_COVER_IMAGE_SIZE")
@@ -197,6 +201,10 @@ SMTP_SENDER_PASSWORD = settings.smtp_sender_password
 SMTP_USE_TLS = settings.smtp_use_tls
 
 EMBEDDING_MODELS = settings.embedding_models
+MODERATION_ENABLED = settings.moderation_enabled
+MODERATION_MODEL = settings.moderation_model
+MODERATION_TIMEOUT_SECONDS = settings.moderation_timeout_seconds
+MODERATION_FAIL_CLOSED = settings.moderation_fail_closed
 ITINERARY_COVER_IMAGE_ENABLED = settings.itinerary_cover_image_enabled
 ITINERARY_COVER_IMAGE_MODEL = settings.itinerary_cover_image_model
 ITINERARY_COVER_IMAGE_SIZE = settings.itinerary_cover_image_size

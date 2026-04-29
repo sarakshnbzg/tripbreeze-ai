@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 from fastapi.responses import Response
 
+from infrastructure.apis.moderation_client import ModerationBlockedError
 from infrastructure.persistence import memory_store
 from presentation import api
 from presentation import api_routes_itinerary as itinerary_routes
@@ -121,6 +122,29 @@ class TestAPIEndpoints:
 
         assert response.status_code == 413
         assert response.json()["detail"] == "Trip request text is too long."
+
+    def test_search_rejects_moderation_flagged_request(self, monkeypatch):
+        monkeypatch.setattr(planning_routes, "get_provider_status", lambda provider: (True, ""))
+        monkeypatch.setattr(
+            planning_routes,
+            "assert_text_allowed",
+            lambda payload, *, context: (_ for _ in ()).throw(
+                ModerationBlockedError(context=context, categories=["violence"])
+            ),
+        )
+
+        response = client.post(
+            "/api/search",
+            headers=auth_headers(),
+            json={
+                "user_id": "test_user",
+                "free_text_query": "flagged text",
+                "llm_provider": "openai",
+            },
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "This request cannot be processed because it was flagged by the safety system."
 
     def test_login_sets_strict_http_only_cookie(self, monkeypatch):
         monkeypatch.setattr(auth_routes, "verify_user", lambda user_id, password: True)
@@ -347,6 +371,24 @@ class TestAPIEndpoints:
         assert response.status_code == 400
         assert response.json()["detail"] == "Answer cannot be empty"
 
+    def test_clarify_rejects_moderation_flagged_answer(self, monkeypatch):
+        monkeypatch.setattr(
+            planning_routes,
+            "assert_text_allowed",
+            lambda payload, *, context: (_ for _ in ()).throw(
+                ModerationBlockedError(context=context, categories=["self-harm"])
+            ),
+        )
+
+        response = client.post(
+            "/api/search/thread-123/clarify",
+            headers=auth_headers(),
+            json={"answer": "flagged text"},
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "This request cannot be processed because it was flagged by the safety system."
+
     def test_approve_rejects_unavailable_provider(self, monkeypatch):
         monkeypatch.setattr(planning_routes, "get_provider_status", lambda provider: (False, "Provider unavailable"))
         monkeypatch.setattr(
@@ -363,6 +405,30 @@ class TestAPIEndpoints:
 
         assert response.status_code == 400
         assert response.json()["detail"] == "Provider unavailable"
+
+    def test_approve_rejects_moderation_flagged_feedback(self, monkeypatch):
+        monkeypatch.setattr(planning_routes, "get_provider_status", lambda provider: (True, ""))
+        monkeypatch.setattr(
+            planning_routes,
+            "get_graph",
+            lambda: DummyGraph(values={"current_step": "review", "user_id": "test_user"}),
+        )
+        monkeypatch.setattr(
+            planning_routes,
+            "assert_text_allowed",
+            lambda payload, *, context: (_ for _ in ()).throw(
+                ModerationBlockedError(context=context, categories=["hate"])
+            ),
+        )
+
+        response = client.post(
+            "/api/search/thread-123/approve",
+            headers=auth_headers(),
+            json={"llm_provider": "openai", "user_feedback": "flagged text"},
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "This request cannot be processed because it was flagged by the safety system."
 
     def test_approve_routes_revision_feedback_to_revision_runner(self, monkeypatch):
         class DummyLoop:
@@ -422,6 +488,37 @@ class TestAPIEndpoints:
 
         assert response.status_code == 502
         assert response.json()["detail"] == "Transcription failed. Please try again later."
+
+    def test_transcribe_rejects_moderation_flagged_transcript(self, monkeypatch):
+        class FakeTranscriptions:
+            def create(self, **kwargs):
+                return SimpleNamespace(text="flagged transcript")
+
+        class FakeOpenAIClient:
+            audio = SimpleNamespace(transcriptions=FakeTranscriptions())
+
+        class FakeOpenAI:
+            def OpenAI(self):
+                return FakeOpenAIClient()
+
+        monkeypatch.setitem(sys.modules, "openai", FakeOpenAI())
+        monkeypatch.setattr(
+            system_routes,
+            "assert_text_allowed",
+            lambda payload, *, context: (_ for _ in ()).throw(
+                ModerationBlockedError(context=context, categories=["violence"])
+            ),
+        )
+
+        response = client.post(
+            "/api/transcribe",
+            headers=auth_headers(),
+            files={"file": ("audio.webm", io.BytesIO(b"voice"), "audio/webm")},
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "This request cannot be processed because it was flagged by the safety system."
+
 
     def test_generated_image_serves_cached_png(self, monkeypatch, tmp_path):
         image_dir = tmp_path / "generated"

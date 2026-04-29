@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from domain.agents.flight_agent import fetch_return_flights
+from infrastructure.apis.moderation_client import ModerationBlockedError, ModerationUnavailableError, assert_text_allowed
 from infrastructure.llms.model_factory import get_provider_status
 from presentation.api_security import (
     enforce_content_length,
@@ -22,6 +23,18 @@ from presentation.api_runtime import executor, get_graph
 from presentation.api_sse import queue_to_sse, run_clarification_sync, run_planning_sync, run_post_review_sync
 
 router = APIRouter()
+
+_MODERATION_BLOCKED_MESSAGE = "This request cannot be processed because it was flagged by the safety system."
+_MODERATION_UNAVAILABLE_MESSAGE = "Safety check is temporarily unavailable. Please try again later."
+
+
+def _enforce_request_moderation(payload: Any, *, context: str) -> None:
+    try:
+        assert_text_allowed(payload, context=context)
+    except ModerationBlockedError as exc:
+        raise HTTPException(status_code=400, detail=_MODERATION_BLOCKED_MESSAGE) from exc
+    except ModerationUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=_MODERATION_UNAVAILABLE_MESSAGE) from exc
 
 
 def _ensure_thread_owner(thread_id: str, authenticated_user: str) -> dict[str, Any]:
@@ -68,6 +81,13 @@ async def search(req: SearchRequest, request: Request):
     provider_ready, provider_message = get_provider_status(req.llm_provider)
     if not provider_ready:
         raise HTTPException(status_code=400, detail=provider_message)
+    _enforce_request_moderation(
+        {
+            "free_text_query": req.free_text_query or "",
+            "structured_fields": req.structured_fields or {},
+        },
+        context="planning_search",
+    )
 
     authenticated_user = get_authenticated_user(request)
     thread_id = str(uuid.uuid4())
@@ -132,6 +152,7 @@ async def clarify(thread_id: str, req: ClarifyRequest, request: Request):
     """Resume trip planning after the user answers a clarification question. Returns an SSE stream."""
     if not req.answer.strip():
         raise HTTPException(status_code=400, detail="Answer cannot be empty")
+    _enforce_request_moderation(req.answer.strip(), context="planning_clarification")
 
     _ensure_thread_owner(thread_id, get_authenticated_user(request))
     q: queue.Queue = queue.Queue()
@@ -150,6 +171,13 @@ async def approve(thread_id: str, req: ApproveRequest, request: Request):
     provider_ready, provider_message = get_provider_status(req.llm_provider)
     if not provider_ready:
         raise HTTPException(status_code=400, detail=provider_message)
+    _enforce_request_moderation(
+        {
+            "user_feedback": req.user_feedback or "",
+            "trip_request": req.trip_request or {},
+        },
+        context="planning_review_feedback",
+    )
 
     _ensure_thread_owner(thread_id, get_authenticated_user(request))
     state_updates: dict[str, Any] = {

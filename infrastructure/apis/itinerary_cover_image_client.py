@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field, ValidationError
 
+from infrastructure.apis.moderation_client import ModerationBlockedError, ModerationUnavailableError, check_text_allowed
 from infrastructure.llms.model_factory import create_chat_model, extract_token_usage, invoke_with_retry
 from infrastructure.logging_utils import get_logger, log_event
 from settings import (
@@ -144,6 +145,25 @@ def generate_itinerary_cover(
 
     try:
         import openai
+
+        try:
+            check_text_allowed(concept.prompt, context="itinerary_cover_prompt")
+        except ModerationBlockedError as exc:
+            log_event(
+                logger,
+                "itinerary_cover.prompt_blocked",
+                categories=exc.categories,
+                model=ITINERARY_COVER_IMAGE_MODEL,
+            )
+            return {}, usage
+        except ModerationUnavailableError as exc:
+            log_event(
+                logger,
+                "itinerary_cover.moderation_unavailable",
+                error_type=type(exc).__name__,
+                model=ITINERARY_COVER_IMAGE_MODEL,
+            )
+            return {}, usage
 
         client = openai.OpenAI(
             api_key=OPENAI_API_KEY,

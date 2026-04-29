@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 
+from infrastructure.apis.moderation_client import ModerationBlockedError, ModerationUnavailableError, assert_text_allowed
 from presentation.api_security import enforce_content_length, enforce_rate_limit, log_and_raise_api_error
 from presentation.api_runtime import logger
 from infrastructure.apis.itinerary_cover_image_client import GENERATED_IMAGE_DIR
@@ -20,6 +21,8 @@ _ALLOWED_AUDIO_CONTENT_TYPES = {
     "audio/x-m4a",
     "video/webm",
 }
+_MODERATION_BLOCKED_MESSAGE = "This request cannot be processed because it was flagged by the safety system."
+_MODERATION_UNAVAILABLE_MESSAGE = "Safety check is temporarily unavailable. Please try again later."
 
 
 @router.get("/healthz")
@@ -81,7 +84,16 @@ async def transcribe(request: Request, file: UploadFile = File(...)):
             model="whisper-1",
             file=(file.filename or "audio.wav", audio_bytes),
         )
-        return {"text": transcript.text}
+        text = str(transcript.text or "")
+        try:
+            assert_text_allowed(text, context="audio_transcript")
+        except ModerationBlockedError as moderation_exc:
+            raise HTTPException(status_code=400, detail=_MODERATION_BLOCKED_MESSAGE) from moderation_exc
+        except ModerationUnavailableError as moderation_exc:
+            raise HTTPException(status_code=503, detail=_MODERATION_UNAVAILABLE_MESSAGE) from moderation_exc
+        return {"text": text}
+    except HTTPException:
+        raise
     except Exception as exc:
         log_and_raise_api_error(
             event="api.transcription_failed",
