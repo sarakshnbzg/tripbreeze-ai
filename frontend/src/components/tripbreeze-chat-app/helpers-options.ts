@@ -40,16 +40,16 @@ function hotelRatingLabel(rating: unknown) {
   if (!Number.isFinite(score) || score <= 0) {
     return "";
   }
-  if (score >= 9) {
+  if (score >= 4.5) {
     return "Excellent";
   }
-  if (score >= 8) {
+  if (score >= 4) {
     return "Very Good";
   }
-  if (score >= 7) {
+  if (score >= 3.5) {
     return "Good";
   }
-  if (score >= 6) {
+  if (score >= 3) {
     return "Fair";
   }
   return "Poor";
