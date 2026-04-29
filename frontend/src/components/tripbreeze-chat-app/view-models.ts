@@ -171,8 +171,11 @@ export function buildItineraryViewModel({
     budgetLimit,
     itineraryBudget,
     currencyCode,
+    tripLegs,
     selectedFlight: finalSelectedFlight,
     selectedHotel: finalSelectedHotel,
+    selectedFlights: finalSelectedFlights,
+    selectedHotels: finalSelectedHotels,
   });
 
   const primarySections = buildPrimarySections({
@@ -286,15 +289,21 @@ function buildBudgetBreakdown({
   budgetLimit,
   itineraryBudget,
   currencyCode,
+  tripLegs,
   selectedFlight,
   selectedHotel,
+  selectedFlights,
+  selectedHotels,
 }: {
   budgetData: Record<string, unknown>;
   budgetLimit: number;
   itineraryBudget: string;
   currencyCode: string;
+  tripLegs: Array<Record<string, unknown>>;
   selectedFlight?: Record<string, unknown>;
   selectedHotel?: Record<string, unknown>;
+  selectedFlights?: Array<Record<string, unknown>>;
+  selectedHotels?: Array<Record<string, unknown>>;
 }): BudgetBreakdownData | null {
   const currency = readString(budgetData.currency) || currencyCode;
   const dailyExpenses = Number(budgetData.estimated_daily_expenses ?? 0);
@@ -307,8 +316,27 @@ function buildBudgetBreakdown({
     return combined || outbound + returnCost || outbound || Number(selectedFlight.price ?? 0);
   })();
   const selectedHotelCost = selectedHotel && Object.keys(selectedHotel).length ? Number(selectedHotel.total_price ?? 0) : 0;
-  const flightCost = selectedFlightCost || Number(budgetData.flight_cost ?? 0);
-  const hotelCost = selectedHotelCost || Number(budgetData.hotel_cost ?? 0);
+  const hasTripLegs = tripLegs.length > 0;
+  const multiCitySelectedFlightCost = hasTripLegs
+    ? (selectedFlights ?? []).reduce((sum, flight) => {
+        if (!Object.keys(flight).length) return sum;
+        const totalPrice = Number(flight.total_price ?? 0);
+        const fallbackPrice = Number(flight.price ?? 0);
+        return sum + (totalPrice || fallbackPrice);
+      }, 0)
+    : 0;
+  const multiCitySelectedHotelCost = hasTripLegs
+    ? (selectedHotels ?? []).reduce((sum, hotel) => {
+        if (!Object.keys(hotel).length) return sum;
+        return sum + Number(hotel.total_price ?? 0);
+      }, 0)
+    : 0;
+  const flightCost = hasTripLegs
+    ? multiCitySelectedFlightCost || Number(budgetData.flight_cost ?? 0)
+    : selectedFlightCost || Number(budgetData.flight_cost ?? 0);
+  const hotelCost = hasTripLegs
+    ? multiCitySelectedHotelCost || Number(budgetData.hotel_cost ?? 0)
+    : selectedHotelCost || Number(budgetData.hotel_cost ?? 0);
   const backendTotal = Number(budgetData.total_estimated ?? budgetData.total_estimated_cost ?? 0);
   const total = flightCost + hotelCost + dailyExpenses || backendTotal;
   const withinBudget = budgetLimit > 0 ? total <= budgetLimit : budgetData.within_budget == null ? null : Boolean(budgetData.within_budget);

@@ -635,6 +635,66 @@ Passport required.
     );
   });
 
+  it("keeps the multi-city budget summary aligned with selected leg totals", () => {
+    const viewModel = buildItineraryViewModel({
+      state: {
+        trip_request: {
+          budget_limit: 1500,
+          num_travelers: 1,
+        },
+        trip_legs: [
+          { origin: "Berlin", destination: "Paris", departure_date: "2026-06-10", nights: 3, needs_hotel: true },
+          { origin: "Paris", destination: "Barcelona", departure_date: "2026-06-13", nights: 2, needs_hotel: true },
+          { origin: "Barcelona", destination: "Berlin", departure_date: "2026-06-15", nights: 0, needs_hotel: false },
+        ],
+        budget: {
+          currency: "EUR",
+          flight_cost: 525,
+          hotel_cost: 181,
+          estimated_daily_expenses: 530,
+          total_estimated: 1236,
+          within_budget: true,
+          budget_notes: "You're within budget with ~EUR 264 to spare.",
+          per_leg_breakdown: [
+            { origin: "Berlin", destination: "Paris", nights: 3, flight_cost: 286, hotel_cost: 100, daily_expenses: 330, leg_total: 716 },
+            { origin: "Paris", destination: "Barcelona", nights: 2, flight_cost: 108, hotel_cost: 81, daily_expenses: 200, leg_total: 389 },
+            { origin: "Barcelona", destination: "Berlin", nights: 0, flight_cost: 131, hotel_cost: 0, daily_expenses: 0, leg_total: 131 },
+          ],
+        },
+        selected_flights: [
+          { total_price: 286 },
+          { total_price: 108 },
+          { total_price: 131 },
+        ],
+        selected_hotels: [
+          { total_price: 100 },
+          { total_price: 81 },
+          {},
+        ],
+        selected_flight: {
+          total_price: 286,
+        },
+        selected_hotel: {
+          total_price: 100,
+        },
+      } as unknown as TravelState,
+      itinerary: "Trip ready",
+      currencyCode: "EUR",
+    });
+
+    expect(viewModel.budgetBreakdown).toEqual(
+      expect.objectContaining({
+        total: 1236,
+        budgetNote: "You're within budget with ~EUR 264 to spare.",
+        lineItems: [
+          { label: "Flights", amount: 525, icon: "✈️" },
+          { label: "Hotels", amount: 181, icon: "🏨" },
+          { label: "Daily expenses", amount: 530, icon: "🍽️" },
+        ],
+      }),
+    );
+  });
+
   it("extracts visa trust metadata into a dedicated itinerary field", () => {
     const viewModel = buildItineraryViewModel({
       state: {
