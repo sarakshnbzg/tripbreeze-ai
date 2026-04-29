@@ -180,8 +180,9 @@ def _is_generic_logistics_activity(name: str | None) -> bool:
         return False
 
     generic_phrases = (
+        "transfer to",
+        "transfer from",
         "airport transfer",
-        "transfer to airport",
         "airport",
         "check out",
         "checkout",
@@ -191,7 +192,6 @@ def _is_generic_logistics_activity(name: str | None) -> bool:
         "depart",
         "departure",
         "station transfer",
-        "transfer to station",
     )
     return any(phrase in text for phrase in generic_phrases)
 
