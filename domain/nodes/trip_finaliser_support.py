@@ -255,13 +255,19 @@ def _strip_generic_logistics_coordinates(daily_plans: list) -> None:
 
     for day in daily_plans:
         for activity in getattr(day, "activities", []) or []:
-            if not _is_non_mappable_activity(getattr(activity, "name", "")):
-                activity.is_mappable = True
+            if _is_non_mappable_activity(getattr(activity, "name", "")):
+                activity.is_mappable = False
+                activity.latitude = None
+                activity.longitude = None
+                activity.maps_url = ""
                 continue
-            activity.is_mappable = False
-            activity.latitude = None
-            activity.longitude = None
-            activity.maps_url = ""
+            if not (getattr(activity, "address", None) or "").strip():
+                activity.is_mappable = False
+                activity.latitude = None
+                activity.longitude = None
+                activity.maps_url = ""
+                continue
+            activity.is_mappable = True
 
 
 def _rescue_malformed_itinerary(raw: dict) -> dict:

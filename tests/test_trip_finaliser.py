@@ -257,6 +257,7 @@ class TestActivityLocationMetadata:
                     ),
                     Activity(
                         name="Trevi Fountain",
+                        address="Piazza di Trevi, 00187 Roma RM, Italy",
                         time_of_day="afternoon",
                         notes="Classic Rome stop",
                         latitude=41.9009,
@@ -298,6 +299,7 @@ class TestActivityLocationMetadata:
                     ),
                     Activity(
                         name="Colosseum",
+                        address="Piazza del Colosseo, 1, 00184 Roma RM, Italy",
                         time_of_day="morning",
                         notes="Classic Rome stop",
                         latitude=41.8902,

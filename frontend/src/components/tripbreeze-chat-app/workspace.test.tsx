@@ -561,6 +561,7 @@ Passport required.
               activities: [
                 {
                   name: "Alfama walk",
+                  address: "Alfama, Lisbon, Portugal",
                   latitude: 38.711,
                   longitude: -9.13,
                   maps_url: "https://www.google.com/maps/search/?api=1&query=Alfama",
@@ -761,6 +762,7 @@ Passport required.
                 },
                 {
                   name: "Trevi Fountain",
+                  address: "Piazza di Trevi, 00187 Roma RM, Italy",
                   latitude: 41.9009,
                   longitude: 12.4833,
                 },
@@ -799,6 +801,7 @@ Passport required.
                 },
                 {
                   name: "Colosseum",
+                  address: "Piazza del Colosseo, 1, 00184 Roma RM, Italy",
                   latitude: 41.8902,
                   longitude: 12.4922,
                 },
@@ -873,6 +876,7 @@ Passport required.
                 },
                 {
                   name: "Pantheon",
+                  address: "Piazza della Rotonda, 00186 Roma RM, Italy",
                   latitude: 41.8986,
                   longitude: 12.4769,
                 },
@@ -909,6 +913,7 @@ Passport required.
                 },
                 {
                   name: "Senso-ji Temple",
+                  address: "2-3-1 Asakusa, Taito City, Tokyo 111-0032, Japan",
                   latitude: 35.7148,
                   longitude: 139.7967,
                 },

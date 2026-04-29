@@ -431,6 +431,9 @@ function buildMapPoints({
       if (isGenericLogisticsActivity(name)) {
         return;
       }
+      if (activity.is_mappable !== true && !readString(activity.address)) {
+        return;
+      }
       const detailParts = [
         readString(activity.time_of_day),
         readString(activity.address),
